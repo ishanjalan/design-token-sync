@@ -56,7 +56,7 @@ docker run -p 3000:3000 token-sync
 
 ### Deploy to Vercel
 
-The app uses `@sveltejs/adapter-vercel` and deploys automatically on push to `main`. The Vercel project root directory is set to `design-token-sync/app`.
+The app uses `@sveltejs/adapter-vercel` and deploys automatically on push to `main`.
 
 ---
 
