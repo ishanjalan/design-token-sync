@@ -46,7 +46,7 @@ export const POST: RequestHandler = async ({ request }) => {
 		cards: [
 			{
 				header: {
-					title: 'Token Sync — Files Generated',
+					title: 'Tokensmith — Files Generated',
 					subtitle: platformStr,
 					imageUrl:
 						'https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsoutlined/token/default/24px.svg',

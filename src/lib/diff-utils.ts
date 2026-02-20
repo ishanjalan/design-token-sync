@@ -275,7 +275,7 @@ export function generateChangelog(ctx: ChangelogContext): string {
 			return plat ? `${plat.label} (${plat.sublabel})` : p;
 		})
 		.join(', ');
-	const lines: string[] = [`## Design Token Sync — ${date}`, '', `**Platform:** ${platform}`, ''];
+	const lines: string[] = [`## Tokensmith — ${date}`, '', `**Platform:** ${platform}`, ''];
 	const hasDiffs = Object.keys(ctx.diffs).length > 0;
 	if (hasDiffs) {
 		lines.push('### Changes');

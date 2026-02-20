@@ -1,8 +1,8 @@
-# Design Token Sync
+# Tokensmith
 
-**Figma Variables → SCSS · TypeScript · Swift · Kotlin**
+**Design token pipeline — Figma → SCSS · TypeScript · Swift · Kotlin**
 
-Design Token Sync converts Figma's exported design token JSON into production-ready code for Web, iOS, and Android — eliminating manual copy-paste and preventing design–development drift.
+Tokensmith converts Figma's exported design token JSON into production-ready code for Web, iOS, and Android — eliminating manual copy-paste and preventing design–development drift.
 
 **Live:** [design-token-sync.vercel.app](https://design-token-sync.vercel.app)
 
@@ -50,8 +50,8 @@ node build        # serves on PORT (default 3000)
 ### Docker
 
 ```sh
-docker build -t token-sync .
-docker run -p 3000:3000 token-sync
+docker build -t tokensmith .
+docker run -p 3000:3000 tokensmith
 ```
 
 ### Deploy to Vercel
@@ -81,7 +81,7 @@ To preserve your team's existing variable naming conventions, upload their curre
 | iOS      | `Colors.swift`                                                 |
 | Android  | `Colors.kt`                                                    |
 
-Token Sync detects naming patterns (camelCase, SCREAMING_SNAKE_CASE, separators, import style) dynamically at runtime — no hardcoded conventions.
+Tokensmith detects naming patterns (camelCase, SCREAMING_SNAKE_CASE, separators, import style) dynamically at runtime — no hardcoded conventions.
 
 ### Step 3 — Generate
 

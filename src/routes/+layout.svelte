@@ -17,14 +17,14 @@
 <svelte:head>
 	<meta charset="utf-8" />
 	<meta name="viewport" content="width=device-width, initial-scale=1" />
-	<title>Token Sync</title>
-	<meta name="description" content="Design token pipeline — Figma → SCSS · TS · Swift · Kotlin" />
+	<title>Tokensmith</title>
+	<meta name="description" content="Tokensmith — Design token pipeline. Figma → SCSS · TS · Swift · Kotlin" />
 </svelte:head>
 
 {@render children()}
 
 <footer class="app-footer">
-	<span>Token Sync v{version}</span>
+	<span>Tokensmith v{version}</span>
 	<span class="footer-sep">·</span>
 	<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
 	<a href="{base}/api/health" target="_blank" rel="noopener" class="footer-link">health</a>

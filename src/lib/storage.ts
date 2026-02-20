@@ -1,5 +1,5 @@
 /**
- * Storage helpers for Token Sync.
+ * Storage helpers for Tokensmith.
  *
  * Keys used:
  *   tokenSync:ref:{slotKey}  → { name, content, savedAt }

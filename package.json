@@ -1,5 +1,5 @@
 {
-	"name": "token-sync",
+	"name": "tokensmith",
 	"description": "Design token pipeline — Figma Variables → SCSS, TypeScript, Swift, Kotlin",
 	"private": true,
 	"version": "1.0.0",

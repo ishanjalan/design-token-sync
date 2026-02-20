@@ -329,7 +329,7 @@
 		figmaWebhookPasscode = loadFigmaWebhookPasscode();
 
 		// Restore theme preference
-		const storedTheme = localStorage.getItem('token-sync:theme') as ThemeId | null;
+		const storedTheme = localStorage.getItem('tokensmith:theme') as ThemeId | null;
 		if (storedTheme && THEMES.some((t) => t.id === storedTheme)) {
 			selectedTheme = storedTheme;
 		}
@@ -889,7 +889,7 @@
 		const url = URL.createObjectURL(blob);
 		const a = document.createElement('a');
 		a.href = url;
-		a.download = `token-sync-${new Date().toISOString().slice(0, 10)}.zip`;
+		a.download = `tokensmith-${new Date().toISOString().slice(0, 10)}.zip`;
 		a.click();
 		URL.revokeObjectURL(url);
 		toast.success('ZIP downloaded');
@@ -964,7 +964,7 @@
 		const url = URL.createObjectURL(blob);
 		const a = document.createElement('a');
 		a.href = url;
-		a.download = 'token-sync-config.json';
+		a.download = 'tokensmith-config.json';
 		a.click();
 		URL.revokeObjectURL(url);
 		toast.success('Config exported');
@@ -1258,7 +1258,7 @@
 	function changeTheme(id: ThemeId) {
 		selectedTheme = id;
 		showThemePicker = false;
-		if (browser) localStorage.setItem('token-sync:theme', id);
+		if (browser) localStorage.setItem('tokensmith:theme', id);
 	}
 
 	// ─── Settings panel keyboard management ────────────────────────────────────
@@ -1380,10 +1380,14 @@
 	<header class="header">
 		<div class="header-inner">
 			<div class="brand">
-				<span class="brand-mark" aria-hidden="true">◈</span>
+				<span class="brand-mark" aria-hidden="true">
+					<svg width="22" height="22" viewBox="0 0 32 32" fill="currentColor">
+						<path fill-rule="evenodd" clip-rule="evenodd" d="M16 30c7.732 0 14-6.268 14-14S23.732 2 16 2 2 8.268 2 16s6.268 14 14 14zm0-2.5c6.351 0 11.5-5.149 11.5-11.5S22.351 4.5 16 4.5 4.5 9.649 4.5 16 9.649 27.5 16 27.5zM16 10l6 6-6 6-6-6 6-6z"/>
+					</svg>
+				</span>
 				<div class="brand-text">
-					<h1 class="brand-name">Token&nbsp;Sync</h1>
-					<span class="brand-sub">Design token pipeline — Figma → SCSS · TS · Swift · Kotlin</span>
+					<h1 class="brand-name">Tokensmith</h1>
+					<span class="brand-sub">Design token pipeline</span>
 				</div>
 			</div>
 			<div class="header-right">
@@ -2497,20 +2501,11 @@
 	}
 
 	.brand-mark {
-		font-size: 20px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
 		color: var(--brand-color);
 		line-height: 1;
-		animation: mark-pulse 4s ease-in-out infinite;
-	}
-
-	@keyframes mark-pulse {
-		0%,
-		100% {
-			opacity: 1;
-		}
-		50% {
-			opacity: 0.5;
-		}
 	}
 
 	.brand-text {
