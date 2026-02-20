@@ -356,17 +356,29 @@
 
 	// ─── Themes ──────────────────────────────────────────────────────────────
 	const THEMES = [
-		{ id: 'github-dark-dimmed', label: 'GitHub Dimmed', bg: '#22272e', mode: 'dark' as const },
-		{ id: 'github-dark', label: 'GitHub Dark', bg: '#24292e', mode: 'dark' as const },
-		{ id: 'one-dark-pro', label: 'One Dark', bg: '#282c34', mode: 'dark' as const },
+		{ id: 'github-dark-dimmed', label: 'Dimmed', bg: '#22272e', mode: 'dark' as const },
+		{ id: 'github-dark', label: 'Dark', bg: '#24292e', mode: 'dark' as const },
+		{ id: 'one-dark-pro', label: 'Midnight', bg: '#282c34', mode: 'dark' as const },
 		{ id: 'dracula', label: 'Dracula', bg: '#282A36', mode: 'dark' as const },
-		{ id: 'catppuccin-mocha', label: 'Catppuccin', bg: '#1e1e2e', mode: 'dark' as const },
-		{ id: 'night-owl', label: 'Night Owl', bg: '#011627', mode: 'dark' as const },
-		{ id: 'github-light', label: 'GitHub Light', bg: '#ffffff', mode: 'light' as const },
-		{ id: 'catppuccin-latte', label: 'Catppuccin Latte', bg: '#eff1f5', mode: 'light' as const },
-		{ id: 'min-light', label: 'Min Light', bg: '#ffffff', mode: 'light' as const }
+		{ id: 'catppuccin-mocha', label: 'Mocha', bg: '#1e1e2e', mode: 'dark' as const },
+		{ id: 'night-owl', label: 'Deep Blue', bg: '#011627', mode: 'dark' as const },
+		{ id: 'github-light', label: 'Light', bg: '#ffffff', mode: 'light' as const },
+		{ id: 'catppuccin-latte', label: 'Latte', bg: '#eff1f5', mode: 'light' as const },
+		{ id: 'min-light', label: 'Minimal', bg: '#ffffff', mode: 'light' as const }
 	] as const;
 	type ThemeId = (typeof THEMES)[number]['id'];
+
+	const THEME_PAIRS: Record<string, ThemeId> = {
+		'github-dark-dimmed': 'github-light',
+		'github-dark': 'github-light',
+		'github-light': 'github-dark',
+		'one-dark-pro': 'min-light',
+		'min-light': 'one-dark-pro',
+		'dracula': 'github-light',
+		'catppuccin-mocha': 'catppuccin-latte',
+		'catppuccin-latte': 'catppuccin-mocha',
+		'night-owl': 'github-light'
+	};
 
 	let selectedTheme = $state<ThemeId>('one-dark-pro');
 	let showThemePicker = $state(false);
@@ -390,8 +402,13 @@
 			if (prev !== appColorMode) {
 				const currentTheme = THEMES.find((t) => t.id === selectedTheme);
 				if (currentTheme && currentTheme.mode !== appColorMode) {
-					const fallback = THEMES.find((t) => t.mode === appColorMode);
-					if (fallback) selectedTheme = fallback.id;
+					const paired = THEME_PAIRS[selectedTheme];
+					if (paired) {
+						selectedTheme = paired;
+					} else {
+						const fallback = THEMES.find((t) => t.mode === appColorMode);
+						if (fallback) selectedTheme = fallback.id;
+					}
 				}
 			}
 		});
@@ -1370,6 +1387,25 @@
 				</div>
 			</div>
 			<div class="header-right">
+				<button
+					class="app-theme-toggle"
+					onclick={() => {
+						const html = document.documentElement;
+						const current = html.getAttribute('data-color-mode') ?? 'dark';
+						const order = ['dark', 'light', 'auto'];
+						const next = order[(order.indexOf(current) + 1) % order.length];
+						html.setAttribute('data-color-mode', next === 'auto' ? 'auto' : next);
+						localStorage.setItem('app-theme', next);
+					}}
+					title="Switch theme"
+					aria-label="Switch theme"
+				>
+					{#if appColorMode === 'dark'}
+						<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M9.598 1.591a.749.749 0 01.785-.175 7.001 7.001 0 11-8.967 8.967.75.75 0 01.961-.96 5.5 5.5 0 007.046-7.046.75.75 0 01.175-.786zm1.616 1.945a7 7 0 01-7.678 7.678 5.499 5.499 0 107.678-7.678z"/></svg>
+					{:else}
+						<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 12a4 4 0 100-8 4 4 0 000 8zm0-1.5a2.5 2.5 0 110-5 2.5 2.5 0 010 5zm5.657-8.157a.75.75 0 010 1.06l-1.061 1.06a.749.749 0 01-1.275-.326.749.749 0 01.215-.734l1.06-1.06a.75.75 0 011.06 0zm-9.193 9.193a.75.75 0 010 1.06l-1.06 1.061a.75.75 0 11-1.061-1.06l1.06-1.061a.75.75 0 011.061 0zM8 0a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0V.75A.75.75 0 018 0zM3 8a.75.75 0 01-.75.75H.75a.75.75 0 010-1.5h1.5A.75.75 0 013 8zm13 0a.75.75 0 01-.75.75h-1.5a.75.75 0 010-1.5h1.5A.75.75 0 0116 8zm-8 5a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0v-1.5A.75.75 0 018 13zm3.536-1.464a.75.75 0 011.06 0l1.061 1.06a.75.75 0 01-1.06 1.061l-1.061-1.06a.75.75 0 010-1.061zM2.343 2.343a.75.75 0 011.061 0l1.06 1.061a.751.751 0 01-.018 1.042.751.751 0 01-1.042.018l-1.06-1.06a.75.75 0 010-1.06z"/></svg>
+					{/if}
+				</button>
 				{#if figmaWebhookEvent && !figmaWebhookSeen}
 					<button
 						class="figma-webhook-alert"
@@ -2051,7 +2087,8 @@
 												</button>
 												{#if showThemePicker}
 													<div class="theme-menu" role="listbox" aria-label="Syntax themes">
-														{#each THEMES as theme (theme.id)}
+														<div class="theme-group-label">Dark</div>
+														{#each THEMES.filter(t => t.mode === 'dark') as theme (theme.id)}
 															<button
 																class="theme-option"
 																class:theme-option--active={selectedTheme === theme.id}
@@ -2060,6 +2097,19 @@
 																aria-selected={selectedTheme === theme.id}
 															>
 																<span class="theme-dot" style="background:{theme.bg}"></span>
+																{theme.label}
+															</button>
+														{/each}
+														<div class="theme-group-label">Light</div>
+														{#each THEMES.filter(t => t.mode === 'light') as theme (theme.id)}
+															<button
+																class="theme-option"
+																class:theme-option--active={selectedTheme === theme.id}
+																onclick={() => changeTheme(theme.id)}
+																role="option"
+																aria-selected={selectedTheme === theme.id}
+															>
+																<span class="theme-dot" style="background:{theme.bg}; border: 1px solid var(--borderColor-muted)"></span>
 																{theme.label}
 															</button>
 														{/each}
@@ -2486,6 +2536,28 @@
 		font-weight: var(--base-text-weight-normal);
 		color: var(--fgColor-disabled);
 		letter-spacing: 0;
+	}
+
+	.app-theme-toggle {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 32px;
+		height: 32px;
+		background: var(--bgColor-muted);
+		border: 1px solid var(--borderColor-default);
+		border-radius: var(--borderRadius-medium);
+		color: var(--fgColor-muted);
+		cursor: pointer;
+		transition:
+			color var(--base-duration-100) var(--base-easing-ease),
+			background var(--base-duration-100) var(--base-easing-ease),
+			border-color var(--base-duration-100) var(--base-easing-ease);
+	}
+	.app-theme-toggle:hover {
+		color: var(--fgColor-default);
+		background: var(--bgColor-neutral-muted);
+		border-color: var(--borderColor-neutral-muted);
 	}
 
 	.header-right {
@@ -3600,6 +3672,17 @@
 		margin-left: auto;
 		font-size: 9px;
 		color: var(--fgColor-accent);
+	}
+
+	.theme-group-label {
+		font-family: var(--fontStack-sansSerif);
+		font-size: 10px;
+		font-weight: var(--base-text-weight-semibold);
+		color: var(--fgColor-disabled);
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		padding: 6px 10px 2px;
+		user-select: none;
 	}
 
 	/* ─── Section Navigation ────────────────────────────────────────────────────── */
