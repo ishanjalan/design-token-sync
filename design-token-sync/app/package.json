@@ -54,7 +54,9 @@
 	},
 	"dependencies": {
 		"@primer/primitives": "^11.4.0",
+		"@sveltejs/adapter-auto": "^7.0.1",
 		"@sveltejs/adapter-node": "^5.5.3",
+		"@sveltejs/adapter-vercel": "^6.3.2",
 		"culori": "^4.0.2",
 		"diff": "^8.0.3",
 		"jszip": "^3.10.1",
