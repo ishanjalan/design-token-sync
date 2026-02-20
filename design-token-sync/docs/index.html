@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Design Tokens - Token Sync System</title>
+  <link rel="stylesheet" href="styles/main.css">
+</head>
+<body>
+  <header class="header">
+    <div class="container">
+      <h1>🎨 Design Tokens</h1>
+      <p>Auto-generated from Figma Variables</p>
+    </div>
+  </header>
+
+  <main class="main">
+    <div class="container">
+      <section class="hero">
+        <h2>Platform-Specific Design Tokens</h2>
+        <p class="subtitle">
+          Our design system tokens, automatically transformed and deployed from Figma.
+          Choose your platform below to access the tokens in your preferred format.
+        </p>
+      </section>
+
+      <div class="platforms">
+        <a href="web.html" class="platform-card">
+          <div class="icon">🌐</div>
+          <h3>Web</h3>
+          <p>CSS & TypeScript tokens for web applications</p>
+          <div class="formats">
+            <span class="format-badge">CSS</span>
+            <span class="format-badge">TypeScript</span>
+          </div>
+        </a>
+
+        <a href="ios.html" class="platform-card">
+          <div class="icon">📱</div>
+          <h3>iOS</h3>
+          <p>Swift tokens for SwiftUI applications</p>
+          <div class="formats">
+            <span class="format-badge">Swift</span>
+          </div>
+        </a>
+
+        <a href="android.html" class="platform-card">
+          <div class="icon">🤖</div>
+          <h3>Android</h3>
+          <p>Kotlin tokens for Jetpack Compose</p>
+          <div class="formats">
+            <span class="format-badge">Kotlin</span>
+          </div>
+        </a>
+      </div>
+
+      <section class="info">
+        <h2>What's Included?</h2>
+        <div class="info-grid">
+          <div class="info-item">
+            <h4>🎨 Colors</h4>
+            <p>Text, Icon, Fill, Stroke, and Background colors with automatic light/dark mode support</p>
+          </div>
+          <div class="info-item">
+            <h4>📏 Spacing</h4>
+            <p>Consistent spacing scale for layouts and components</p>
+          </div>
+          <div class="info-item">
+            <h4>🔘 Radius</h4>
+            <p>Border radius tokens for rounded corners</p>
+          </div>
+          <div class="info-item">
+            <h4>✍️ Typography</h4>
+            <p>Font families, sizes, weights, and line heights</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="usage">
+        <h2>Quick Start</h2>
+        <div class="steps">
+          <div class="step">
+            <div class="step-number">1</div>
+            <div class="step-content">
+              <h4>Choose Your Platform</h4>
+              <p>Select Web, iOS, or Android above</p>
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-number">2</div>
+            <div class="step-content">
+              <h4>Download Tokens</h4>
+              <p>Click the download button for your platform's token files</p>
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-number">3</div>
+            <div class="step-content">
+              <h4>Integrate</h4>
+              <p>Add the token files to your project and start using them</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="updates">
+        <h3>Latest Update</h3>
+        <p class="update-time" id="lastUpdate">Loading...</p>
+        <p class="update-note">Tokens are automatically updated when changes are published from Figma</p>
+      </section>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div class="container">
+      <p>&copy; 2026 Design Token Sync System | Auto-generated from Figma</p>
+    </div>
+  </footer>
+
+  <script>
+    // Display last update time
+    fetch('tokens/web/colors.css')
+      .then(response => {
+        const lastModified = response.headers.get('Last-Modified');
+        if (lastModified) {
+          const date = new Date(lastModified);
+          document.getElementById('lastUpdate').textContent = date.toLocaleString();
+        }
+      })
+      .catch(() => {
+        document.getElementById('lastUpdate').textContent = 'Unknown';
+      });
+  </script>
+</body>
+</html>

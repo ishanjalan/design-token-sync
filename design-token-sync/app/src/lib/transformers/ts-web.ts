@@ -1,0 +1,343 @@
+/**
+ * TypeScript Web Transformer
+ *
+ * Generates Primitives.ts and Colors.ts from the same data used by the SCSS
+ * transformer.  Output format matches the web team's existing structure exactly,
+ * using the convention detector to infer naming case from reference files.
+ *
+ * Primitives.ts  → `export const GREY_750 = '#1d1d1d';`
+ * Colors.ts      → `export const TEXT_PRIMARY = \`var(--text-primary, light-dark(\${PRIMITIVES.GREY_750}, \${PRIMITIVES.GREY_50}))\`;`
+ */
+
+import type { FigmaColorExport, FigmaColorToken, TransformResult } from '$lib/types.js';
+import type { DetectedConventions } from '$lib/types.js';
+import { scssVarToTsName } from '$lib/transformers/naming.js';
+import { figmaToHex } from '$lib/color-utils.js';
+
+// Re-use the same internal helpers by importing from the scss transformer's private types
+// via a small re-export shim.  We duplicate only what's needed here to stay self-contained.
+
+interface PrimitiveEntry {
+	scssVar: string;
+	tsName: string;
+	value: string;
+	family: string;
+	sortKey: number;
+}
+
+interface SemanticEntry {
+	cssVar: string;
+	tsName: string;
+	lightTs: string;
+	darkTs: string;
+	isStatic: boolean;
+}
+
+// ─── Public API ───────────────────────────────────────────────────────────────
+
+export function transformToTS(
+	lightColors: FigmaColorExport,
+	darkColors: FigmaColorExport,
+	conventions: DetectedConventions,
+	primitives?: Record<string, unknown>
+): TransformResult[] {
+	const primitiveMap = primitives
+		? buildPrimitiveMapFromExport(primitives, conventions)
+		: buildPrimitiveMapFromAliasData(lightColors, darkColors, conventions);
+
+	const semanticEntries = buildSemanticEntries(lightColors, darkColors, primitiveMap, conventions);
+
+	return [generatePrimitivesTs(primitiveMap), generateColorsTs(semanticEntries, conventions)];
+}
+
+// ─── Step 1a: Primitive Map from dedicated primitives export ──────────────────
+
+function buildPrimitiveMapFromExport(
+	primitivesExport: Record<string, unknown>,
+	conventions: DetectedConventions
+): Map<string, PrimitiveEntry> {
+	const map = new Map<string, PrimitiveEntry>();
+
+	walkTokensWithPath(primitivesExport, (path, token) => {
+		const figmaName = path.join('/');
+		const scssVar = figmaNameToScssVar(figmaName);
+		const value = resolveColorValue(token);
+		if (!scssVar || !value) return;
+
+		const tsName = scssVarToTsName(scssVar, conventions.tsNamingCase);
+		map.set(figmaName, {
+			scssVar,
+			tsName,
+			value,
+			family: extractFamily(scssVar),
+			sortKey: extractSortKey(scssVar)
+		});
+	});
+
+	return map;
+}
+
+// ─── Step 1b: Primitive Map from aliasData ────────────────────────────────────
+
+function buildPrimitiveMapFromAliasData(
+	lightColors: FigmaColorExport,
+	darkColors: FigmaColorExport,
+	conventions: DetectedConventions
+): Map<string, PrimitiveEntry> {
+	const map = new Map<string, PrimitiveEntry>();
+
+	function collect(export_: FigmaColorExport) {
+		walkTokens(export_, (token) => {
+			const figmaName = token.$extensions?.['com.figma.aliasData']?.targetVariableName;
+			if (!figmaName || map.has(figmaName)) return;
+
+			const scssVar = figmaNameToScssVar(figmaName);
+			const value = resolveColorValue(token);
+			if (!scssVar || !value) return;
+
+			const tsName = scssVarToTsName(scssVar, conventions.tsNamingCase);
+			map.set(figmaName, {
+				scssVar,
+				tsName,
+				value,
+				family: extractFamily(scssVar),
+				sortKey: extractSortKey(scssVar)
+			});
+		});
+	}
+
+	collect(lightColors);
+	collect(darkColors);
+	return map;
+}
+
+// ─── Step 2: Build Semantic Entries ──────────────────────────────────────────
+
+function buildSemanticEntries(
+	lightColors: FigmaColorExport,
+	darkColors: FigmaColorExport,
+	primitiveMap: Map<string, PrimitiveEntry>,
+	conventions: DetectedConventions
+): SemanticEntry[] {
+	const entries: SemanticEntry[] = [];
+
+	walkTokensWithPath(lightColors, (path, lightToken) => {
+		const lightFigmaName = lightToken.$extensions?.['com.figma.aliasData']?.targetVariableName;
+		if (!lightFigmaName) return;
+
+		const lightPrim = primitiveMap.get(lightFigmaName);
+		if (!lightPrim) return;
+
+		const darkToken = getTokenAtPath(darkColors, path);
+		const darkFigmaName = darkToken?.$extensions?.['com.figma.aliasData']?.targetVariableName;
+		const darkPrim = darkFigmaName ? (primitiveMap.get(darkFigmaName) ?? lightPrim) : lightPrim;
+
+		const isStatic = path.some((p) => p.toLowerCase() === 'static');
+		const tokenName = pathToTokenName(path);
+		const cssVar = `--${tokenName}`;
+		const tsName = scssVarToTsName(`$${tokenName}`, conventions.tsNamingCase);
+
+		entries.push({
+			cssVar,
+			tsName,
+			lightTs: `PRIMITIVES.${lightPrim.tsName}`,
+			darkTs: `PRIMITIVES.${darkPrim.tsName}`,
+			isStatic
+		});
+	});
+
+	return entries;
+}
+
+// ─── Step 3: Generate Primitives.ts ──────────────────────────────────────────
+
+function generatePrimitivesTs(primitiveMap: Map<string, PrimitiveEntry>): TransformResult {
+	const lines: string[] = [];
+	lines.push('// Primitives.ts');
+	lines.push('// Auto-generated from Figma Variables — DO NOT EDIT');
+	lines.push(`// Generated: ${new Date().toISOString()}`);
+	lines.push('');
+
+	const byFamily = new Map<string, PrimitiveEntry[]>();
+	for (const entry of primitiveMap.values()) {
+		const list = byFamily.get(entry.family) ?? [];
+		list.push(entry);
+		byFamily.set(entry.family, list);
+	}
+
+	const sortedFamilies = [...byFamily.entries()].sort(([a], [b]) => a.localeCompare(b));
+	for (const [family, entries] of sortedFamilies) {
+		lines.push(`// ${capitalize(family)} color family`);
+		const sorted = [...entries].sort(
+			(a, b) => a.sortKey - b.sortKey || a.tsName.localeCompare(b.tsName)
+		);
+		for (const { tsName, value } of sorted) {
+			lines.push(`export const ${tsName} = '${value}' as const;`);
+		}
+		lines.push('');
+	}
+
+	return {
+		filename: 'Primitives.ts',
+		content: lines.join('\n') + '\n',
+		format: 'typescript',
+		platform: 'web'
+	};
+}
+
+// ─── Step 4: Generate Colors.ts ──────────────────────────────────────────────
+
+function generateColorsTs(
+	entries: SemanticEntry[],
+	_conventions: DetectedConventions
+): TransformResult {
+	const lines: string[] = [];
+
+	lines.push(`import * as PRIMITIVES from './Primitives';`);
+	lines.push('');
+	lines.push('// Colors.ts');
+	lines.push('// Auto-generated from Figma Variables — DO NOT EDIT');
+	lines.push(`// Generated: ${new Date().toISOString()}`);
+	lines.push('');
+
+	const byCategory = new Map<string, SemanticEntry[]>();
+	for (const entry of entries) {
+		const category = entry.cssVar.replace('--', '').split('-')[0];
+		const list = byCategory.get(category) ?? [];
+		list.push(entry);
+		byCategory.set(category, list);
+	}
+
+	const CATEGORY_ORDER = ['fill', 'text', 'icon', 'background', 'stroke'];
+	const orderedCategories = [
+		...CATEGORY_ORDER.filter((c) => byCategory.has(c)),
+		...[...byCategory.keys()].filter((c) => !CATEGORY_ORDER.includes(c)).sort()
+	];
+
+	for (const category of orderedCategories) {
+		const tokens = byCategory.get(category)!;
+		lines.push(`// ${capitalize(category)} colors`);
+		for (const token of tokens) {
+			lines.push(formatSemanticTsEntry(token));
+		}
+		lines.push('');
+	}
+
+	return {
+		filename: 'Colors.ts',
+		content: lines.join('\n') + '\n',
+		format: 'typescript',
+		platform: 'web'
+	};
+}
+
+function formatSemanticTsEntry(entry: SemanticEntry): string {
+	if (entry.isStatic) {
+		return `export const ${entry.tsName} = \`var(${entry.cssVar}, \${${entry.lightTs}})\` as const;`;
+	}
+	return `export const ${entry.tsName} = \`var(${entry.cssVar}, light-dark(\${${entry.lightTs}}, \${${entry.darkTs}}))\` as const;`;
+}
+
+// ─── Naming Helpers (mirrors scss.ts) ────────────────────────────────────────
+
+function figmaNameToScssVar(figmaName: string): string | null {
+	/* v8 ignore next -- @preserve */
+	if (!figmaName.startsWith('Colour/')) return null;
+	const rest = figmaName.slice('Colour/'.length);
+	const parts = rest.split('/');
+	const converted = parts.map((p) =>
+		p
+			.replace(/_/g, '-')
+			.replace(/([a-z])([A-Z])/g, '$1-$2')
+			.toLowerCase()
+	);
+	return '$' + converted.join('-');
+}
+
+function pathToTokenName(path: string[]): string {
+	return path
+		.filter((p) => p.toLowerCase() !== 'standard')
+		.map((p) => p.toLowerCase().replace(/\s+/g, '-'))
+		.join('-');
+}
+
+function extractFamily(scssVar: string): string {
+	const name = scssVar.slice(1);
+	const parts = name.split('-');
+	const familyParts: string[] = [];
+	for (const part of parts) {
+		if (/^\d/.test(part) || part === 'other') break;
+		familyParts.push(part);
+	}
+	/* v8 ignore next -- @preserve */
+	return familyParts.join('-') || name;
+}
+
+function extractSortKey(scssVar: string): number {
+	const numbers = scssVar.match(/\d+/g);
+	/* v8 ignore next -- @preserve */
+	if (!numbers) return 0;
+	return numbers.reduce(
+		(acc, n, i) => acc + parseInt(n) * Math.pow(1000, Math.max(0, numbers.length - 1 - i)),
+		0
+	);
+}
+
+function resolveColorValue(token: FigmaColorToken): string | null {
+	const v = token.$value;
+	/* v8 ignore next -- @preserve */
+	if (!v || typeof v !== 'object') return null;
+	const [r, g, b] = v.components;
+	const alpha = parseFloat(v.alpha.toFixed(4));
+	if (alpha < 1) {
+		return figmaToHex(r, g, b, alpha);
+	}
+	return v.hex.toLowerCase();
+}
+
+// ─── Tree-walking Utilities ───────────────────────────────────────────────────
+
+function walkTokens(obj: unknown, fn: (token: FigmaColorToken) => void): void {
+	if (!obj || typeof obj !== 'object') return;
+	const o = obj as Record<string, unknown>;
+	if (o.$type === 'color') {
+		fn(o as unknown as FigmaColorToken);
+		return;
+	}
+	for (const [key, val] of Object.entries(o)) {
+		if (!key.startsWith('$')) walkTokens(val, fn);
+	}
+}
+
+function walkTokensWithPath(
+	obj: unknown,
+	fn: (path: string[], token: FigmaColorToken) => void,
+	path: string[] = []
+): void {
+	/* v8 ignore next -- @preserve */
+	if (!obj || typeof obj !== 'object') return;
+	const o = obj as Record<string, unknown>;
+	if (o.$type === 'color') {
+		fn(path, o as unknown as FigmaColorToken);
+		return;
+	}
+	for (const [key, val] of Object.entries(o)) {
+		/* v8 ignore next -- @preserve */
+		if (!key.startsWith('$')) walkTokensWithPath(val, fn, [...path, key]);
+	}
+}
+
+function getTokenAtPath(obj: unknown, path: string[]): FigmaColorToken | null {
+	let cur: unknown = obj;
+	for (const key of path) {
+		if (!cur || typeof cur !== 'object') return null;
+		cur = (cur as Record<string, unknown>)[key];
+	}
+	if (!cur || typeof cur !== 'object') return null;
+	const o = cur as Record<string, unknown>;
+	return o.$type === 'color' ? (o as unknown as FigmaColorToken) : null;
+}
+
+function capitalize(s: string): string {
+	return s.charAt(0).toUpperCase() + s.slice(1);
+}

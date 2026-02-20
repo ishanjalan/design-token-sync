@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Web Tokens - Design Token Sync</title>
+  <link rel="stylesheet" href="styles/main.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css">
+</head>
+<body>
+  <header class="header">
+    <div class="container">
+      <a href="index.html" class="back-link">← Back</a>
+      <h1>🌐 Web Tokens</h1>
+      <p>CSS & TypeScript design tokens</p>
+    </div>
+  </header>
+
+  <main class="main">
+    <div class="container">
+      <section class="download-section">
+        <h2>Download Tokens</h2>
+        <div class="download-buttons">
+          <a href="tokens/web/colors.css" download class="download-btn">
+            Download colors.css
+          </a>
+          <a href="tokens/web/spacing.css" download class="download-btn">
+            Download spacing.css
+          </a>
+          <a href="tokens/web/radius.css" download class="download-btn">
+            Download radius.css
+          </a>
+          <a href="tokens/web/typography.css" download class="download-btn">
+            Download typography.css
+          </a>
+        </div>
+        <div class="download-buttons">
+          <a href="tokens/web/colors.ts" download class="download-btn secondary">
+            Download colors.ts
+          </a>
+          <a href="tokens/web/spacing.ts" download class="download-btn secondary">
+            Download spacing.ts
+          </a>
+          <a href="tokens/web/typography.ts" download class="download-btn secondary">
+            Download typography.ts
+          </a>
+        </div>
+      </section>
+
+      <section class="usage-section">
+        <h2>Usage</h2>
+        
+        <h3>CSS</h3>
+        <p>Import the CSS files in your project:</p>
+        <pre><code class="language-css">@import url('tokens/colors.css');
+@import url('tokens/spacing.css');
+@import url('tokens/radius.css');
+@import url('tokens/typography.css');</code></pre>
+
+        <p>Use the CSS variables:</p>
+        <pre><code class="language-css">.button {
+  color: var(--text-primary);
+  background: var(--fill-brand-primary);
+  padding: var(--spacing-16);
+  border-radius: var(--radius-8);
+}</code></pre>
+
+        <h3>TypeScript</h3>
+        <p>Import the TypeScript tokens:</p>
+        <pre><code class="language-typescript">import { colors, spacing, radius } from './tokens/colors';
+
+const buttonStyle = {
+  color: colors.text.primary,
+  padding: `${spacing[16]}px`,
+  borderRadius: `${radius[8]}px`,
+};</code></pre>
+
+        <h3>React Example</h3>
+        <pre><code class="language-typescript">import { colors, spacing } from './tokens/colors';
+
+function Button({ children }) {
+  return (
+    &lt;button style={{
+      backgroundColor: colors.fill.brand.primary,
+      color: colors.text.primary,
+      padding: `${spacing[12]}px ${spacing[20]}px`,
+      borderRadius: `${radius[8]}px`,
+    }}&gt;
+      {children}
+    &lt;/button&gt;
+  );
+}</code></pre>
+      </section>
+
+      <section class="features-section">
+        <h2>Features</h2>
+        <ul class="feature-list">
+          <li>✨ Modern <code>light-dark()</code> syntax for automatic theme switching</li>
+          <li>🔄 Fallback for older browsers using media queries</li>
+          <li>💪 Type-safe TypeScript exports</li>
+          <li>🎨 Organized by semantic categories</li>
+          <li>📱 Responsive and mobile-friendly</li>
+        </ul>
+      </section>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div class="container">
+      <p>&copy; 2026 Design Token Sync System</p>
+    </div>
+  </footer>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-css.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+</body>
+</html>

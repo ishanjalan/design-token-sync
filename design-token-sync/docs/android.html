@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Android Tokens - Design Token Sync</title>
+  <link rel="stylesheet" href="styles/main.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css">
+</head>
+<body>
+  <header class="header">
+    <div class="container">
+      <a href="index.html" class="back-link">← Back</a>
+      <h1>🤖 Android Tokens</h1>
+      <p>Kotlin design tokens for Jetpack Compose</p>
+    </div>
+  </header>
+
+  <main class="main">
+    <div class="container">
+      <section class="download-section">
+        <h2>Download Tokens</h2>
+        <div class="download-buttons">
+          <a href="tokens/android/DesignTokens.kt" download class="download-btn">
+            Download DesignTokens.kt
+          </a>
+          <a href="tokens/android/ColorScheme+Tokens.kt" download class="download-btn">
+            Download ColorScheme+Tokens.kt
+          </a>
+        </div>
+      </section>
+
+      <section class="usage-section">
+        <h2>Usage</h2>
+        
+        <h3>Installation</h3>
+        <p>Add both Kotlin files to your <code>com.yourapp.design.tokens</code> package.</p>
+
+        <h3>Jetpack Compose Example</h3>
+        <pre><code class="language-kotlin">@Composable
+fun MyScreen() {
+    val colorScheme = MaterialTheme.colorScheme
+    
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(colorScheme.backgroundBase)
+            .padding(DesignTokens.Spacing.spacing24),
+        verticalArrangement = Arrangement.spacedBy(DesignTokens.Spacing.spacing16)
+    ) {
+        Text(
+            text = "Hello, World!",
+            style = DesignTokens.Typography.heading1.toTextStyle(),
+            color = colorScheme.textPrimary
+        )
+        
+        Button(
+            onClick = { /* Action */ },
+            colors = ButtonDefaults.buttonColors(
+                containerColor = colorScheme.fillBrandPrimary,
+                contentColor = colorScheme.staticWhite
+            ),
+            shape = RoundedCornerShape(DesignTokens.Radius.radius8)
+        ) {
+            Text("Continue")
+        }
+    }
+}</code></pre>
+
+        <h3>Direct Token Access</h3>
+        <pre><code class="language-kotlin">// Using nested objects
+val textColor = DesignTokens.Colors.Text.primary.resolve(isDark)
+val spacing = DesignTokens.Spacing.spacing16
+val radius = DesignTokens.Radius.radius8
+
+// Using ColorScheme extensions (recommended)
+val buttonColor = MaterialTheme.colorScheme.fillBrandPrimary
+val backgroundColor = MaterialTheme.colorScheme.backgroundBase</code></pre>
+
+        <h3>ColorToken Data Class</h3>
+        <p>All color tokens use the <code>ColorToken</code> data class with light/dark variants:</p>
+        <pre><code class="language-kotlin">data class ColorToken(
+    val light: Color,
+    val dark: Color
+)
+
+fun ColorToken.resolve(isDark: Boolean): Color {
+    return if (isDark) dark else light
+}</code></pre>
+      </section>
+
+      <section class="features-section">
+        <h2>Features</h2>
+        <ul class="feature-list">
+          <li>🌗 Automatic light/dark mode support via ColorScheme extensions</li>
+          <li>💪 Type-safe Kotlin objects</li>
+          <li>✨ Material3 ColorScheme integration</li>
+          <li>📦 Two-file integration</li>
+          <li>🎨 Organized by semantic categories</li>
+          <li>🔧 Compose-friendly API</li>
+        </ul>
+      </section>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div class="container">
+      <p>&copy; 2026 Design Token Sync System</p>
+    </div>
+  </footer>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-kotlin.min.js"></script>
+</body>
+</html>

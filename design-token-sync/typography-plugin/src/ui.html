@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+    
+    body {
+      margin: 0;
+      padding: 20px;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-size: 12px;
+      background: #ffffff;
+    }
+    
+    h1 {
+      font-size: 14px;
+      font-weight: 600;
+      margin: 0 0 8px 0;
+      color: #000000;
+    }
+    
+    p {
+      margin: 0 0 16px 0;
+      color: #666666;
+      line-height: 1.5;
+    }
+    
+    .button-group {
+      display: flex;
+      gap: 8px;
+      margin-top: 20px;
+    }
+    
+    button {
+      flex: 1;
+      padding: 8px 16px;
+      border-radius: 6px;
+      border: 1px solid #e0e0e0;
+      background: #ffffff;
+      color: #000000;
+      font-size: 11px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    
+    button:hover {
+      background: #f7f7f7;
+      border-color: #d0d0d0;
+    }
+    
+    button.primary {
+      background: #0d99ff;
+      border-color: #0d99ff;
+      color: #ffffff;
+    }
+    
+    button.primary:hover {
+      background: #0077cc;
+      border-color: #0077cc;
+    }
+    
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    
+    .status {
+      margin-top: 16px;
+      padding: 12px;
+      border-radius: 6px;
+      font-size: 11px;
+      display: none;
+    }
+    
+    .status.success {
+      background: #d4f4dd;
+      color: #0d7f3c;
+      border: 1px solid #b3e6c3;
+    }
+    
+    .status.error {
+      background: #ffe5e5;
+      color: #c41f1f;
+      border: 1px solid #ffcccc;
+    }
+    
+    .status.info {
+      background: #e5f2ff;
+      color: #0d5f99;
+      border: 1px solid #b3d9ff;
+    }
+    
+    .stats {
+      margin-top: 12px;
+      padding: 12px;
+      background: #f7f7f7;
+      border-radius: 6px;
+      font-size: 11px;
+      color: #666666;
+      display: none;
+    }
+    
+    .stats strong {
+      color: #000000;
+    }
+    
+    pre {
+      margin: 8px 0 0 0;
+      padding: 8px;
+      background: #f0f0f0;
+      border-radius: 4px;
+      font-size: 10px;
+      overflow-x: auto;
+      max-height: 80px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Typography Token Exporter</h1>
+  <p>
+    Export all Text Styles as DTCG-compliant typography tokens.
+    This will extract font family, size, weight, line height, and letter spacing.
+  </p>
+  
+  <div class="button-group">
+    <button id="cancel">Cancel</button>
+    <button id="export" class="primary">Export Typography</button>
+  </div>
+  
+  <div id="status" class="status"></div>
+  <div id="stats" class="stats"></div>
+  
+  <script>
+    const exportButton = document.getElementById('export');
+    const cancelButton = document.getElementById('cancel');
+    const statusDiv = document.getElementById('status');
+    const statsDiv = document.getElementById('stats');
+    
+    exportButton.onclick = () => {
+      exportButton.disabled = true;
+      exportButton.textContent = 'Exporting...';
+      statusDiv.style.display = 'none';
+      statsDiv.style.display = 'none';
+      
+      parent.postMessage({ pluginMessage: { type: 'export-typography' } }, '*');
+    };
+    
+    cancelButton.onclick = () => {
+      parent.postMessage({ pluginMessage: { type: 'cancel' } }, '*');
+    };
+    
+    window.onmessage = (event) => {
+      const msg = event.data.pluginMessage;
+      
+      if (msg.type === 'export-complete') {
+        const data = msg.data;
+        const count = Object.keys(data.typography).length;
+        
+        // Create downloadable JSON file
+        const json = JSON.stringify(data, null, 2);
+        const blob = new Blob([json], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'typography.tokens.json';
+        a.click();
+        URL.revokeObjectURL(url);
+        
+        // Show success message
+        statusDiv.className = 'status success';
+        statusDiv.textContent = `✓ Successfully exported ${count} typography token${count !== 1 ? 's' : ''}!`;
+        statusDiv.style.display = 'block';
+        
+        // Show stats
+        statsDiv.innerHTML = `<strong>Exported Styles:</strong><pre>${Object.keys(data.typography).slice(0, 5).join('\n')}${count > 5 ? '\n...' : ''}</pre>`;
+        statsDiv.style.display = 'block';
+        
+        exportButton.disabled = false;
+        exportButton.textContent = 'Export Again';
+      } else if (msg.type === 'export-error') {
+        statusDiv.className = 'status error';
+        statusDiv.textContent = `✗ Export failed: ${msg.error}`;
+        statusDiv.style.display = 'block';
+        
+        exportButton.disabled = false;
+        exportButton.textContent = 'Try Again';
+      }
+    };
+  </script>
+</body>
+</html>

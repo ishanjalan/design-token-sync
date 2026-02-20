@@ -1,0 +1,65 @@
+{
+	"name": "token-sync",
+	"description": "Design token pipeline — Figma Variables → SCSS, TypeScript, Swift, Kotlin",
+	"private": true,
+	"version": "1.0.0",
+	"type": "module",
+	"engines": {
+		"node": ">=20"
+	},
+	"scripts": {
+		"dev": "vite dev",
+		"build": "vite build",
+		"preview": "vite preview",
+		"prepare": "svelte-kit sync || true",
+		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
+		"test": "vitest run",
+		"test:watch": "vitest",
+		"test:coverage": "vitest run --coverage",
+		"test:ui": "vitest --ui",
+		"lint": "eslint src/",
+		"format": "prettier --write src/",
+		"knip": "knip"
+	},
+	"devDependencies": {
+		"@eslint/js": "^10.0.1",
+		"@sveltejs/kit": "^2.50.2",
+		"@sveltejs/vite-plugin-svelte": "^6.2.4",
+		"@types/diff": "^7.0.2",
+		"@vitest/coverage-v8": "^4.0.18",
+		"@vitest/ui": "^4.0.18",
+		"eslint": "^10.0.0",
+		"eslint-plugin-svelte": "^3.15.0",
+		"globals": "^17.3.0",
+		"husky": "^9.1.7",
+		"knip": "^5.84.1",
+		"lint-staged": "^16.2.7",
+		"prettier": "^3.8.1",
+		"prettier-plugin-svelte": "^3.5.0",
+		"svelte": "^5.49.2",
+		"svelte-check": "^4.3.6",
+		"typescript": "^5.9.3",
+		"typescript-eslint": "^8.56.0",
+		"vite": "^7.3.1",
+		"vitest": "^4.0.18"
+	},
+	"lint-staged": {
+		"*.{ts,svelte}": [
+			"eslint --fix"
+		],
+		"*.{ts,svelte,json,css,md}": [
+			"prettier --write"
+		]
+	},
+	"dependencies": {
+		"@primer/primitives": "^11.4.0",
+		"@sveltejs/adapter-node": "^5.5.3",
+		"culori": "^4.0.2",
+		"diff": "^8.0.3",
+		"jszip": "^3.10.1",
+		"shiki": "^3.22.0",
+		"svelte-sonner": "^1.0.7",
+		"zod": "^4.3.6"
+	}
+}
