@@ -6,6 +6,9 @@
 		chatWebhookUrl: string;
 		githubPat: string;
 		githubRepos: GithubConfigs;
+		figmaFileKey: string;
+		figmaPat: string;
+		figmaFetching: boolean;
 		figmaWebhookPasscode: string;
 		figmaWebhookEvent: { file_name: string; timestamp: string; receivedAt: string } | null;
 		selectedPlatforms: Platform[];
@@ -14,6 +17,9 @@
 		onChatWebhookChange: (e: Event) => void;
 		onGithubPatChange: (e: Event) => void;
 		onGithubRepoChange: (platform: Platform, field: keyof GithubRepoConfig, e: Event) => void;
+		onFigmaFileKeyChange: (e: Event) => void;
+		onFigmaPatChange: (e: Event) => void;
+		onFigmaFetch: () => void;
 		onFigmaPasscodeChange: (e: Event) => void;
 	}
 
@@ -22,6 +28,9 @@
 		chatWebhookUrl,
 		githubPat,
 		githubRepos,
+		figmaFileKey,
+		figmaPat,
+		figmaFetching,
 		figmaWebhookPasscode,
 		figmaWebhookEvent,
 		selectedPlatforms,
@@ -30,6 +39,9 @@
 		onChatWebhookChange,
 		onGithubPatChange,
 		onGithubRepoChange,
+		onFigmaFileKeyChange,
+		onFigmaPatChange,
+		onFigmaFetch,
 		onFigmaPasscodeChange
 	}: Props = $props();
 
@@ -136,6 +148,44 @@
 						</div>
 					</fieldset>
 				{/each}
+			</div>
+
+			<div class="settings-group">
+				<label class="settings-group-label" for="figma-file-key">Figma Variables API</label>
+				<input
+					id="figma-file-key"
+					class="settings-input"
+					type="text"
+					placeholder="Figma file key (from URL: figma.com/design/FILE_KEY/…)"
+					value={figmaFileKey}
+					oninput={onFigmaFileKeyChange}
+					spellcheck="false"
+					aria-describedby="figma-api-hint"
+				/>
+				<input
+					id="figma-pat"
+					class="settings-input"
+					type="password"
+					placeholder="Figma Personal Access Token (figd_…)"
+					value={figmaPat}
+					oninput={onFigmaPatChange}
+					autocomplete="off"
+				/>
+				<button
+					class="figma-fetch-btn"
+					disabled={!figmaFileKey || !figmaPat || figmaFetching}
+					onclick={onFigmaFetch}
+				>
+					{#if figmaFetching}
+						Fetching…
+					{:else}
+						Fetch tokens from Figma
+					{/if}
+				</button>
+				<p class="settings-hint" id="figma-api-hint">
+					Connect directly to Figma's Variables API. The file key is the ID in your Figma URL after <code>/design/</code>.
+					Your PAT needs read access. Requires Figma Organization or Enterprise plan.
+				</p>
 			</div>
 
 			<div class="settings-group">
@@ -292,6 +342,30 @@
 		display: flex;
 		flex-wrap: wrap;
 		gap: 4px;
+	}
+	.figma-fetch-btn {
+		font-family: var(--fontStack-sansSerif);
+		font-size: var(--base-text-size-sm);
+		font-weight: var(--base-text-weight-semibold);
+		padding: 8px 16px;
+		background: var(--button-primary-bgColor-rest);
+		color: var(--button-primary-fgColor-rest);
+		border: 1px solid var(--button-primary-borderColor-rest);
+		border-radius: var(--borderRadius-medium);
+		cursor: pointer;
+		transition:
+			background var(--base-duration-100) var(--base-easing-ease),
+			border-color var(--base-duration-100) var(--base-easing-ease);
+	}
+	.figma-fetch-btn:hover:not(:disabled) {
+		background: var(--button-primary-bgColor-hover);
+		border-color: var(--button-primary-borderColor-hover);
+	}
+	.figma-fetch-btn:disabled {
+		background: var(--button-primary-bgColor-disabled);
+		color: var(--button-primary-fgColor-disabled);
+		border-color: var(--button-primary-borderColor-disabled);
+		cursor: not-allowed;
 	}
 	.settings-hint :global(code) {
 		font-family: var(--fontStack-monospace);

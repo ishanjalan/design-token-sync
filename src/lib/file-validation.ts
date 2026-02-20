@@ -21,8 +21,12 @@ export function validateFigmaJson(key: DropZoneKey, content: string): string | n
 			return Object.entries(o).some(([k, v]) => !k.startsWith('$') && hasType(v, type));
 		}
 		if (key === 'lightColors' || key === 'darkColors') {
-			if (!hasType(json, 'color'))
-				return 'No $type: "color" tokens found — is this a Figma color export?';
+			if (
+				!hasType(json, 'color') &&
+				!hasType(json, 'shadow') &&
+				!hasType(json, 'border')
+			)
+				return 'No $type: "color", "shadow", or "border" tokens found — is this a Figma export?';
 		} else if (key === 'values') {
 			if (!hasType(json, 'number'))
 				return 'No $type: "number" tokens found — is this a Figma value export?';

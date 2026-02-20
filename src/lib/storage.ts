@@ -175,6 +175,40 @@ export function loadGithubRepos(): GithubConfigs {
 	}
 }
 
+// ─── Figma API settings ──────────────────────────────────────────────────────
+
+export function saveFigmaFileKey(fileKey: string): void {
+	try {
+		localStorage.setItem(`${PREFIX}:figmaFileKey`, fileKey);
+	} catch {
+		// ignore
+	}
+}
+
+export function loadFigmaFileKey(): string {
+	try {
+		return localStorage.getItem(`${PREFIX}:figmaFileKey`) ?? '';
+	} catch {
+		return '';
+	}
+}
+
+export function saveFigmaPat(pat: string): void {
+	try {
+		localStorage.setItem(`${PREFIX}:figmaPat`, pat);
+	} catch {
+		// ignore
+	}
+}
+
+export function loadFigmaPat(): string {
+	try {
+		return localStorage.getItem(`${PREFIX}:figmaPat`) ?? '';
+	} catch {
+		return '';
+	}
+}
+
 // ─── Figma webhook settings ──────────────────────────────────────────────────
 
 export function saveFigmaWebhookPasscode(passcode: string): void {

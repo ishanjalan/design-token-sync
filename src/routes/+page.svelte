@@ -20,7 +20,11 @@
 		saveGithubRepos,
 		loadGithubRepos,
 		saveFigmaWebhookPasscode,
-		loadFigmaWebhookPasscode
+		loadFigmaWebhookPasscode,
+		saveFigmaFileKey,
+		loadFigmaFileKey,
+		saveFigmaPat,
+		loadFigmaPat
 	} from '$lib/storage.js';
 	import type {
 		Platform,
@@ -327,6 +331,8 @@
 		githubPat = loadGithubPat();
 		githubRepos = loadGithubRepos();
 		figmaWebhookPasscode = loadFigmaWebhookPasscode();
+		figmaFileKey = loadFigmaFileKey();
+		figmaPat = loadFigmaPat();
 
 		// Restore theme preference
 		const storedTheme = localStorage.getItem('tokensmith:theme') as ThemeId | null;
@@ -441,6 +447,12 @@
 	let sendingPrs = $state(false);
 	let prResults = $state<PrResult[]>([]);
 	let bulkDropActive = $state(false);
+
+	// ─── Figma API ──────────────────────────────────────────────────────────
+	let figmaFileKey = $state('');
+	let figmaPat = $state('');
+	let figmaFetching = $state(false);
+	let figmaConnected = $derived(!!figmaFileKey && !!figmaPat);
 
 	// ─── Figma Webhook ────────────────────────────────────────────────────────
 	let figmaWebhookPasscode = $state('');
@@ -1330,6 +1342,152 @@
 		if (browser) saveGithubRepos(githubRepos);
 	}
 
+	function onFigmaFileKeyChange(e: Event) {
+		figmaFileKey = (e.target as HTMLInputElement).value;
+		if (browser) saveFigmaFileKey(figmaFileKey);
+	}
+
+	function onFigmaPatChange(e: Event) {
+		figmaPat = (e.target as HTMLInputElement).value;
+		if (browser) saveFigmaPat(figmaPat);
+	}
+
+	async function onFigmaFetch() {
+		if (!figmaFileKey || !figmaPat || figmaFetching) return;
+		figmaFetching = true;
+		try {
+			const res = await fetch('/api/figma/variables', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ fileKey: figmaFileKey, pat: figmaPat })
+			});
+			if (!res.ok) {
+				const errText = await res.text();
+				toast.error(`Figma API error: ${errText}`);
+				return;
+			}
+			const data = await res.json();
+
+			const slotEntries: { key: DropZoneKey; content: string; name: string }[] = [
+				{ key: 'lightColors', content: JSON.stringify(data.lightColors, null, 2), name: 'Light.tokens.json' },
+				{ key: 'darkColors', content: JSON.stringify(data.darkColors, null, 2), name: 'Dark.tokens.json' },
+				{ key: 'values', content: JSON.stringify(data.values, null, 2), name: 'Value.tokens.json' }
+			];
+
+			if (data.typography && Object.keys(data.typography).length > 0) {
+				slotEntries.push({
+					key: 'typography',
+					content: JSON.stringify(data.typography, null, 2),
+					name: 'typography.tokens.json'
+				});
+			}
+
+			for (const entry of slotEntries) {
+				const file = new File([entry.content], entry.name, { type: 'application/json' });
+				slots[entry.key].file = file;
+				slots[entry.key].restored = false;
+				slots[entry.key].warning = validateFigmaJson(entry.key, entry.content);
+				fileInsights[entry.key] = computeInsight(entry.key, entry.content);
+			}
+
+			// Parse swatches from light colors
+			try {
+				const parsed = JSON.parse(slotEntries[0].content);
+				swatches = parseSwatches(parsed);
+				dependencyMap = buildDependencyMap(parsed);
+			} catch {
+				swatches = [];
+				dependencyMap = [];
+			}
+
+			toast.success(`Fetched tokens from Figma (${figmaFileKey.slice(0, 8)}…)`);
+		} catch (err) {
+			toast.error(`Failed to fetch from Figma: ${err instanceof Error ? err.message : 'Unknown error'}`);
+		} finally {
+			figmaFetching = false;
+		}
+	}
+
+	let pluginSyncAvailable = $state(false);
+	let pluginSyncReceivedAt = $state('');
+	let pluginAutoLoad = $state(true);
+
+	async function checkPluginSync() {
+		try {
+			const res = await fetch('/api/figma/plugin-sync');
+			if (!res.ok) return;
+			const data = await res.json();
+			if (data.available && data.receivedAt !== pluginSyncReceivedAt) {
+				pluginSyncReceivedAt = data.receivedAt;
+				if (pluginAutoLoad) {
+					await applyPluginData(data);
+				} else {
+					pluginSyncAvailable = true;
+				}
+			}
+		} catch {
+			/* silent */
+		}
+	}
+
+	async function applyPluginData(data: Record<string, unknown>) {
+		const slotEntries: { key: DropZoneKey; content: string; name: string }[] = [
+			{ key: 'lightColors', content: JSON.stringify(data.lightColors, null, 2), name: 'Light.tokens.json' },
+			{ key: 'darkColors', content: JSON.stringify(data.darkColors, null, 2), name: 'Dark.tokens.json' },
+			{ key: 'values', content: JSON.stringify(data.values, null, 2), name: 'Value.tokens.json' }
+		];
+
+		if (data.typography && typeof data.typography === 'object' && Object.keys(data.typography as object).length > 0) {
+			slotEntries.push({
+				key: 'typography',
+				content: JSON.stringify(data.typography, null, 2),
+				name: 'typography.tokens.json'
+			});
+		}
+
+		for (const entry of slotEntries) {
+			const file = new File([entry.content], entry.name, { type: 'application/json' });
+			slots[entry.key].file = file;
+			slots[entry.key].restored = false;
+			slots[entry.key].warning = validateFigmaJson(entry.key, entry.content);
+			fileInsights[entry.key] = computeInsight(entry.key, entry.content);
+		}
+
+		try {
+			const parsed = JSON.parse(slotEntries[0].content);
+			swatches = parseSwatches(parsed);
+			dependencyMap = buildDependencyMap(parsed);
+		} catch {
+			swatches = [];
+			dependencyMap = [];
+		}
+
+		pluginSyncAvailable = false;
+		toast.success('Loaded tokens from Figma plugin');
+	}
+
+	async function loadPluginSync() {
+		try {
+			const res = await fetch('/api/figma/plugin-sync');
+			if (!res.ok) return;
+			const data = await res.json();
+			if (!data.available) {
+				toast.error('No plugin data available');
+				return;
+			}
+			await applyPluginData(data);
+		} catch (err) {
+			toast.error(`Failed to load plugin data: ${err instanceof Error ? err.message : 'Unknown error'}`);
+		}
+	}
+
+	$effect(() => {
+		if (!browser) return;
+		const interval = setInterval(checkPluginSync, 3_000);
+		checkPluginSync();
+		return () => clearInterval(interval);
+	});
+
 	function onFigmaPasscodeChange(e: Event) {
 		figmaWebhookPasscode = (e.target as HTMLInputElement).value;
 		if (browser) saveFigmaWebhookPasscode(figmaWebhookPasscode);
@@ -1410,6 +1568,20 @@
 						<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 12a4 4 0 100-8 4 4 0 000 8zm0-1.5a2.5 2.5 0 110-5 2.5 2.5 0 010 5zm5.657-8.157a.75.75 0 010 1.06l-1.061 1.06a.749.749 0 01-1.275-.326.749.749 0 01.215-.734l1.06-1.06a.75.75 0 011.06 0zm-9.193 9.193a.75.75 0 010 1.06l-1.06 1.061a.75.75 0 11-1.061-1.06l1.06-1.061a.75.75 0 011.061 0zM8 0a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0V.75A.75.75 0 018 0zM3 8a.75.75 0 01-.75.75H.75a.75.75 0 010-1.5h1.5A.75.75 0 013 8zm13 0a.75.75 0 01-.75.75h-1.5a.75.75 0 010-1.5h1.5A.75.75 0 0116 8zm-8 5a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0v-1.5A.75.75 0 018 13zm3.536-1.464a.75.75 0 011.06 0l1.061 1.06a.75.75 0 01-1.06 1.061l-1.061-1.06a.75.75 0 010-1.061zM2.343 2.343a.75.75 0 011.061 0l1.06 1.061a.751.751 0 01-.018 1.042.751.751 0 01-1.042.018l-1.06-1.06a.75.75 0 010-1.06z"/></svg>
 					{/if}
 				</button>
+			{#if pluginSyncAvailable}
+				<button
+					class="figma-plugin-alert"
+					onclick={loadPluginSync}
+					title="Load tokens synced from Figma plugin"
+				>
+					<span class="figma-alert-dot"></span>
+					Plugin sync available — click to load
+				</button>
+			{/if}
+			<label class="auto-load-toggle" title="Automatically load tokens when synced from Figma plugin">
+				<input type="checkbox" bind:checked={pluginAutoLoad} />
+				<span class="auto-load-label">Auto-load</span>
+			</label>
 				{#if figmaWebhookEvent && !figmaWebhookSeen}
 					<button
 						class="figma-webhook-alert"
@@ -1718,6 +1890,9 @@
 					{chatWebhookUrl}
 					{githubPat}
 					{githubRepos}
+					{figmaFileKey}
+					{figmaPat}
+					{figmaFetching}
 					{figmaWebhookPasscode}
 					{figmaWebhookEvent}
 					{selectedPlatforms}
@@ -1726,6 +1901,9 @@
 					{onChatWebhookChange}
 					{onGithubPatChange}
 					{onGithubRepoChange}
+					{onFigmaFileKeyChange}
+					{onFigmaPatChange}
+					{onFigmaFetch}
 					{onFigmaPasscodeChange}
 				/>
 			</aside>
@@ -2560,6 +2738,25 @@
 		align-items: center;
 		gap: 12px;
 	}
+	.figma-plugin-alert {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		background: color-mix(in srgb, var(--bgColor-success-muted) 40%, transparent);
+		border: 1px solid var(--borderColor-success-muted, rgba(34, 197, 94, 0.3));
+		color: var(--fgColor-success);
+		font-family: var(--fontStack-sansSerif);
+		font-size: var(--base-text-size-xs);
+		font-weight: var(--base-text-weight-medium);
+		padding: 4px 10px;
+		border-radius: var(--borderRadius-medium);
+		cursor: pointer;
+		white-space: nowrap;
+		transition: background var(--base-duration-100) var(--base-easing-ease);
+	}
+	.figma-plugin-alert:hover {
+		background: color-mix(in srgb, var(--bgColor-success-muted) 60%, transparent);
+	}
 	.figma-webhook-alert {
 		display: flex;
 		align-items: center;
@@ -2583,6 +2780,25 @@
 		border-radius: 50%;
 		background: var(--fgColor-attention);
 		animation: pulse-dot 2s infinite;
+	}
+	.auto-load-toggle {
+		display: flex;
+		align-items: center;
+		gap: 5px;
+		cursor: pointer;
+		font-size: var(--base-text-size-xs);
+		color: var(--fgColor-muted);
+		user-select: none;
+	}
+	.auto-load-toggle input[type='checkbox'] {
+		width: 14px;
+		height: 14px;
+		margin: 0;
+		cursor: pointer;
+		accent-color: var(--fgColor-accent);
+	}
+	.auto-load-label {
+		white-space: nowrap;
 	}
 	@keyframes pulse-dot {
 		0%,
@@ -2857,6 +3073,29 @@
 		color: var(--fgColor-disabled);
 		opacity: 0.6;
 		text-transform: none;
+	}
+	.figma-connect-btn {
+		font-family: var(--fontStack-sansSerif);
+		font-size: 11px;
+		font-weight: var(--base-text-weight-semibold);
+		padding: 3px 10px;
+		background: var(--button-primary-bgColor-rest);
+		color: var(--button-primary-fgColor-rest);
+		border: 1px solid var(--button-primary-borderColor-rest);
+		border-radius: var(--borderRadius-medium);
+		cursor: pointer;
+		transition:
+			background var(--base-duration-100) var(--base-easing-ease),
+			border-color var(--base-duration-100) var(--base-easing-ease);
+		margin-left: auto;
+	}
+	.figma-connect-btn:hover:not(:disabled) {
+		background: var(--button-primary-bgColor-hover);
+		border-color: var(--button-primary-borderColor-hover);
+	}
+	.figma-connect-btn:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
 	}
 
 	.file-row {

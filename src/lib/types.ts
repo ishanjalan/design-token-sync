@@ -43,13 +43,56 @@ export type FigmaNumberToken = z.infer<typeof FigmaNumberTokenSchema>;
 
 export type FigmaColorExport = Record<string, unknown>;
 
+// ─── Composite DTCG Types ─────────────────────────────────────────────────────
+
+export const FigmaShadowValueSchema = z.object({
+	color: z.object({
+		colorSpace: z.literal('srgb'),
+		components: z.tuple([z.number(), z.number(), z.number()]),
+		alpha: z.number(),
+		hex: z.string()
+	}),
+	offsetX: z.number(),
+	offsetY: z.number(),
+	blur: z.number(),
+	spread: z.number()
+});
+
+export const FigmaShadowTokenSchema = z.object({
+	$type: z.literal('shadow'),
+	$value: FigmaShadowValueSchema,
+	$extensions: z.record(z.string(), z.unknown()).optional()
+});
+
+export const FigmaBorderValueSchema = z.object({
+	color: z.object({
+		colorSpace: z.literal('srgb'),
+		components: z.tuple([z.number(), z.number(), z.number()]),
+		alpha: z.number(),
+		hex: z.string()
+	}),
+	width: z.number(),
+	style: z.enum(['solid', 'dashed', 'dotted', 'double', 'groove', 'ridge', 'inset', 'outset'])
+});
+
+export const FigmaBorderTokenSchema = z.object({
+	$type: z.literal('border'),
+	$value: FigmaBorderValueSchema,
+	$extensions: z.record(z.string(), z.unknown()).optional()
+});
+
+export type FigmaShadowValue = z.infer<typeof FigmaShadowValueSchema>;
+export type FigmaShadowToken = z.infer<typeof FigmaShadowTokenSchema>;
+export type FigmaBorderValue = z.infer<typeof FigmaBorderValueSchema>;
+export type FigmaBorderToken = z.infer<typeof FigmaBorderTokenSchema>;
+
 // ─── Platform ─────────────────────────────────────────────────────────────────
 
 export type Platform = 'web' | 'android' | 'ios';
 
 // ─── Transform Result ─────────────────────────────────────────────────────────
 
-export type OutputFormat = 'scss' | 'typescript' | 'swift' | 'kotlin';
+export type OutputFormat = 'scss' | 'typescript' | 'swift' | 'kotlin' | 'css';
 
 export interface TransformResult {
 	filename: string;
@@ -89,6 +132,9 @@ export interface GenerationStats {
 	semanticColors: number;
 	spacingSteps: number;
 	typographyStyles: number;
+	shadowTokens: number;
+	borderTokens: number;
+	opacityTokens: number;
 }
 
 // ─── Generated File ───────────────────────────────────────────────────────────
@@ -103,11 +149,18 @@ export interface GeneratedFile {
 
 // ─── Generate Response ────────────────────────────────────────────────────────
 
+export interface GenerateWarning {
+	type: 'cycle' | 'lint' | 'unused';
+	message: string;
+	details?: unknown;
+}
+
 export interface GenerateResponse {
 	success: boolean;
 	platforms: Platform[];
 	stats: GenerationStats;
 	files: GeneratedFile[];
+	warnings?: GenerateWarning[];
 }
 
 // ─── History Entry ────────────────────────────────────────────────────────────
