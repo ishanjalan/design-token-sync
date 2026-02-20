@@ -356,17 +356,47 @@
 
 	// ─── Themes ──────────────────────────────────────────────────────────────
 	const THEMES = [
-		{ id: 'github-dark-dimmed', label: 'GitHub Dimmed', bg: '#22272e' },
-		{ id: 'github-dark', label: 'GitHub Dark', bg: '#24292e' },
-		{ id: 'one-dark-pro', label: 'One Dark', bg: '#282c34' },
-		{ id: 'dracula', label: 'Dracula', bg: '#282A36' },
-		{ id: 'catppuccin-mocha', label: 'Catppuccin', bg: '#1e1e2e' },
-		{ id: 'night-owl', label: 'Night Owl', bg: '#011627' }
+		{ id: 'github-dark-dimmed', label: 'GitHub Dimmed', bg: '#22272e', mode: 'dark' as const },
+		{ id: 'github-dark', label: 'GitHub Dark', bg: '#24292e', mode: 'dark' as const },
+		{ id: 'one-dark-pro', label: 'One Dark', bg: '#282c34', mode: 'dark' as const },
+		{ id: 'dracula', label: 'Dracula', bg: '#282A36', mode: 'dark' as const },
+		{ id: 'catppuccin-mocha', label: 'Catppuccin', bg: '#1e1e2e', mode: 'dark' as const },
+		{ id: 'night-owl', label: 'Night Owl', bg: '#011627', mode: 'dark' as const },
+		{ id: 'github-light', label: 'GitHub Light', bg: '#ffffff', mode: 'light' as const },
+		{ id: 'catppuccin-latte', label: 'Catppuccin Latte', bg: '#eff1f5', mode: 'light' as const },
+		{ id: 'min-light', label: 'Min Light', bg: '#ffffff', mode: 'light' as const }
 	] as const;
 	type ThemeId = (typeof THEMES)[number]['id'];
 
 	let selectedTheme = $state<ThemeId>('one-dark-pro');
 	let showThemePicker = $state(false);
+	let appColorMode = $state<'dark' | 'light'>('dark');
+
+	function detectAppColorMode(): 'dark' | 'light' {
+		if (!browser) return 'dark';
+		const mode = document.documentElement.getAttribute('data-color-mode');
+		if (mode === 'light') return 'light';
+		if (mode === 'auto') {
+			return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+		}
+		return 'dark';
+	}
+
+	if (browser) {
+		appColorMode = detectAppColorMode();
+		const observer = new MutationObserver(() => {
+			const prev = appColorMode;
+			appColorMode = detectAppColorMode();
+			if (prev !== appColorMode) {
+				const currentTheme = THEMES.find((t) => t.id === selectedTheme);
+				if (currentTheme && currentTheme.mode !== appColorMode) {
+					const fallback = THEMES.find((t) => t.mode === appColorMode);
+					if (fallback) selectedTheme = fallback.id;
+				}
+			}
+		});
+		observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-color-mode'] });
+	}
 
 	let swatches = $state<Swatch[]>([]);
 	let showSwatches = $state(false);
@@ -2632,7 +2662,7 @@
 	.platform-btn--active {
 		background: var(--control-bgColor-rest);
 		color: var(--p-color, var(--fgColor-default));
-		box-shadow: 0 1px 5px rgba(0, 0, 0, 0.5);
+		box-shadow: var(--shadow-floating-small);
 	}
 	.platform-btn--active .platform-name {
 		color: var(--p-color, var(--fgColor-default));
@@ -3402,7 +3432,7 @@
 	.toggle-btn--active {
 		background: var(--control-bgColor-rest);
 		color: var(--fgColor-default);
-		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+		box-shadow: var(--shadow-floating-small);
 	}
 
 	/* ─── Line Numbers (CSS counters) ───────────────────────────────────────────── */
