@@ -17,8 +17,12 @@
 
 	function formatDotColor(format: string): string {
 		switch (format) {
+			case 'css':
+				return '#2196F3';
 			case 'scss':
 				return '#F06090';
+			case 'typescript':
+				return '#3178C6';
 			case 'swift':
 				return '#FF8040';
 			case 'kotlin':

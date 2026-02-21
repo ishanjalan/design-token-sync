@@ -135,6 +135,8 @@
 			prevPlatforms = key;
 			if (result && canGenerate) {
 				generate();
+			} else if (visibleFiles.length && !visibleFiles.some((f) => f.filename === activeTab)) {
+				activeTab = visibleFiles[0].filename;
 			}
 		}
 	});
@@ -382,10 +384,16 @@
 	let familyRenames = $state<Record<string, FamilyRename[]>>({});
 	let tokenCoverage = $state<Record<string, TokenCoverageResult>>({});
 
+	const visibleFiles = $derived(
+		result?.files?.filter((f) => selectedPlatforms.includes(f.platform as Platform)) ?? []
+	);
+
 	let diffTotals = $derived.by(() => {
 		let added = 0, removed = 0, modified = 0;
-		for (const [filename, lines] of Object.entries(diffs)) {
-			const s = diffStats(lines, modifications[filename]);
+		for (const f of visibleFiles) {
+			const lines = diffs[f.filename];
+			if (!lines) continue;
+			const s = diffStats(lines, modifications[f.filename]);
 			added += s.added;
 			removed += s.removed;
 			modified += s.modified;
@@ -1119,8 +1127,8 @@
 	// ─── Keyboard navigation for file list ───────────────────────────────────────
 
 	function handleTabKeydown(e: KeyboardEvent) {
-		if (!result?.files.length) return;
-		const filenames = result.files.map((f) => f.filename);
+		if (!visibleFiles.length) return;
+		const filenames = visibleFiles.map((f) => f.filename);
 		const idx = filenames.indexOf(activeTab);
 		if (e.key === 'ArrowDown' || e.key === 'ArrowRight') {
 			e.preventDefault();
@@ -2207,7 +2215,7 @@
 					<!-- Vertical file sidebar + code pane -->
 					<div class="output-body">
 						<FileSidebar
-							files={result.files}
+							files={visibleFiles}
 							{activeTab}
 							{diffs}
 							{modifications}
@@ -2217,7 +2225,7 @@
 						/>
 
 						<!-- Code pane -->
-						{#each result.files as file (file.filename)}
+						{#each visibleFiles as file (file.filename)}
 							{#if activeTab === file.filename}
 								{@const mode = getViewMode(file.filename)}
 								{@const hasDiff = !!diffs[file.filename]}
