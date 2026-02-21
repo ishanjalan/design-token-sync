@@ -11,7 +11,7 @@ import { transformToShadows, countShadowTokens } from '$lib/transformers/shadow.
 import { transformToBorders, countBorderTokens } from '$lib/transformers/border.js';
 import { transformToOpacity, countOpacityTokens } from '$lib/transformers/opacity.js';
 import { detectConventions } from '$lib/transformers/naming.js';
-import { buildTokenGraph, detectCycles, formatCycleWarnings } from '$lib/resolve-tokens.js';
+import { buildTokenGraph, detectCycles, formatCycleWarnings, walkAllTokens } from '$lib/resolve-tokens.js';
 import type { RequestHandler } from './$types';
 import type { FigmaColorExport, Platform, GenerateWarning } from '$lib/types.js';
 
@@ -21,6 +21,7 @@ const RequestSchema = z.object({
 	values: z.record(z.string(), z.unknown()),
 	platforms: z.array(z.enum(['web', 'android', 'ios'])),
 	typography: z.record(z.string(), z.unknown()).optional(),
+	bestPractices: z.boolean().optional().default(true),
 	// Optional reference files for convention detection / diff
 	referencePrimitivesScss: z.string().optional(),
 	referenceColorsScss: z.string().optional(),
@@ -65,38 +66,22 @@ async function optionalFileJson(
 
 function countColorTokens(export_: Record<string, unknown>, aliasOnly: boolean): number {
 	let count = 0;
-	function walk(obj: unknown) {
-		if (!obj || typeof obj !== 'object') return;
-		const o = obj as Record<string, unknown>;
-		if (o.$type === 'color') {
-			const hasAlias = !!(o.$extensions as Record<string, unknown> | undefined)?.[
-				'com.figma.aliasData'
-			];
-			if (!aliasOnly || hasAlias) count++;
-			return;
+	walkAllTokens(export_, (_path, token, type) => {
+		if (type !== 'color') return;
+		if (aliasOnly) {
+			const ext = token.$extensions as Record<string, unknown> | undefined;
+			if (!ext?.['com.figma.aliasData']) return;
 		}
-		for (const [k, v] of Object.entries(o)) {
-			if (!k.startsWith('$')) walk(v);
-		}
-	}
-	walk(export_);
+		count++;
+	});
 	return count;
 }
 
 function countSpacingTokens(values: Record<string, unknown>): number {
 	let count = 0;
-	function walk(obj: unknown) {
-		if (!obj || typeof obj !== 'object') return;
-		const o = obj as Record<string, unknown>;
-		if (o.$type === 'number') {
-			count++;
-			return;
-		}
-		for (const [k, v] of Object.entries(o)) {
-			if (!k.startsWith('$')) walk(v);
-		}
-	}
-	walk(values);
+	walkAllTokens(values, (_path, _token, type) => {
+		if (type === 'number') count++;
+	});
 	return count;
 }
 
@@ -124,11 +109,15 @@ export const POST: RequestHandler = async ({ request }) => {
 			? (JSON.parse(platformsRaw as string) as Platform[])
 			: ['web'];
 
+		const bestPracticesRaw = formData.get('bestPractices');
+		const bestPractices = bestPracticesRaw === 'false' ? false : true;
+
 		body = {
 			lightColors: JSON.parse(await lightColorsFile.text()),
 			darkColors: JSON.parse(await darkColorsFile.text()),
 			values: JSON.parse(await valuesFile.text()),
 			platforms,
+			bestPractices,
 			typography: await optionalFileJson(formData, 'typography'),
 			referencePrimitivesScss: await optionalFileText(formData, 'referencePrimitivesScss'),
 			referenceColorsScss: await optionalFileText(formData, 'referenceColorsScss'),
@@ -152,6 +141,7 @@ export const POST: RequestHandler = async ({ request }) => {
 		darkColors,
 		values,
 		platforms,
+		bestPractices,
 		typography,
 		referencePrimitivesScss,
 		referenceColorsScss,
@@ -166,12 +156,17 @@ export const POST: RequestHandler = async ({ request }) => {
 		referencePrimitivesScss,
 		referenceColorsScss,
 		referencePrimitivesTs,
-		referenceColorsTs
+		referenceColorsTs,
+		bestPractices
 	);
 
 	if (platforms.includes('web')) {
 		results.push(
-			...transformToSCSS(lightColors as FigmaColorExport, darkColors as FigmaColorExport)
+			...transformToSCSS(
+				lightColors as FigmaColorExport,
+				darkColors as FigmaColorExport,
+				conventions
+			)
 		);
 		results.push(
 			...transformToTS(lightColors as FigmaColorExport, darkColors as FigmaColorExport, conventions)
@@ -192,7 +187,8 @@ export const POST: RequestHandler = async ({ request }) => {
 			transformToSwift(
 				lightColors as FigmaColorExport,
 				darkColors as FigmaColorExport,
-				referenceColorsSwift
+				referenceColorsSwift,
+				bestPractices
 			)
 		);
 	}
@@ -202,7 +198,8 @@ export const POST: RequestHandler = async ({ request }) => {
 			transformToKotlin(
 				lightColors as FigmaColorExport,
 				darkColors as FigmaColorExport,
-				referenceColorsKotlin
+				referenceColorsKotlin,
+				bestPractices
 			)
 		);
 	}

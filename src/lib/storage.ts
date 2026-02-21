@@ -227,6 +227,26 @@ export function loadFigmaWebhookPasscode(): string {
 	}
 }
 
+// ─── Best Practices toggle ────────────────────────────────────────────────
+
+export function saveBestPractices(enabled: boolean): void {
+	try {
+		localStorage.setItem(`${PREFIX}:bestPractices`, JSON.stringify(enabled));
+	} catch {
+		// ignore
+	}
+}
+
+export function loadBestPractices(): boolean {
+	try {
+		const raw = localStorage.getItem(`${PREFIX}:bestPractices`);
+		if (raw === null) return true;
+		return JSON.parse(raw) as boolean;
+	} catch {
+		return true;
+	}
+}
+
 // ─── Clear all ────────────────────────────────────────────────────────────────
 
 export function clearAllStorage(): void {

@@ -7,20 +7,29 @@
  */
 
 import type { DetectedConventions, NamingCase } from '$lib/types.js';
+import { BEST_PRACTICE_WEB_CONVENTIONS } from '$lib/types.js';
+import { capitalize } from './shared.js';
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 /**
  * Detect conventions from reference file contents.
- * All four reference files are concatenated before analysis so patterns found
- * in either Primitives.* or Colors.* are counted.
+ *
+ * When `bestPractices` is true, returns best-practice defaults regardless of
+ * reference files. When false, analyses the reference files to match the team's
+ * existing conventions. If no reference files are provided, best-practice
+ * defaults are returned either way (nothing to match).
  */
 export function detectConventions(
 	primitivesScss: string | undefined,
 	colorsScss: string | undefined,
 	primitivesTs: string | undefined,
-	colorsTs: string | undefined
+	colorsTs: string | undefined,
+	bestPractices: boolean = true
 ): DetectedConventions {
+	const hasRefs = !!(primitivesScss || colorsScss || primitivesTs || colorsTs);
+	if (bestPractices || !hasRefs) return { ...BEST_PRACTICE_WEB_CONVENTIONS };
+
 	const allScss = [primitivesScss, colorsScss].filter(Boolean).join('\n');
 	const allTs = [primitivesTs, colorsTs].filter(Boolean).join('\n');
 
@@ -107,6 +116,3 @@ function detectTypeAnnotations(ts: string | undefined): boolean {
 	return /export\s+const\s+\w+\s*:\s*string\s*=/.test(ts);
 }
 
-function capitalize(s: string): string {
-	return s.charAt(0).toUpperCase() + s.slice(1);
-}

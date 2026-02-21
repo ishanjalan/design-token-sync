@@ -2,8 +2,19 @@
 // Matches the web team's exact existing format, using Figma aliasData to preserve
 // semantic → primitive references instead of hardcoding resolved hex values.
 
-import type { TransformResult, FigmaColorExport, FigmaColorToken } from '$lib/types.js';
-import { figmaToHex } from '$lib/color-utils.js';
+import type { TransformResult, FigmaColorExport, FigmaColorToken, DetectedConventions } from '$lib/types.js';
+import { BEST_PRACTICE_WEB_CONVENTIONS } from '$lib/types.js';
+import {
+	walkColorTokens,
+	walkColorTokensWithPath,
+	getColorTokenAtPath,
+	pathToTokenName,
+	extractSortKey,
+	resolveColorValue,
+	capitalize,
+	CATEGORY_ORDER,
+	orderCategories
+} from './shared.js';
 
 interface PrimitiveEntry {
 	scssVar: string; // e.g. "$grey-750"
@@ -40,15 +51,17 @@ interface SemanticToken {
 export function transformToSCSS(
 	lightColors: FigmaColorExport,
 	darkColors: FigmaColorExport,
+	conventions: DetectedConventions = BEST_PRACTICE_WEB_CONVENTIONS,
 	primitives?: Record<string, unknown>
 ): TransformResult[] {
+	const sep = conventions.scssSeparator === 'underscore' ? '_' : '-';
 	const primitiveMap = primitives
-		? buildPrimitiveMapFromExport(primitives)
-		: buildPrimitiveMapFromAliasData(lightColors, darkColors);
+		? buildPrimitiveMapFromExport(primitives, sep)
+		: buildPrimitiveMapFromAliasData(lightColors, darkColors, sep);
 
-	const semanticTokens = buildSemanticTokens(lightColors, darkColors, primitiveMap);
+	const semanticTokens = buildSemanticEntries(lightColors, darkColors, primitiveMap, sep);
 
-	return [generatePrimitivesScss(primitiveMap), generateColorsScss(semanticTokens)];
+	return [generatePrimitivesScss(primitiveMap, sep), generateColorsScss(semanticTokens, conventions)];
 }
 
 // ─── Step 1a: Build Primitive Map from a dedicated primitives export ──────────
@@ -56,15 +69,12 @@ export function transformToSCSS(
 // Expected shape (Figma export of the _Primitives variable collection):
 //   { "Colour": { "Grey": { "750": { "$type": "color", "$value": {...} } } } }
 
-function buildPrimitiveMapFromExport(primitivesExport: Record<string, unknown>): PrimitiveMap {
+function buildPrimitiveMapFromExport(primitivesExport: Record<string, unknown>, sep: string): PrimitiveMap {
 	const map: PrimitiveMap = {};
 
-	// Walk the export, building "Colour/Grey/750" style keys from the path
-	walkTokensWithPath(primitivesExport, (path, token) => {
-		// Reconstruct the Figma variable name from the path
-		// e.g. ["Colour", "Grey", "750"] → "Colour/Grey/750"
+	walkColorTokensWithPath(primitivesExport, (path, token) => {
 		const figmaName = path.join('/');
-		const scssVar = figmaNameToScssVar(figmaName);
+		const scssVar = figmaNameToScssVar(figmaName, sep);
 		const value = resolveColorValue(token);
 		if (!scssVar || !value) return;
 
@@ -83,16 +93,17 @@ function buildPrimitiveMapFromExport(primitivesExport: Record<string, unknown>):
 
 function buildPrimitiveMapFromAliasData(
 	lightColors: FigmaColorExport,
-	darkColors: FigmaColorExport
+	darkColors: FigmaColorExport,
+	sep: string
 ): PrimitiveMap {
 	const map: PrimitiveMap = {};
 
 	function collect(export_: FigmaColorExport) {
-		walkTokens(export_, (token) => {
+		walkColorTokens(export_, (token) => {
 			const figmaName = token.$extensions?.['com.figma.aliasData']?.targetVariableName;
 			if (!figmaName || map[figmaName]) return;
 
-			const scssVar = figmaNameToScssVar(figmaName);
+			const scssVar = figmaNameToScssVar(figmaName, sep);
 			const value = resolveColorValue(token);
 			if (!scssVar || !value) return;
 
@@ -109,14 +120,15 @@ function buildPrimitiveMapFromAliasData(
 
 // ─── Step 2: Build Semantic Token List ───────────────────────────────────────
 
-function buildSemanticTokens(
+function buildSemanticEntries(
 	lightColors: FigmaColorExport,
 	darkColors: FigmaColorExport,
-	primitiveMap: PrimitiveMap
+	primitiveMap: PrimitiveMap,
+	sep: string
 ): SemanticToken[] {
 	const tokens: SemanticToken[] = [];
 
-	walkTokensWithPath(lightColors, (path, lightToken) => {
+	walkColorTokensWithPath(lightColors, (path, lightToken) => {
 		const lightFigmaName = lightToken.$extensions?.['com.figma.aliasData']?.targetVariableName;
 		if (!lightFigmaName) return;
 
@@ -124,7 +136,7 @@ function buildSemanticTokens(
 		if (!lightPrim) return;
 
 		// Match token in dark export
-		const darkToken = getTokenAtPath(darkColors, path);
+		const darkToken = getColorTokenAtPath(darkColors, path);
 		const darkFigmaName = darkToken?.$extensions?.['com.figma.aliasData']?.targetVariableName;
 		const darkPrim = darkFigmaName
 			? (primitiveMap[darkFigmaName]?.scssVar ?? lightPrim)
@@ -133,7 +145,7 @@ function buildSemanticTokens(
 		// Tokens in a "static" path segment are mode-invariant (no light-dark())
 		const isStatic = path.some((p) => p.toLowerCase() === 'static');
 
-		const tokenName = pathToTokenName(path);
+		const tokenName = pathToTokenName(path, sep);
 		tokens.push({
 			cssVar: `--${tokenName}`,
 			scssVar: `$${tokenName}`,
@@ -148,7 +160,7 @@ function buildSemanticTokens(
 
 // ─── Step 3: Generate Primitives.scss ────────────────────────────────────────
 
-function generatePrimitivesScss(primitiveMap: PrimitiveMap): TransformResult {
+function generatePrimitivesScss(primitiveMap: PrimitiveMap, _sep: string): TransformResult {
 	const lines: string[] = [];
 	lines.push('// Primitives.scss');
 	lines.push('// Auto-generated from Figma Variables — DO NOT EDIT');
@@ -196,67 +208,104 @@ function generatePrimitivesScss(primitiveMap: PrimitiveMap): TransformResult {
 //   - SCSS aliases remain for use inside .scss files — they compile to var(--token-name)
 //   - light-dark() (Baseline 2024) is cleaner than prefers-color-scheme media queries
 
-function generateColorsScss(semanticTokens: SemanticToken[]): TransformResult {
+function generateColorsScss(semanticTokens: SemanticToken[], conventions: DetectedConventions): TransformResult {
 	const lines: string[] = [];
-	lines.push("@use './Primitives' as *;");
+	const useModern = conventions.importStyle === 'use';
+
+	if (useModern) {
+		lines.push("@use './Primitives' as *;");
+	} else {
+		lines.push("@import './Primitives';");
+	}
 	lines.push('');
 	lines.push('// Colors.scss');
 	lines.push('// Auto-generated from Figma Variables — DO NOT EDIT');
 	lines.push(`// Generated: ${new Date().toISOString()}`);
 	lines.push('');
 
-	// Group by top-level category (fill, text, icon, background, stroke, …)
+	const sepChar = conventions.scssSeparator === 'underscore' ? '_' : '-';
+
 	const byCategory = new Map<string, SemanticToken[]>();
 	for (const token of semanticTokens) {
-		const category = token.scssVar.replace('$', '').split('-')[0];
+		const category = token.scssVar.replace('$', '').split(sepChar)[0];
 		const list = byCategory.get(category) ?? [];
 		list.push(token);
 		byCategory.set(category, list);
 	}
 
-	const CATEGORY_ORDER = ['fill', 'text', 'icon', 'background', 'stroke'];
-	const orderedCategories = [
-		...CATEGORY_ORDER.filter((c) => byCategory.has(c)),
-		...[...byCategory.keys()].filter((c) => !CATEGORY_ORDER.includes(c)).sort()
-	];
+	const orderedCategories = orderCategories(byCategory.keys());
 
-	// ── 1. @property typed declarations ────────────────────────────────────────
-	lines.push('// @property typed declarations — enables CSS transitions on color tokens');
-	lines.push('// and provides browser DevTools type info. Requires: color-scheme: light dark.');
-	for (const category of orderedCategories) {
-		lines.push(`// ${capitalize(category)} colors`);
-		for (const token of byCategory.get(category)!) {
-			lines.push(`@property ${token.cssVar} {`);
-			lines.push(`  syntax: '<color>';`);
-			lines.push(`  inherits: true;`);
-			lines.push(`  initial-value: transparent;`);
-			lines.push(`}`);
+	if (useModern) {
+		// Modern path: @property + light-dark()
+		lines.push('// @property typed declarations — enables CSS transitions on color tokens');
+		lines.push('// and provides browser DevTools type info. Requires: color-scheme: light dark.');
+		for (const category of orderedCategories) {
+			lines.push(`// ${capitalize(category)} colors`);
+			for (const token of byCategory.get(category)!) {
+				lines.push(`@property ${token.cssVar} {`);
+				lines.push(`  syntax: '<color>';`);
+				lines.push(`  inherits: true;`);
+				lines.push(`  initial-value: transparent;`);
+				lines.push(`}`);
+			}
+			lines.push('');
 		}
-		lines.push('');
-	}
 
-	// ── 2. :root CSS custom property values ────────────────────────────────────
-	lines.push(':root {');
-	lines.push('  color-scheme: light dark; // enables light-dark() to respect OS preference');
-	lines.push('');
-	for (const category of orderedCategories) {
-		lines.push(`  // ${capitalize(category)} colors`);
-		for (const token of byCategory.get(category)!) {
-			lines.push(formatCssCustomPropDecl(token));
-		}
+		lines.push(':root {');
+		lines.push('  color-scheme: light dark;');
 		lines.push('');
-	}
-	lines.push('}');
-	lines.push('');
+		for (const category of orderedCategories) {
+			lines.push(`  // ${capitalize(category)} colors`);
+			for (const token of byCategory.get(category)!) {
+				lines.push(formatCssCustomPropDecl(token));
+			}
+			lines.push('');
+		}
+		lines.push('}');
+		lines.push('');
 
-	// ── 3. SCSS variable aliases ────────────────────────────────────────────────
-	lines.push('// SCSS variable aliases — reference in .scss files; compile to var(--token-name)');
-	for (const category of orderedCategories) {
-		lines.push(`// ${capitalize(category)} colors`);
-		for (const token of byCategory.get(category)!) {
-			lines.push(`${token.scssVar}: var(${token.cssVar});`);
+		lines.push('// SCSS variable aliases — reference in .scss files; compile to var(--token-name)');
+		for (const category of orderedCategories) {
+			lines.push(`// ${capitalize(category)} colors`);
+			for (const token of byCategory.get(category)!) {
+				lines.push(`${token.scssVar}: var(${token.cssVar});`);
+			}
+			lines.push('');
 		}
+	} else {
+		// Classic path: prefers-color-scheme media queries
+		lines.push(':root {');
+		for (const category of orderedCategories) {
+			lines.push(`  // ${capitalize(category)} colors`);
+			for (const token of byCategory.get(category)!) {
+				lines.push(`  ${token.cssVar}: #{${token.lightPrimitive}};`);
+			}
+			lines.push('');
+		}
+		lines.push('}');
 		lines.push('');
+
+		lines.push('@media (prefers-color-scheme: dark) {');
+		lines.push('  :root {');
+		for (const category of orderedCategories) {
+			for (const token of byCategory.get(category)!) {
+				if (!token.isStatic) {
+					lines.push(`    ${token.cssVar}: #{${token.darkPrimitive}};`);
+				}
+			}
+		}
+		lines.push('  }');
+		lines.push('}');
+		lines.push('');
+
+		lines.push('// SCSS variable aliases');
+		for (const category of orderedCategories) {
+			lines.push(`// ${capitalize(category)} colors`);
+			for (const token of byCategory.get(category)!) {
+				lines.push(`${token.scssVar}: var(${token.cssVar});`);
+			}
+			lines.push('');
+		}
 	}
 
 	return {
@@ -295,7 +344,7 @@ function formatCssCustomPropDecl(token: SemanticToken): string {
  *      (handles PascalCase/camelCase e.g. "OtherOrange" → "Other-Orange")
  *   3. Lowercase everything
  */
-function figmaNameToScssVar(figmaName: string): string | null {
+function figmaNameToScssVar(figmaName: string, sep: string = '-'): string | null {
 	/* v8 ignore next -- @preserve */
 	if (!figmaName.startsWith('Colour/')) return null;
 
@@ -304,31 +353,12 @@ function figmaNameToScssVar(figmaName: string): string | null {
 
 	const converted = parts.map((p) =>
 		p
-			.replace(/_/g, '-') // underscores → hyphens
-			.replace(/([a-z])([A-Z])/g, '$1-$2') // camelCase → hyphen
+			.replace(/_/g, '-')
+			.replace(/([a-z])([A-Z])/g, '$1-$2')
 			.toLowerCase()
 	);
 
-	return '$' + converted.join('-');
-}
-
-/**
- * Convert a token path array to a CSS/SCSS name (kebab-case)
- *
- * Rules:
- * - "Standard" segments are dropped (Stroke/Standard/strong → stroke-strong)
- * - All segments are lowercased and space-replaced with hyphens
- *
- * ["Text", "primary"]                → "text-primary"
- * ["Fill", "Component", "primary"]   → "fill-component-primary"
- * ["Stroke", "Standard", "strong"]   → "stroke-strong"
- * ["Fill", "Static", "white"]        → "fill-static-white"
- */
-function pathToTokenName(path: string[]): string {
-	return path
-		.filter((p) => p.toLowerCase() !== 'standard')
-		.map((p) => p.toLowerCase().replace(/\s+/g, '-'))
-		.join('-');
+	return '$' + converted.join('-').replace(/-/g, sep);
 }
 
 /**
@@ -339,87 +369,14 @@ function pathToTokenName(path: string[]): string {
  */
 function extractFamily(scssVar: string): string {
 	const name = scssVar.slice(1); // strip "$"
-	// Take segments until the first numeric or "other" segment
-	const parts = name.split('-');
+	const sepChar = name.includes('_') ? '_' : '-';
+	const parts = name.split(sepChar);
 	const familyParts: string[] = [];
 	for (const part of parts) {
 		if (/^\d/.test(part) || part === 'other') break;
 		familyParts.push(part);
 	}
 	/* v8 ignore next -- @preserve */
-	return familyParts.join('-') || name;
+	return familyParts.join(sepChar) || name;
 }
 
-/**
- * Extract a numeric sort key from an SCSS var (first numeric segment)
- * "$grey-750" → 750, "$grey-alpha-750-8" → 7500008
- */
-function extractSortKey(scssVar: string): number {
-	const numbers = scssVar.match(/\d+/g);
-	/* v8 ignore next -- @preserve */
-	if (!numbers) return 0;
-	return numbers.reduce(
-		(acc, n, i) => acc + parseInt(n) * Math.pow(1000, Math.max(0, numbers.length - 1 - i)),
-		0
-	);
-}
-
-/** Resolve a Figma color token to a CSS value string */
-function resolveColorValue(token: FigmaColorToken): string | null {
-	const v = token.$value;
-	/* v8 ignore next -- @preserve */
-	if (!v || typeof v !== 'object') return null;
-
-	const [r, g, b] = v.components;
-	const alpha = parseFloat(v.alpha.toFixed(4));
-
-	if (alpha < 1) {
-		return figmaToHex(r, g, b, alpha);
-	}
-	return v.hex.toLowerCase();
-}
-
-// ─── Tree-walking Utilities ───────────────────────────────────────────────────
-
-/* eslint-disable @typescript-eslint/no-explicit-any -- generic tree walkers over arbitrary Figma JSON */
-function walkTokens(obj: any, fn: (token: FigmaColorToken) => void): void {
-	if (!obj || typeof obj !== 'object') return;
-	if (obj.$type === 'color') {
-		fn(obj);
-		return;
-	}
-	for (const [key, val] of Object.entries(obj)) {
-		if (!key.startsWith('$')) walkTokens(val, fn);
-	}
-}
-
-function walkTokensWithPath(
-	obj: any,
-	fn: (path: string[], token: FigmaColorToken) => void,
-	path: string[] = []
-): void {
-	/* v8 ignore next -- @preserve */
-	if (!obj || typeof obj !== 'object') return;
-	if (obj.$type === 'color') {
-		fn(path, obj);
-		return;
-	}
-	for (const [key, val] of Object.entries(obj)) {
-		/* v8 ignore next -- @preserve */
-		if (!key.startsWith('$')) walkTokensWithPath(val, fn, [...path, key]);
-	}
-}
-
-function getTokenAtPath(obj: any, path: string[]): FigmaColorToken | null {
-	let cur = obj;
-	for (const key of path) {
-		if (!cur || typeof cur !== 'object') return null;
-		cur = cur[key];
-	}
-	return cur?.$type === 'color' ? cur : null;
-}
-/* eslint-enable @typescript-eslint/no-explicit-any */
-
-function capitalize(s: string): string {
-	return s.charAt(0).toUpperCase() + s.slice(1);
-}

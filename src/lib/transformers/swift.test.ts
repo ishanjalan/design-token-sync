@@ -176,7 +176,7 @@ describe('detectSwiftConventions', () => {
 			static var textPrimary: Color { .init(...) }
 			static var fillWhite: Color { .init(...) }
 		`;
-		const c = detectSwiftConventions(ref);
+		const c = detectSwiftConventions(ref, false);
 		expect(c.useComputedVar).toBe(true);
 	});
 
@@ -186,7 +186,7 @@ describe('detectSwiftConventions', () => {
 			static let secondary = Color(...)
 			static var computed: Color { ... }
 		`;
-		const c = detectSwiftConventions(ref);
+		const c = detectSwiftConventions(ref, false);
 		expect(c.useComputedVar).toBe(false);
 	});
 
@@ -195,13 +195,13 @@ describe('detectSwiftConventions', () => {
 			static let text_primary = Color(...)
 			static let fill_white = Color(...)
 		`;
-		const c = detectSwiftConventions(ref);
+		const c = detectSwiftConventions(ref, false);
 		expect(c.namingCase).toBe('snake');
 	});
 
 	it('defaults to camelCase when no naming signals', () => {
 		const ref = `// empty`;
-		const c = detectSwiftConventions(ref);
+		const c = detectSwiftConventions(ref, false);
 		expect(c.namingCase).toBe('camel');
 	});
 });
@@ -337,7 +337,7 @@ describe('transformToSwift — semantic block', () => {
 describe('transformToSwift — convention: snake_case', () => {
 	it('generates snake_case property names when reference uses snake_case', () => {
 		const ref = `static let text_primary = Color(...)\nstatic let fill_white = Color(...)`;
-		const { content } = transformToSwift(lightColors, darkColors, ref);
+		const { content } = transformToSwift(lightColors, darkColors, ref, false);
 		expect(content).toContain('static let grey_750');
 		expect(content).toContain('static let text_primary');
 	});
@@ -346,7 +346,7 @@ describe('transformToSwift — convention: snake_case', () => {
 describe('transformToSwift — convention: static var', () => {
 	it('uses static var when reference uses computed var style', () => {
 		const ref = `static var textPrimary: Color { Color(UIColor.textPrimary) }`;
-		const { content } = transformToSwift(lightColors, darkColors, ref);
+		const { content } = transformToSwift(lightColors, darkColors, ref, false);
 		expect(content).toContain('static var ');
 	});
 });

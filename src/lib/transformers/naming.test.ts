@@ -4,14 +4,14 @@ import { detectConventions, scssVarToTsName, cssVarToTsName } from './naming.js'
 // ─── detectConventions ────────────────────────────────────────────────────────
 
 describe('detectConventions', () => {
-	it('returns screaming_snake + hyphen defaults when no content provided', () => {
-		const c = detectConventions(undefined, undefined, undefined, undefined);
+	it('returns best-practice defaults when no content provided (even with bestPractices=false)', () => {
+		const c = detectConventions(undefined, undefined, undefined, undefined, false);
 		expect(c.scssPrefix).toBe('$');
 		expect(c.tsPrefix).toBe('export const ');
 		expect(c.scssSeparator).toBe('hyphen');
 		expect(c.tsNamingCase).toBe('screaming_snake');
-		expect(c.importStyle).toBe('import');
-		expect(c.hasTypeAnnotations).toBe(false);
+		expect(c.importStyle).toBe('use');
+		expect(c.hasTypeAnnotations).toBe(true);
 	});
 
 	it('detects @use import style', () => {
@@ -29,14 +29,15 @@ describe('detectConventions', () => {
 			"@import './Primitives';\n$grey-50: #fff;",
 			undefined,
 			undefined,
-			undefined
+			undefined,
+			false
 		);
 		expect(c.importStyle).toBe('import');
 	});
 
 	it('detects underscore SCSS separator when underscores dominate', () => {
 		const scss = '$grey_50: #fff;\n$grey_100: #eee;\n$grey_200: #ddd;';
-		const c = detectConventions(scss, undefined, undefined, undefined);
+		const c = detectConventions(scss, undefined, undefined, undefined, false);
 		expect(c.scssSeparator).toBe('underscore');
 	});
 
@@ -54,14 +55,13 @@ describe('detectConventions', () => {
 
 	it('detects camelCase TypeScript naming', () => {
 		const ts = 'export const grey50 = "#fff";\nexport const grey100 = "#eee";';
-		const c = detectConventions(undefined, undefined, ts, undefined);
+		const c = detectConventions(undefined, undefined, ts, undefined, false);
 		expect(c.tsNamingCase).toBe('camel');
 	});
 
 	it('detects PascalCase TypeScript naming', () => {
-		// PascalCase: starts uppercase, has lowercase letters, more matches than camelCase
 		const ts = 'export const GreyFifty = "#fff";\nexport const GreyHundred = "#eee";';
-		const c = detectConventions(undefined, undefined, ts, undefined);
+		const c = detectConventions(undefined, undefined, ts, undefined, false);
 		expect(c.tsNamingCase).toBe('pascal');
 	});
 
@@ -73,7 +73,7 @@ describe('detectConventions', () => {
 
 	it('returns false for hasTypeAnnotations when absent', () => {
 		const ts = "export const GREY_50 = '#fff' as const;";
-		const c = detectConventions(undefined, undefined, ts, undefined);
+		const c = detectConventions(undefined, undefined, ts, undefined, false);
 		expect(c.hasTypeAnnotations).toBe(false);
 	});
 

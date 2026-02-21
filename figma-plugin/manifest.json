@@ -8,11 +8,11 @@
   "documentAccess": "dynamic-page",
   "networkAccess": {
     "allowedDomains": [
-      "https://design-token-sync.vercel.app"
+      "*"
     ],
     "devAllowedDomains": [
-      "http://localhost:5173"
+      "*"
     ],
-    "reasoning": "Sends design token data to Tokensmith instance"
+    "reasoning": "Sends extracted design tokens to user-configured Tokensmith instance (localhost or deployed)"
   }
 }

@@ -23,17 +23,31 @@
     </div>
 
     <div class="field">
-      <label for="url-input">Tokensmith URL</label>
+      <label for="url-input">Server URL</label>
       <div class="input-wrap">
         <input
           id="url-input"
           type="text"
-          placeholder="http://localhost:5173 or https://your-app.vercel.app"
+          placeholder="http://localhost:5173"
           spellcheck="false"
         />
         <span id="url-status" class="url-status"></span>
       </div>
-      <p class="hint">Your deployed Tokensmith instance URL</p>
+      <p class="hint">Any server that accepts design tokens (localhost or deployed)</p>
+    </div>
+
+    <div class="field field-endpoint">
+      <label for="endpoint-input">Endpoint path</label>
+      <div class="input-wrap">
+        <input
+          id="endpoint-input"
+          type="text"
+          placeholder="/api/figma/plugin-sync"
+          value="/api/figma/plugin-sync"
+          spellcheck="false"
+        />
+      </div>
+      <p class="hint">POST endpoint on the server (change for non-Tokensmith servers)</p>
     </div>
 
     <div class="stats" id="stats" style="display:none;">
@@ -63,7 +77,7 @@
 
     <div class="actions">
       <button id="btn-sync" class="btn btn-primary" disabled>
-        <span class="btn-text">Sync to Tokensmith</span>
+        <span class="btn-text">Push Tokens</span>
       </button>
       <button id="btn-download" class="btn btn-secondary" disabled>
         <span class="btn-text">Download JSON</span>

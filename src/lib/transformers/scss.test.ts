@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { transformToSCSS } from './scss.js';
+import { BEST_PRACTICE_WEB_CONVENTIONS } from '$lib/types.js';
 import {
 	lightColors,
 	darkColors,
@@ -169,6 +170,7 @@ describe('transformToSCSS', () => {
 			const [prims] = transformToSCSS(
 				lightColorsForPrimitivesPath,
 				darkColorsForPrimitivesPath,
+				BEST_PRACTICE_WEB_CONVENTIONS,
 				primitivesExport
 			);
 			expect(prims.content).toContain('$grey-750: #1d1d1d;');
@@ -180,16 +182,17 @@ describe('transformToSCSS', () => {
 			const [, colors] = transformToSCSS(
 				lightColorsForPrimitivesPath,
 				darkColorsForPrimitivesPath,
+				BEST_PRACTICE_WEB_CONVENTIONS,
 				primitivesExport
 			);
 			expect(colors.content).toContain('light-dark(#{$grey-750}, #{$grey-50})');
 		});
 
 		it('skips non-Colour tokens in the primitives export (!scssVar guard)', () => {
-			// primitivesExportWithNonColour has a Spacing/ entry that figmaNameToScssVar rejects
 			const [prims] = transformToSCSS(
 				lightColorsForPrimitivesPath,
 				darkColorsForPrimitivesPath,
+				BEST_PRACTICE_WEB_CONVENTIONS,
 				primitivesExportWithNonColour
 			);
 			expect(prims.content).not.toContain('$spacing');

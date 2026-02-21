@@ -24,7 +24,9 @@
 		saveFigmaFileKey,
 		loadFigmaFileKey,
 		saveFigmaPat,
-		loadFigmaPat
+		loadFigmaPat,
+		saveBestPractices,
+		loadBestPractices
 	} from '$lib/storage.js';
 	import type {
 		Platform,
@@ -52,7 +54,9 @@
 		extractDeprecations,
 		diffChangeIndices,
 		filterDiffLines,
-		generateChangelog
+		generateChangelog,
+		computeBlameMap,
+		type BlameStatus
 	} from '$lib/diff-utils.js';
 	import {
 		type DependencyEntry,
@@ -76,6 +80,9 @@
 	import PrResults from '$lib/components/PrResults.svelte';
 	import SwatchPanel from '$lib/components/SwatchPanel.svelte';
 	import SettingsPanel from '$lib/components/SettingsPanel.svelte';
+	import OutputHeader from '$lib/components/OutputHeader.svelte';
+	import FileSidebar from '$lib/components/FileSidebar.svelte';
+	import CodeMinimap from '$lib/components/CodeMinimap.svelte';
 
 	// ─── Static grid (pre-generated, no reactive Math.random) ────────────────────
 
@@ -113,11 +120,24 @@
 	];
 
 	let selectedPlatforms = $state<Platform[]>(['web']);
+	let bestPractices = $state(true);
+
+	let prevPlatforms = $state<string>(JSON.stringify(['web']));
 
 	function selectPlatform(id: Platform) {
 		selectedPlatforms = [id];
 		if (browser) savePlatforms([id]);
 	}
+
+	$effect(() => {
+		const key = JSON.stringify(selectedPlatforms);
+		if (key !== prevPlatforms) {
+			prevPlatforms = key;
+			if (result && canGenerate) {
+				generate();
+			}
+		}
+	});
 
 	// ─── File slots ───────────────────────────────────────────────────────────────
 
@@ -297,6 +317,8 @@
 	// Count visible filled slots (for status display)
 	const visibleFilled = $derived(visibleKeys.filter((k) => !!slots[k].file).length);
 
+	const hasRefFiles = $derived(REF_KEYS.some((k) => !!slots[k].file));
+
 	// ─── Lifecycle: restore from localStorage ─────────────────────────────────────
 
 	onMount(() => {
@@ -305,6 +327,9 @@
 		// Restore platform selection
 		const storedPlatforms = loadPlatforms();
 		if (storedPlatforms?.length) selectedPlatforms = storedPlatforms;
+
+		// Restore best practices toggle
+		bestPractices = loadBestPractices();
 
 		// Restore reference files from localStorage
 		for (const key of REF_KEYS) {
@@ -356,6 +381,17 @@
 	let renames = $state<Record<string, RenameEntry[]>>({});
 	let familyRenames = $state<Record<string, FamilyRename[]>>({});
 	let tokenCoverage = $state<Record<string, TokenCoverageResult>>({});
+
+	let diffTotals = $derived.by(() => {
+		let added = 0, removed = 0, modified = 0;
+		for (const [filename, lines] of Object.entries(diffs)) {
+			const s = diffStats(lines, modifications[filename]);
+			added += s.added;
+			removed += s.removed;
+			modified += s.modified;
+		}
+		return { added, removed, modified };
+	});
 	let platformMismatches = $state<PlatformMismatch[]>([]);
 	let dependencyMap = $state<DependencyEntry[]>([]);
 	let impactedTokens = $state<ImpactEntry[]>([]);
@@ -386,7 +422,7 @@
 		'night-owl': 'github-light'
 	};
 
-	let selectedTheme = $state<ThemeId>('one-dark-pro');
+	let selectedTheme = $state<ThemeId>('github-dark-dimmed');
 	let showThemePicker = $state(false);
 	let appColorMode = $state<'dark' | 'light'>('dark');
 
@@ -467,6 +503,145 @@
 	let highlightedLines = $state<{ start: number; end: number } | null>(null);
 	let wrapLines = $state(false);
 	let showSectionNav = $state(false);
+	let collapsedSections = $state<Set<number>>(new Set());
+
+	function toggleFold(lineNum: number) {
+		const next = new Set(collapsedSections);
+		if (next.has(lineNum)) next.delete(lineNum);
+		else next.add(lineNum);
+		collapsedSections = next;
+	}
+
+	function computeFoldRanges(content: string): { start: number; end: number; label: string }[] {
+		const sections = extractSections(content);
+		const ranges: { start: number; end: number; label: string }[] = [];
+		const totalLines = content.split('\n').length;
+		for (let i = 0; i < sections.length; i++) {
+			const start = sections[i].line;
+			const end = i + 1 < sections.length ? sections[i + 1].line - 1 : totalLines;
+			ranges.push({ start, end, label: sections[i].label });
+		}
+		return ranges;
+	}
+
+	$effect(() => {
+		if (!highlights || !result?.files) return;
+		const file = result.files.find((f) => f.filename === activeTab);
+		if (!file) return;
+		const ranges = computeFoldRanges(file.content);
+		requestAnimationFrame(() => {
+			const wrap = document.querySelector('.shiki-wrap code') ?? document.querySelector('.code-pre code');
+			if (!wrap) return;
+			const lines = wrap.querySelectorAll(':scope > .line');
+			wrap.querySelectorAll('.fold-toggle').forEach((el) => el.remove());
+			wrap.querySelectorAll('.fold-placeholder').forEach((el) => el.remove());
+
+			for (const range of ranges) {
+				const lineEl = lines[range.start - 1] as HTMLElement | undefined;
+				if (!lineEl) continue;
+
+				const isCollapsed = collapsedSections.has(range.start);
+				const hiddenCount = range.end - range.start;
+
+				const toggle = document.createElement('span');
+				toggle.className = `fold-toggle ${isCollapsed ? 'fold-toggle--collapsed' : ''}`;
+				toggle.textContent = isCollapsed ? '▶' : '▼';
+				toggle.title = isCollapsed ? `Expand ${hiddenCount} lines` : 'Collapse section';
+				toggle.addEventListener('click', (e) => {
+					e.stopPropagation();
+					toggleFold(range.start);
+				});
+				lineEl.prepend(toggle);
+
+				if (isCollapsed) {
+					for (let l = range.start; l < range.end; l++) {
+						const el = lines[l] as HTMLElement | undefined;
+						if (el) el.style.display = 'none';
+					}
+					const placeholder = document.createElement('div');
+					placeholder.className = 'fold-placeholder';
+					placeholder.textContent = `··· ${hiddenCount} lines hidden (${range.label}) ···`;
+					placeholder.addEventListener('click', () => toggleFold(range.start));
+					lineEl.after(placeholder);
+				} else {
+					for (let l = range.start; l < range.end; l++) {
+						const el = lines[l] as HTMLElement | undefined;
+						if (el) el.style.display = '';
+					}
+				}
+			}
+
+			// Blame gutter: annotate lines as new/modified/unchanged
+			const diffLines = diffs[file.filename];
+			wrap.querySelectorAll('.blame-mark').forEach((el) => el.remove());
+			if (diffLines && diffLines.length > 0) {
+				const blame = computeBlameMap(diffLines);
+				for (let i = 0; i < Math.min(blame.length, lines.length); i++) {
+					if (blame[i] === 'unchanged') continue;
+					const lineEl = lines[i] as HTMLElement;
+					const mark = document.createElement('span');
+					mark.className = `blame-mark blame-mark--${blame[i]}`;
+					mark.title = blame[i] === 'new' ? 'New line' : 'Modified line';
+					lineEl.prepend(mark);
+				}
+			}
+		});
+	});
+
+	let codeScrollTop = $state(0);
+	let codeScrollHeight = $state(0);
+	let codeClientHeight = $state(0);
+	let codeScrollEl: HTMLElement | null = $state(null);
+
+	let currentBreadcrumb = $state('');
+
+	function handleCodeScroll(e: Event) {
+		const el = e.target as HTMLElement;
+		codeScrollTop = el.scrollTop;
+		codeScrollHeight = el.scrollHeight;
+		codeClientHeight = el.clientHeight;
+		updateBreadcrumb(el);
+	}
+
+	function updateBreadcrumb(scrollEl: HTMLElement) {
+		if (!result?.files.length) return;
+		const file = result.files.find((f) => f.filename === activeTab);
+		if (!file) return;
+		const sections = extractSections(file.content);
+		if (sections.length === 0) { currentBreadcrumb = ''; return; }
+
+		const lineH = 22.5;
+		const currentLine = Math.floor(scrollEl.scrollTop / lineH) + 1;
+		let active = sections[0];
+		for (const sec of sections) {
+			if (sec.line <= currentLine) active = sec;
+			else break;
+		}
+		currentBreadcrumb = active ? active.label : '';
+	}
+
+	function seekMinimap(fraction: number) {
+		if (codeScrollEl) {
+			const maxScroll = codeScrollEl.scrollHeight - codeScrollEl.clientHeight;
+			codeScrollEl.scrollTop = fraction * maxScroll;
+		}
+	}
+
+	function formatFileSize(bytes: number): string {
+		if (bytes < 1024) return `${bytes} B`;
+		return `${(bytes / 1024).toFixed(1)} KB`;
+	}
+
+	function langLabel(format: string): string {
+		switch (format) {
+			case 'scss': return 'SCSS';
+			case 'typescript': return 'TypeScript';
+			case 'swift': return 'Swift';
+			case 'kotlin': return 'Kotlin';
+			case 'css': return 'CSS';
+			default: return format;
+		}
+	}
 
 	// ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -678,6 +853,7 @@
 			fd.append('darkColors', slots.darkColors.file!);
 			fd.append('values', slots.values.file!);
 			fd.append('platforms', JSON.stringify(selectedPlatforms));
+			fd.append('bestPractices', String(bestPractices));
 
 			// Append optional files if present
 			const optionalKeys: DropZoneKey[] = [
@@ -809,6 +985,7 @@
 		const { codeToHtml } = await import('shiki');
 		const theme = THEMES.find((t) => t.id === selectedTheme) ?? THEMES[2];
 		const langMap: Record<string, string> = {
+			css: 'css',
 			scss: 'scss',
 			typescript: 'typescript',
 			swift: 'swift',
@@ -1061,6 +1238,36 @@
 			}
 		}
 		return sections;
+	}
+
+	function extractDiffColor(text: string): string | null {
+		const m = text.match(/#([0-9a-fA-F]{6,8}|[0-9a-fA-F]{3})(?![0-9a-fA-F])/)
+			?? text.match(/0x([0-9a-fA-F]{6,8})(?![0-9a-fA-F])/i);
+		if (!m) return null;
+		const raw = m[1];
+		if (raw.length === 3) return `#${raw[0]}${raw[0]}${raw[1]}${raw[1]}${raw[2]}${raw[2]}`;
+		if (raw.length === 8 && text.includes('0x')) return `#${raw.slice(2, 8)}`;
+		return `#${raw.slice(0, 6)}`;
+	}
+
+	function computeHunkHeaders(lines: DiffLine[]): Set<number> {
+		const hunks = new Set<number>();
+		for (let i = 0; i < lines.length; i++) {
+			if (lines[i].type === 'equal') continue;
+			if (i === 0 || lines[i - 1].type === 'equal') {
+				hunks.add(i);
+			}
+		}
+		return hunks;
+	}
+
+	function nearestContext(lines: DiffLine[], idx: number): string {
+		for (let i = idx - 1; i >= 0; i--) {
+			const t = lines[i].text.trim();
+			if (t.startsWith('//') && t.length > 3) return t;
+			if (/^(export|object|public |@mixin|:root|\$\w)/.test(t)) return t.slice(0, 60);
+		}
+		return '';
 	}
 
 	function scrollToLine(lineNum: number) {
@@ -1666,6 +1873,31 @@
 					</div>
 				</div>
 
+				{#if hasRefFiles}
+					<div class="best-practices-toggle">
+						<label class="toggle-label">
+							<span class="toggle-track" class:active={bestPractices}>
+								<span class="toggle-thumb"></span>
+							</span>
+							<input
+								type="checkbox"
+								class="sr-only"
+								checked={bestPractices}
+								onchange={(e) => {
+									bestPractices = (e.target as HTMLInputElement).checked;
+									saveBestPractices(bestPractices);
+								}}
+							/>
+							<span class="toggle-text">{bestPractices ? 'Best practices' : 'Match existing'}</span>
+						</label>
+						<span class="toggle-hint">
+							{bestPractices
+								? 'Output uses modern patterns (@use, type annotations, etc.)'
+								: 'Output matches your uploaded reference file conventions'}
+						</span>
+					</div>
+				{/if}
+
 				<div
 					class="file-list"
 					ondragenter={(e) => {
@@ -1953,157 +2185,36 @@
 						{/if}
 					</div>
 				{:else}
-					<div class="output-header">
-						<div class="output-header-top">
-							<div class="panel-eyebrow panel-eyebrow--out">
-								<span>OUTPUT</span>
-								{#if lastGeneratedAt}
-									<span class="generated-at" title="Generated at {formatTime(lastGeneratedAt)}">
-										{timeAgo(lastGeneratedAt)}
-									</span>
-								{/if}
-							</div>
-							<div class="output-actions">
-								<button
-									class="ctrl-btn ctrl-btn--primary"
-									onclick={downloadZip}
-									aria-label="Download all files as ZIP"
-								>
-									<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"
-										><path
-											d="M2.75 14A1.75 1.75 0 011 12.25v-2.5a.75.75 0 011.5 0v2.5c0 .138.112.25.25.25h10.5a.25.25 0 00.25-.25v-2.5a.75.75 0 011.5 0v2.5A1.75 1.75 0 0113.25 14zM7.25 7.689V2a.75.75 0 011.5 0v5.689l1.97-1.969a.749.749 0 111.06 1.06l-3.25 3.25a.749.749 0 01-1.06 0L4.22 6.78a.749.749 0 111.06-1.06z"
-										/></svg
-									>
-									ZIP
-								</button>
-								<button
-									class="ctrl-btn"
-									onclick={sendPRs}
-									disabled={sendingPrs}
-									title="Send pull requests to team repos"
-									aria-label="Send pull requests"
-								>
-									<svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor"
-										><path
-											d="M1.5 3.25a2.25 2.25 0 113 2.122v5.256a2.251 2.251 0 11-1.5 0V5.372A2.25 2.25 0 011.5 3.25zm5.677-.177L9.573.677A.25.25 0 0110 .854V2.5h1A2.5 2.5 0 0113.5 5v5.628a2.251 2.251 0 11-1.5 0V5a1 1 0 00-1-1h-1v1.646a.25.25 0 01-.427.177L7.177 3.427a.25.25 0 010-.354zM3.75 2.5a.75.75 0 100 1.5.75.75 0 000-1.5zm0 9.5a.75.75 0 100 1.5.75.75 0 000-1.5zm9.5 0a.75.75 0 100 1.5.75.75 0 000-1.5z"
-										/></svg
-									>
-									{sendingPrs ? '…' : 'PR'}
-								</button>
-								{#if Object.keys(diffs).length > 0}
-									<button
-										class="ctrl-btn"
-										onclick={() => copyToClipboard(generateChangelog(buildChangelogCtx()))}
-										aria-label="Copy changelog to clipboard"
-										title="Copy changelog"
-									>
-										<svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor"
-											><path
-												d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25zM5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25z"
-											/></svg
-										>
-										Log
-									</button>
-								{/if}
-								{#if swatches.length > 0}
-									<button
-										class="ctrl-btn"
-										class:ctrl-btn--active={showSwatches}
-										onclick={() => (showSwatches = !showSwatches)}
-										title="Toggle color swatch preview">◈</button
-									>
-								{/if}
-								{#if history.length > 0}
-									<button
-										class="ctrl-btn"
-										class:ctrl-btn--active={showHistory}
-										onclick={() => (showHistory = !showHistory)}
-										title="View generation history"
-									>
-										<svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor"
-											><path
-												d="M1.643 3.143L.427 1.927A.25.25 0 000 2.104V5.75c0 .138.112.25.25.25h3.646a.25.25 0 00.177-.427L2.715 4.215a6.5 6.5 0 11-1.18 4.458.75.75 0 10-1.493.154 8.001 8.001 0 101.6-5.684zM7.75 4a.75.75 0 01.75.75v2.992l2.028.812a.75.75 0 01-.557 1.392l-2.5-1A.751.751 0 017 8.25v-3.5A.75.75 0 017.75 4z"
-											/></svg
-										>
-										{history.length}
-									</button>
-								{/if}
-							</div>
-						</div>
-						{#if result.stats}
-							{@const s = result.stats}
-							<div class="output-stats-row">
-								{#if s.primitiveColors > 0}
-									<span class="stat-pill" title="Primitive color tokens"
-										>{s.primitiveColors} primitives</span
-									>
-								{/if}
-								{#if s.semanticColors > 0}
-									<span class="stat-pill" title="Semantic color tokens"
-										>{s.semanticColors} semantic</span
-									>
-								{/if}
-								{#if s.spacingSteps > 0}
-									<span class="stat-pill" title="Spacing tokens">{s.spacingSteps} spacing</span>
-								{/if}
-								{#if s.typographyStyles > 0}
-									<span class="stat-pill stat-pill--typo" title="Typography text styles"
-										>{s.typographyStyles} text styles</span
-									>
-								{/if}
-								<span class="stat-pill stat-pill--files">{result.files.length} files</span>
-							</div>
-						{/if}
-					</div>
+					<OutputHeader
+						{result}
+						{lastGeneratedAt}
+						{sendingPrs}
+						hasDiffs={Object.keys(diffs).length > 0}
+						{diffTotals}
+						swatchCount={swatches.length}
+						historyCount={history.length}
+						{showSwatches}
+						{showHistory}
+						{formatTime}
+						{timeAgo}
+						onDownloadZip={downloadZip}
+						onSendPRs={sendPRs}
+						onCopyChangelog={() => copyToClipboard(generateChangelog(buildChangelogCtx()))}
+						onToggleSwatches={() => (showSwatches = !showSwatches)}
+						onToggleHistory={() => (showHistory = !showHistory)}
+					/>
 
 					<!-- Vertical file sidebar + code pane -->
 					<div class="output-body">
-						<!-- File sidebar -->
-						<div
-							class="file-sidebar"
-							role="tablist"
-							aria-label="Generated files"
-							tabindex="0"
-							onkeydown={handleTabKeydown}
-						>
-							{#each result.files as file (file.filename)}
-								{@const hasDiff = !!diffs[file.filename]}
-								{@const stats = hasDiff ? diffStats(diffs[file.filename]) : null}
-								{@const modCount = modifications[file.filename]?.length ?? 0}
-								{@const totalChanges = (stats?.added ?? 0) + (stats?.removed ?? 0) + modCount}
-								<button
-									class="sidebar-item"
-									class:sidebar-item--active={activeTab === file.filename}
-									role="tab"
-									aria-selected={activeTab === file.filename}
-									onclick={() => (activeTab = file.filename)}
-								>
-									<span class="sidebar-name">
-										<span
-											class="sidebar-dot"
-											style="background: {file.format === 'scss'
-												? '#F06090'
-												: file.format === 'swift'
-													? '#FF8040'
-													: file.format === 'kotlin'
-														? '#B060FF'
-														: '#4D9EFF'}"
-										></span>
-										{file.filename}
-									</span>
-									<span class="sidebar-stats">
-										<span class="sidebar-lines">{file.content.split('\n').length} lines</span>
-										{#if totalChanges > 0}
-											<span
-												class="sidebar-change-dot"
-												title="{stats?.added ?? 0} added, {stats?.removed ??
-													0} removed, {modCount} modified"
-											></span>
-										{/if}
-									</span>
-								</button>
-							{/each}
-						</div>
+						<FileSidebar
+							files={result.files}
+							{activeTab}
+							{diffs}
+							{modifications}
+							{diffStats}
+							onTabSelect={(f) => (activeTab = f)}
+							onTabKeydown={handleTabKeydown}
+						/>
 
 						<!-- Code pane -->
 						{#each result.files as file (file.filename)}
@@ -2483,14 +2594,32 @@
 										</div>
 									{/if}
 
+									{#if currentBreadcrumb && !searchQuery && mode === 'code'}
+									<div class="code-breadcrumb">
+										<span class="breadcrumb-file">{file.filename}</span>
+										<span class="breadcrumb-sep">&rsaquo;</span>
+										<span class="breadcrumb-section">{currentBreadcrumb}</span>
+									</div>
+								{/if}
+
+								<div class="code-body-wrap">
+									<div class="code-body-scroll" id="code-scroll-region" bind:this={codeScrollEl} onscroll={handleCodeScroll}>
 									{#if searchQuery && sr}
 										<!-- eslint-disable-next-line svelte/no-at-html-tags -- search results are escaped via escapeHtml() before mark injection -->
 										<pre class="code-pre code-pre--search">{@html sr.html}</pre>
 									{:else if mode === 'diff' && hasDiff}
+										{@const hunkStarts = computeHunkHeaders(diffs[file.filename])}
 										<div class="diff-view">
 											{#each diffs[file.filename] as line, li (li)}
+												{#if hunkStarts.has(li)}
+													{@const ctx = nearestContext(diffs[file.filename], li)}
+													{#if ctx}
+														<div class="diff-hunk-header">{ctx}</div>
+													{/if}
+												{/if}
 												{@const oldNum = line.type === 'add' ? '' : (line.oldLineNum ?? '')}
 												{@const newNum = line.type === 'remove' ? '' : (line.newLineNum ?? '')}
+												{@const diffColor = extractDiffColor(line.text)}
 												<div
 													class="diff-line diff-line--{line.type}"
 													id="diff-line-{file.filename}-{li}"
@@ -2500,6 +2629,9 @@
 													<span class="diff-sig"
 														>{line.type === 'add' ? '+' : line.type === 'remove' ? '-' : ' '}</span
 													>
+													{#if diffColor}
+														<span class="diff-color-swatch" style="background:{diffColor}" aria-hidden="true"></span>
+													{/if}
 													<span class="diff-text"
 														>{#if line.spans}{#each line.spans as span, si (si)}<span
 																	class:diff-word--changed={span.changed}>{span.text}</span
@@ -2512,6 +2644,7 @@
 										<div class="diff-view diff-view--filtered">
 											{#each filterDiffLines(diffs[file.filename]) as item, fi (fi)}
 												{#if 'text' in item}
+													{@const changeColor = extractDiffColor(item.text)}
 													<div class="diff-line diff-line--{item.type}">
 														<span class="diff-sig"
 															>{item.type === 'add'
@@ -2520,6 +2653,9 @@
 																	? '-'
 																	: ' '}</span
 														>
+														{#if changeColor}
+															<span class="diff-color-swatch" style="background:{changeColor}" aria-hidden="true"></span>
+														{/if}
 														<span class="diff-text"
 															>{#if item.spans}{#each item.spans as span, si (si)}<span
 																		class:diff-word--changed={span.changed}>{span.text}</span
@@ -2557,6 +2693,33 @@
 												>{file.content}</code
 											></pre>
 									{/if}
+									</div>
+									<CodeMinimap
+										content={file.content}
+										totalLines={file.content.split('\n').length}
+										scrollTop={codeScrollTop}
+										scrollHeight={codeScrollHeight}
+										clientHeight={codeClientHeight}
+										diffRegions={diffs[file.filename]?.filter(l => l.type !== 'equal').map(l => ({ line: l.newLineNum ?? l.oldLineNum ?? 0, type: l.type === 'add' ? 'add' as const : 'remove' as const })) ?? []}
+										onSeek={seekMinimap}
+									/>
+								</div>
+								<div class="code-stats-bar">
+									<span class="stats-item">{langLabel(file.format)}</span>
+									<span class="stats-sep">|</span>
+									<span class="stats-item">{file.content.split('\n').length} lines</span>
+									<span class="stats-sep">|</span>
+									<span class="stats-item">{formatFileSize(new Blob([file.content]).size)}</span>
+									{#if diffs[file.filename]}
+										{@const ds = diffStats(diffs[file.filename], modifications[file.filename])}
+										<span class="stats-sep">|</span>
+										<span class="stats-item stats-item--add">+{ds.added}</span>
+										<span class="stats-item stats-item--rm">-{ds.removed}</span>
+										{#if ds.modified > 0}
+											<span class="stats-item stats-item--mod">~{ds.modified}</span>
+										{/if}
+									{/if}
+								</div>
 								</div>
 							{/if}
 						{/each}
@@ -2856,7 +3019,7 @@
 		.output-body {
 			grid-template-columns: 1fr;
 		}
-		.file-sidebar {
+		:global(.file-sidebar) {
 			flex-direction: row;
 			flex-wrap: wrap;
 			border-right: none;
@@ -2864,7 +3027,7 @@
 			overflow-x: auto;
 			overflow-y: hidden;
 		}
-		.sidebar-item {
+		:global(.sidebar-item) {
 			flex-direction: row;
 			align-items: center;
 			gap: 8px;
@@ -2873,14 +3036,14 @@
 			border-right: 1px solid var(--borderColor-muted);
 			padding: 9px 12px;
 		}
-		.sidebar-item--active {
+		:global(.sidebar-item--active) {
 			border-bottom-color: var(--brand-color);
 			border-left-color: transparent;
 		}
 	}
 
 	/* ─── Panel Eyebrow ─────────────────────────────────────────────────────────── */
-	.panel-eyebrow {
+	:global(.panel-eyebrow) {
 		display: flex;
 		align-items: center;
 		gap: 10px;
@@ -2892,7 +3055,7 @@
 		color: var(--fgColor-muted);
 		margin-bottom: 14px;
 	}
-	.panel-eyebrow--out {
+	:global(.panel-eyebrow--out) {
 		margin-bottom: 0;
 	}
 	/* ─── Upload Panel ──────────────────────────────────────────────────────────── */
@@ -3421,40 +3584,40 @@
 	}
 
 	/* ─── Output Header ─────────────────────────────────────────────────────────── */
-	.output-header {
+	:global(.output-header) {
 		display: flex;
 		flex-direction: column;
 		gap: 8px;
 		margin-bottom: 12px;
 	}
-	.output-header-top {
+	:global(.output-header-top) {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
 		gap: 12px;
 	}
-	.output-header-top .panel-eyebrow {
+	:global(.output-header-top .panel-eyebrow) {
 		margin-bottom: 0;
 		display: flex;
 		align-items: center;
 		gap: 10px;
 	}
 
-	.output-stats-row {
+	:global(.output-stats-row) {
 		display: flex;
 		align-items: center;
 		gap: 6px;
 		flex-wrap: wrap;
 	}
 
-	.output-actions {
+	:global(.output-actions) {
 		display: flex;
 		align-items: center;
 		gap: 6px;
 		flex-shrink: 0;
 	}
 
-	.generated-at {
+	:global(.generated-at) {
 		font-family: var(--fontStack-sansSerif);
 		font-size: var(--base-text-size-xs);
 		color: var(--fgColor-disabled);
@@ -3462,7 +3625,7 @@
 		font-weight: var(--base-text-weight-normal);
 	}
 
-	.ctrl-btn {
+	:global(.ctrl-btn) {
 		font-family: var(--fontStack-sansSerif);
 		font-size: var(--base-text-size-xs);
 		font-weight: var(--base-text-weight-medium);
@@ -3482,43 +3645,45 @@
 		align-items: center;
 		gap: 5px;
 	}
-	.ctrl-btn svg {
+	:global(.ctrl-btn svg) {
 		flex-shrink: 0;
 		opacity: 0.7;
 	}
-	.ctrl-btn:hover {
+	:global(.ctrl-btn:hover) {
 		color: var(--fgColor-default);
 		border-color: var(--borderColor-emphasis);
 		background: var(--control-bgColor-hover);
 	}
-	.ctrl-btn:hover svg {
+	:global(.ctrl-btn:hover svg) {
 		opacity: 1;
 	}
-	.ctrl-btn--primary {
+	:global(.ctrl-btn--primary) {
 		background: var(--bgColor-accent-muted);
 		border-color: color-mix(in srgb, var(--borderColor-accent-emphasis) 40%, transparent);
 		color: var(--fgColor-accent);
 	}
-	.ctrl-btn--primary:hover {
+	:global(.ctrl-btn--primary:hover) {
 		background: color-mix(in srgb, var(--bgColor-accent-muted) 80%, var(--bgColor-accent-emphasis));
 		color: var(--fgColor-onEmphasis);
 	}
-	.ctrl-btn--icon {
+	:global(.ctrl-btn--icon) {
 		padding: 5px 6px;
 	}
 
 	/* ─── Output body: sidebar + code pane ─────────────────────────────────────── */
 	.output-body {
 		display: grid;
-		grid-template-columns: 200px 1fr;
+		grid-template-columns: 180px 1fr;
+		grid-template-rows: 1fr;
 		border: 1px solid var(--borderColor-default);
 		border-radius: var(--borderRadius-large);
 		overflow: hidden;
-		min-height: 400px;
+		min-height: 300px;
+		max-height: calc(100vh - 200px);
 	}
 
 	/* ─── File Sidebar ───────────────────────────────────────────────────────────── */
-	.file-sidebar {
+	:global(.file-sidebar) {
 		display: flex;
 		flex-direction: column;
 		border-right: 1px solid var(--borderColor-muted);
@@ -3529,7 +3694,7 @@
 		scrollbar-color: var(--borderColor-default) transparent;
 	}
 
-	.sidebar-item {
+	:global(.sidebar-item) {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
@@ -3546,18 +3711,18 @@
 			background var(--base-duration-100) var(--base-easing-ease),
 			border-color var(--base-duration-100) var(--base-easing-ease);
 	}
-	.sidebar-item:last-child {
+	:global(.sidebar-item:last-child) {
 		border-bottom: none;
 	}
-	.sidebar-item:hover {
+	:global(.sidebar-item:hover) {
 		background: var(--bgColor-muted);
 	}
-	.sidebar-item--active {
+	:global(.sidebar-item--active) {
 		background: var(--bgColor-muted);
 		border-left-color: var(--brand-color);
 	}
 
-	.sidebar-dot {
+	:global(.sidebar-dot) {
 		display: inline-block;
 		width: 6px;
 		height: 6px;
@@ -3566,11 +3731,11 @@
 		opacity: 0.5;
 		transition: opacity var(--base-duration-200) var(--base-easing-ease);
 	}
-	.sidebar-item--active .sidebar-dot {
+	:global(.sidebar-item--active .sidebar-dot) {
 		opacity: 1;
 	}
 
-	.sidebar-name {
+	:global(.sidebar-name) {
 		display: flex;
 		align-items: center;
 		gap: 6px;
@@ -3584,26 +3749,26 @@
 		transition: color var(--base-duration-100) var(--base-easing-ease);
 		min-width: 0;
 	}
-	.sidebar-item--active .sidebar-name {
+	:global(.sidebar-item--active .sidebar-name) {
 		color: var(--fgColor-default);
 	}
-	.sidebar-item:hover .sidebar-name {
+	:global(.sidebar-item:hover .sidebar-name) {
 		color: var(--fgColor-muted);
 	}
 
-	.sidebar-stats {
+	:global(.sidebar-stats) {
 		display: flex;
 		align-items: center;
 		gap: 6px;
 		flex-shrink: 0;
 	}
-	.sidebar-lines {
+	:global(.sidebar-lines) {
 		font-family: var(--fontStack-monospace);
 		font-size: 9px;
 		color: var(--fgColor-disabled);
 		white-space: nowrap;
 	}
-	.sidebar-change-dot {
+	:global(.sidebar-change-dot) {
 		display: inline-block;
 		width: 6px;
 		height: 6px;
@@ -3700,6 +3865,31 @@
 		border-bottom: 1px dashed var(--borderColor-muted);
 		user-select: none;
 	}
+	.diff-color-swatch {
+		display: inline-block;
+		width: 10px;
+		height: 10px;
+		border-radius: 2px;
+		flex-shrink: 0;
+		border: 1px solid rgba(255, 255, 255, 0.15);
+		vertical-align: middle;
+	}
+
+	.diff-hunk-header {
+		position: sticky;
+		top: 0;
+		z-index: 2;
+		padding: 3px 20px;
+		font-family: var(--fontStack-monospace);
+		font-size: 10.5px;
+		color: var(--fgColor-accent);
+		background: color-mix(in srgb, var(--bgColor-accent-muted) 40%, var(--bgColor-default));
+		border-bottom: 1px solid var(--borderColor-accent-muted);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
 	.diff-word--changed {
 		border-radius: 2px;
 		padding: 0 1px;
@@ -3763,19 +3953,176 @@
 		font-size: 10.5px;
 	}
 
-	/* ─── Sticky Toolbar ───────────────────────────────────────────────────────── */
+	/* ─── Code body wrapper (scroll + minimap) ────────────────────────────────── */
+	.code-body-wrap {
+		display: flex;
+		flex: 1;
+		min-height: 0;
+		overflow: hidden;
+	}
+	.code-body-scroll {
+		flex: 1;
+		overflow: auto;
+		min-height: 0;
+		scrollbar-width: thin;
+		scrollbar-color: var(--borderColor-default) transparent;
+	}
+
 	.code-toolbar {
-		position: sticky;
-		top: 0;
+		flex-shrink: 0;
 		z-index: 10;
+	}
+
+	/* ─── File Stats Bar ───────────────────────────────────────────────────────── */
+	.code-stats-bar {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 3px 16px;
+		font-family: var(--fontStack-monospace);
+		font-size: 10px;
+		color: var(--fgColor-disabled);
+		background: var(--bgColor-inset);
+		border-top: 1px solid var(--borderColor-muted);
+		flex-shrink: 0;
+		white-space: nowrap;
+		overflow: hidden;
+		min-height: 22px;
+	}
+	.stats-item {
+		letter-spacing: 0.02em;
+	}
+	.stats-sep {
+		color: var(--borderColor-muted);
+	}
+	.stats-item--add {
+		color: var(--fgColor-success);
+	}
+	.stats-item--rm {
+		color: var(--fgColor-danger);
+	}
+	.stats-item--mod {
+		color: var(--fgColor-attention);
+	}
+
+	/* ─── Diff summary pills in output header ──────────────────────────────────── */
+	:global(.output-diff-row) {
+		display: flex;
+		gap: 6px;
+		padding: 0 12px 8px;
+		flex-wrap: wrap;
+	}
+	:global(.diff-pill) {
+		font-family: var(--fontStack-monospace);
+		font-size: 10px;
+		font-weight: var(--base-text-weight-medium);
+		padding: 2px 8px;
+		border-radius: var(--borderRadius-full);
+		letter-spacing: 0.01em;
+	}
+	:global(.diff-pill--add) {
+		background: color-mix(in srgb, var(--bgColor-success-emphasis) 20%, transparent);
+		color: var(--fgColor-success);
+	}
+	:global(.diff-pill--mod) {
+		background: color-mix(in srgb, var(--bgColor-attention-emphasis) 20%, transparent);
+		color: var(--fgColor-attention);
+	}
+	:global(.diff-pill--rm) {
+		background: color-mix(in srgb, var(--bgColor-danger-emphasis) 20%, transparent);
+		color: var(--fgColor-danger);
+	}
+
+	/* ─── Blame gutter ─────────────────────────────────────────────────────────── */
+	:global(.blame-mark) {
+		display: inline-block;
+		width: 3px;
+		height: 100%;
+		min-height: 1em;
+		margin-right: 3px;
+		vertical-align: middle;
+		border-radius: 1px;
+		flex-shrink: 0;
+	}
+	:global(.blame-mark--new) {
+		background: var(--bgColor-success-emphasis);
+		opacity: 0.6;
+	}
+	:global(.blame-mark--modified) {
+		background: var(--bgColor-attention-emphasis);
+		opacity: 0.6;
+	}
+
+	/* ─── Fold controls ────────────────────────────────────────────────────────── */
+	:global(.fold-toggle) {
+		display: inline-block;
+		width: 14px;
+		font-size: 8px;
+		text-align: center;
+		cursor: pointer;
+		color: var(--fgColor-disabled);
+		user-select: none;
+		margin-right: 2px;
+		vertical-align: middle;
+		opacity: 0;
+		transition: opacity var(--base-duration-100) var(--base-easing-ease);
+	}
+	:global(.shiki-wrap .line:hover .fold-toggle),
+	:global(.fold-toggle--collapsed) {
+		opacity: 1;
+	}
+	:global(.fold-toggle:hover) {
+		color: var(--fgColor-accent);
+	}
+	:global(.fold-placeholder) {
+		padding: 2px 16px 2px 60px;
+		font-family: var(--fontStack-monospace);
+		font-size: 10.5px;
+		color: var(--fgColor-disabled);
+		background: var(--bgColor-inset);
+		border-top: 1px dashed var(--borderColor-muted);
+		border-bottom: 1px dashed var(--borderColor-muted);
+		cursor: pointer;
+		user-select: none;
+		text-align: center;
+	}
+	:global(.fold-placeholder:hover) {
+		color: var(--fgColor-accent);
+		background: color-mix(in srgb, var(--bgColor-accent-muted) 20%, transparent);
+	}
+
+	/* ─── Breadcrumb ───────────────────────────────────────────────────────────── */
+	.code-breadcrumb {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		padding: 4px 16px;
+		font-family: var(--fontStack-monospace);
+		font-size: 10.5px;
+		color: var(--fgColor-muted);
+		background: var(--bgColor-inset);
+		border-bottom: 1px solid var(--borderColor-muted);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		min-height: 24px;
+		flex-shrink: 0;
+	}
+	.breadcrumb-file {
+		color: var(--fgColor-disabled);
+	}
+	.breadcrumb-sep {
+		color: var(--fgColor-disabled);
+		font-size: 12px;
+	}
+	.breadcrumb-section {
+		color: var(--fgColor-default);
+		font-weight: var(--base-text-weight-medium);
 	}
 
 	/* ─── Shiki Syntax Highlighting ─────────────────────────────────────────────── */
 	.shiki-wrap {
-		overflow: auto;
 		flex: 1;
-		min-height: 200px;
-		max-height: calc(100vh - 240px);
 	}
 
 	:global(.shiki-wrap pre) {
@@ -3977,11 +4324,8 @@
 
 	/* ─── Plain Code Fallback ───────────────────────────────────────────────────── */
 	.code-pre {
-		overflow: auto;
 		padding: 20px 24px;
 		flex: 1;
-		min-height: 200px;
-		max-height: calc(100vh - 240px);
 		tab-size: 2;
 	}
 	.code-pre code {
@@ -3995,10 +4339,7 @@
 
 	/* ─── Diff View ─────────────────────────────────────────────────────────────── */
 	.diff-view {
-		overflow: auto;
 		flex: 1;
-		min-height: 200px;
-		max-height: calc(100vh - 240px);
 		font-family: 'IBM Plex Mono', var(--fontStack-monospace);
 		font-size: var(--base-text-size-xs);
 		font-weight: var(--base-text-weight-light);
@@ -4188,7 +4529,7 @@
 	/* ─── Platform Consistency Panel ─────────────────────────────────────────────── */
 
 	/* ─── Token Stats Pills ──────────────────────────────────────────────────────── */
-	.stat-pill {
+	:global(.stat-pill) {
 		font-family: var(--fontStack-monospace);
 		font-size: 10px;
 		font-weight: var(--base-text-weight-medium);
@@ -4201,17 +4542,17 @@
 		cursor: default;
 		white-space: nowrap;
 	}
-	.stat-pill--typo {
+	:global(.stat-pill--typo) {
 		border-color: var(--borderColor-done-muted);
 		color: var(--fgColor-done);
 	}
-	.stat-pill--files {
+	:global(.stat-pill--files) {
 		border-color: var(--borderColor-accent-muted);
 		color: var(--fgColor-accent);
 	}
 
 	/* ─── Active Ctrl Btn ────────────────────────────────────────────────────────── */
-	.ctrl-btn--active {
+	:global(.ctrl-btn--active) {
 		color: var(--brand-color);
 		border-color: var(--bgColor-danger-muted);
 		background: var(--bgColor-danger-muted);
@@ -4222,6 +4563,68 @@
 		display: flex;
 		align-items: center;
 		gap: 6px;
+	}
+
+	/* ─── Best Practices Toggle ──────────────────────────────────────────────────── */
+	.best-practices-toggle {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		padding: 8px 12px;
+		background: var(--bgColor-muted, #161b22);
+		border: 1px solid var(--borderColor-muted, #30363d);
+		border-radius: 8px;
+		margin-bottom: 8px;
+	}
+
+	.toggle-label {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		cursor: pointer;
+		user-select: none;
+		white-space: nowrap;
+	}
+
+	.toggle-track {
+		position: relative;
+		display: inline-block;
+		width: 32px;
+		height: 18px;
+		background: var(--borderColor-muted, #484f58);
+		border-radius: 9px;
+		transition: background 0.2s ease;
+		flex-shrink: 0;
+	}
+
+	.toggle-track.active {
+		background: var(--brand-color, #6366f1);
+	}
+
+	.toggle-thumb {
+		position: absolute;
+		top: 2px;
+		left: 2px;
+		width: 14px;
+		height: 14px;
+		background: #fff;
+		border-radius: 50%;
+		transition: transform 0.2s ease;
+	}
+
+	.toggle-track.active .toggle-thumb {
+		transform: translateX(14px);
+	}
+
+	.toggle-text {
+		font-size: 12px;
+		font-weight: 600;
+		color: var(--fgColor-default, #e6edf3);
+	}
+
+	.toggle-hint {
+		font-size: 11px;
+		color: var(--fgColor-muted, #8b949e);
 	}
 
 	/* ─── File Insight Badge ─────────────────────────────────────────────────────── */

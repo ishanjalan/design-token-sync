@@ -14,7 +14,18 @@
 
 import type { FigmaColorExport, FigmaColorToken, TransformResult } from '$lib/types.js';
 import type { DetectedSwiftConventions } from '$lib/types.js';
+import { BEST_PRACTICE_SWIFT_CONVENTIONS } from '$lib/types.js';
 import { figmaToSwiftHex } from '$lib/color-utils.js';
+import {
+	walkColorTokens,
+	walkColorTokensWithPath,
+	getColorTokenAtPath,
+	pathToTokenName,
+	extractSortKey,
+	capitalize,
+	CATEGORY_ORDER,
+	orderCategories
+} from './shared.js';
 
 interface PrimitiveEntry {
 	swiftName: string; // e.g. "grey750"
@@ -38,9 +49,10 @@ interface SemanticEntry {
 export function transformToSwift(
 	lightColors: FigmaColorExport,
 	darkColors: FigmaColorExport,
-	referenceSwift?: string
+	referenceSwift?: string,
+	bestPractices: boolean = true
 ): TransformResult {
-	const conventions = detectSwiftConventions(referenceSwift);
+	const conventions = detectSwiftConventions(referenceSwift, bestPractices);
 	const primitiveMap = buildPrimitiveMap(lightColors, darkColors, conventions);
 	const semanticEntries = buildSemanticEntries(lightColors, darkColors, primitiveMap, conventions);
 	const content = generateSwift(primitiveMap, semanticEntries, conventions);
@@ -49,9 +61,9 @@ export function transformToSwift(
 
 // ─── Convention Detection ─────────────────────────────────────────────────────
 
-export function detectSwiftConventions(reference?: string): DetectedSwiftConventions {
-	if (!reference) {
-		return { namingCase: 'camel', useComputedVar: false };
+export function detectSwiftConventions(reference?: string, bestPractices: boolean = true): DetectedSwiftConventions {
+	if (bestPractices || !reference) {
+		return { ...BEST_PRACTICE_SWIFT_CONVENTIONS };
 	}
 	// Detect static let vs var (computed)
 	const useComputedVar =
@@ -76,7 +88,7 @@ function buildPrimitiveMap(
 	const map = new Map<string, PrimitiveEntry>();
 
 	function collect(export_: FigmaColorExport) {
-		walkTokens(export_, (token) => {
+		walkColorTokens(export_, (token) => {
 			const figmaName = token.$extensions?.['com.figma.aliasData']?.targetVariableName;
 			/* v8 ignore next -- @preserve */
 			if (!figmaName || map.has(figmaName)) return;
@@ -117,7 +129,7 @@ function buildSemanticEntries(
 ): SemanticEntry[] {
 	const entries: SemanticEntry[] = [];
 
-	walkTokensWithPath(lightColors, (path, lightToken) => {
+	walkColorTokensWithPath(lightColors, (path, lightToken) => {
 		const lightFigmaName = lightToken.$extensions?.['com.figma.aliasData']?.targetVariableName;
 		if (!lightFigmaName) return;
 
@@ -125,7 +137,7 @@ function buildSemanticEntries(
 		/* v8 ignore next -- @preserve */
 		if (!lightPrim) return;
 
-		const darkToken = getTokenAtPath(darkColors, path);
+		const darkToken = getColorTokenAtPath(darkColors, path);
 		const darkFigmaName = darkToken?.$extensions?.['com.figma.aliasData']?.targetVariableName;
 		const darkPrim = darkFigmaName ? (primitiveMap.get(darkFigmaName) ?? lightPrim) : lightPrim;
 
@@ -232,11 +244,7 @@ function generateSwift(
 		lines.push('// MARK: - Semantic Colors (UIColor — supports dynamic light/dark)');
 		lines.push('public extension UIColor {');
 
-		const CATEGORY_ORDER = ['fill', 'text', 'icon', 'background', 'stroke'];
-		const orderedCategories = [
-			...CATEGORY_ORDER.filter((c) => byCategory.has(c)),
-			...[...byCategory.keys()].filter((c) => !CATEGORY_ORDER.includes(c)).sort()
-		];
+		const orderedCategories = orderCategories(byCategory.keys());
 
 		for (const category of orderedCategories) {
 			const tokens = byCategory.get(category)!;
@@ -324,13 +332,6 @@ function tokenNameToSwiftName(tokenName: string, namingCase: 'camel' | 'snake'):
 	return toCamelCase(segments);
 }
 
-function pathToTokenName(path: string[]): string {
-	return path
-		.filter((p) => p.toLowerCase() !== 'standard')
-		.map((p) => p.toLowerCase().replace(/\s+/g, '-'))
-		.join('-');
-}
-
 function toCamelCase(parts: string[]): string {
 	return parts.map((p, i) => (i === 0 ? p : capitalize(p))).join('');
 }
@@ -351,62 +352,3 @@ function extractFamily(figmaName: string): string {
 	return familyParts.join('-') || topSegment;
 }
 
-function extractSortKey(figmaName: string): number {
-	const numbers = figmaName.match(/\d+/g);
-	/* v8 ignore next -- @preserve */
-	if (!numbers) return 0;
-	return numbers.reduce(
-		(acc, n, i) => acc + parseInt(n) * Math.pow(1000, Math.max(0, numbers.length - 1 - i)),
-		0
-	);
-}
-
-function capitalize(s: string): string {
-	return s.charAt(0).toUpperCase() + s.slice(1);
-}
-
-// ─── Tree-walking Utilities ───────────────────────────────────────────────────
-
-function walkTokens(obj: unknown, fn: (token: FigmaColorToken) => void): void {
-	/* v8 ignore next -- @preserve */
-	if (!obj || typeof obj !== 'object') return;
-	const o = obj as Record<string, unknown>;
-	if (o.$type === 'color') {
-		fn(o as unknown as FigmaColorToken);
-		return;
-	}
-	for (const [key, val] of Object.entries(o)) {
-		/* v8 ignore next -- @preserve */
-		if (!key.startsWith('$')) walkTokens(val, fn);
-	}
-}
-
-function walkTokensWithPath(
-	obj: unknown,
-	fn: (path: string[], token: FigmaColorToken) => void,
-	path: string[] = []
-): void {
-	/* v8 ignore next -- @preserve */
-	if (!obj || typeof obj !== 'object') return;
-	const o = obj as Record<string, unknown>;
-	if (o.$type === 'color') {
-		fn(path, o as unknown as FigmaColorToken);
-		return;
-	}
-	for (const [key, val] of Object.entries(o)) {
-		/* v8 ignore next -- @preserve */
-		if (!key.startsWith('$')) walkTokensWithPath(val, fn, [...path, key]);
-	}
-}
-
-function getTokenAtPath(obj: unknown, path: string[]): FigmaColorToken | null {
-	let cur: unknown = obj;
-	for (const key of path) {
-		if (!cur || typeof cur !== 'object') return null;
-		cur = (cur as Record<string, unknown>)[key];
-	}
-	/* v8 ignore next -- @preserve */
-	if (!cur || typeof cur !== 'object') return null;
-	const o = cur as Record<string, unknown>;
-	return o.$type === 'color' ? (o as unknown as FigmaColorToken) : null;
-}

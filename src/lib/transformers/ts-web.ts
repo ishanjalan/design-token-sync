@@ -12,7 +12,17 @@
 import type { FigmaColorExport, FigmaColorToken, TransformResult } from '$lib/types.js';
 import type { DetectedConventions } from '$lib/types.js';
 import { scssVarToTsName } from '$lib/transformers/naming.js';
-import { figmaToHex } from '$lib/color-utils.js';
+import {
+	walkColorTokens,
+	walkColorTokensWithPath,
+	getColorTokenAtPath,
+	pathToTokenName,
+	extractSortKey,
+	resolveColorValue,
+	capitalize,
+	CATEGORY_ORDER,
+	orderCategories
+} from './shared.js';
 
 // Re-use the same internal helpers by importing from the scss transformer's private types
 // via a small re-export shim.  We duplicate only what's needed here to stay self-contained.
@@ -47,7 +57,7 @@ export function transformToTS(
 
 	const semanticEntries = buildSemanticEntries(lightColors, darkColors, primitiveMap, conventions);
 
-	return [generatePrimitivesTs(primitiveMap), generateColorsTs(semanticEntries, conventions)];
+	return [generatePrimitivesTs(primitiveMap, conventions), generateColorsTs(semanticEntries, conventions)];
 }
 
 // ─── Step 1a: Primitive Map from dedicated primitives export ──────────────────
@@ -58,7 +68,7 @@ function buildPrimitiveMapFromExport(
 ): Map<string, PrimitiveEntry> {
 	const map = new Map<string, PrimitiveEntry>();
 
-	walkTokensWithPath(primitivesExport, (path, token) => {
+	walkColorTokensWithPath(primitivesExport, (path, token) => {
 		const figmaName = path.join('/');
 		const scssVar = figmaNameToScssVar(figmaName);
 		const value = resolveColorValue(token);
@@ -87,7 +97,7 @@ function buildPrimitiveMapFromAliasData(
 	const map = new Map<string, PrimitiveEntry>();
 
 	function collect(export_: FigmaColorExport) {
-		walkTokens(export_, (token) => {
+		walkColorTokens(export_, (token) => {
 			const figmaName = token.$extensions?.['com.figma.aliasData']?.targetVariableName;
 			if (!figmaName || map.has(figmaName)) return;
 
@@ -121,14 +131,14 @@ function buildSemanticEntries(
 ): SemanticEntry[] {
 	const entries: SemanticEntry[] = [];
 
-	walkTokensWithPath(lightColors, (path, lightToken) => {
+		walkColorTokensWithPath(lightColors, (path, lightToken) => {
 		const lightFigmaName = lightToken.$extensions?.['com.figma.aliasData']?.targetVariableName;
 		if (!lightFigmaName) return;
 
 		const lightPrim = primitiveMap.get(lightFigmaName);
 		if (!lightPrim) return;
 
-		const darkToken = getTokenAtPath(darkColors, path);
+		const darkToken = getColorTokenAtPath(darkColors, path);
 		const darkFigmaName = darkToken?.$extensions?.['com.figma.aliasData']?.targetVariableName;
 		const darkPrim = darkFigmaName ? (primitiveMap.get(darkFigmaName) ?? lightPrim) : lightPrim;
 
@@ -151,7 +161,7 @@ function buildSemanticEntries(
 
 // ─── Step 3: Generate Primitives.ts ──────────────────────────────────────────
 
-function generatePrimitivesTs(primitiveMap: Map<string, PrimitiveEntry>): TransformResult {
+function generatePrimitivesTs(primitiveMap: Map<string, PrimitiveEntry>, conventions: DetectedConventions): TransformResult {
 	const lines: string[] = [];
 	lines.push('// Primitives.ts');
 	lines.push('// Auto-generated from Figma Variables — DO NOT EDIT');
@@ -172,7 +182,11 @@ function generatePrimitivesTs(primitiveMap: Map<string, PrimitiveEntry>): Transf
 			(a, b) => a.sortKey - b.sortKey || a.tsName.localeCompare(b.tsName)
 		);
 		for (const { tsName, value } of sorted) {
-			lines.push(`export const ${tsName} = '${value}' as const;`);
+			if (conventions.hasTypeAnnotations) {
+				lines.push(`export const ${tsName}: string = '${value}' as const;`);
+			} else {
+				lines.push(`export const ${tsName} = '${value}' as const;`);
+			}
 		}
 		lines.push('');
 	}
@@ -189,7 +203,7 @@ function generatePrimitivesTs(primitiveMap: Map<string, PrimitiveEntry>): Transf
 
 function generateColorsTs(
 	entries: SemanticEntry[],
-	_conventions: DetectedConventions
+	conventions: DetectedConventions
 ): TransformResult {
 	const lines: string[] = [];
 
@@ -208,17 +222,13 @@ function generateColorsTs(
 		byCategory.set(category, list);
 	}
 
-	const CATEGORY_ORDER = ['fill', 'text', 'icon', 'background', 'stroke'];
-	const orderedCategories = [
-		...CATEGORY_ORDER.filter((c) => byCategory.has(c)),
-		...[...byCategory.keys()].filter((c) => !CATEGORY_ORDER.includes(c)).sort()
-	];
+	const orderedCategories = orderCategories(byCategory.keys());
 
 	for (const category of orderedCategories) {
 		const tokens = byCategory.get(category)!;
 		lines.push(`// ${capitalize(category)} colors`);
 		for (const token of tokens) {
-			lines.push(formatSemanticTsEntry(token));
+			lines.push(formatSemanticTsEntry(token, conventions.hasTypeAnnotations));
 		}
 		lines.push('');
 	}
@@ -231,11 +241,12 @@ function generateColorsTs(
 	};
 }
 
-function formatSemanticTsEntry(entry: SemanticEntry): string {
+function formatSemanticTsEntry(entry: SemanticEntry, typed: boolean): string {
+	const annotation = typed ? ': string ' : ' ';
 	if (entry.isStatic) {
-		return `export const ${entry.tsName} = \`var(${entry.cssVar}, \${${entry.lightTs}})\` as const;`;
+		return `export const ${entry.tsName}${annotation}= \`var(${entry.cssVar}, \${${entry.lightTs}})\` as const;`;
 	}
-	return `export const ${entry.tsName} = \`var(${entry.cssVar}, light-dark(\${${entry.lightTs}}, \${${entry.darkTs}}))\` as const;`;
+	return `export const ${entry.tsName}${annotation}= \`var(${entry.cssVar}, light-dark(\${${entry.lightTs}}, \${${entry.darkTs}}))\` as const;`;
 }
 
 // ─── Naming Helpers (mirrors scss.ts) ────────────────────────────────────────
@@ -254,13 +265,6 @@ function figmaNameToScssVar(figmaName: string): string | null {
 	return '$' + converted.join('-');
 }
 
-function pathToTokenName(path: string[]): string {
-	return path
-		.filter((p) => p.toLowerCase() !== 'standard')
-		.map((p) => p.toLowerCase().replace(/\s+/g, '-'))
-		.join('-');
-}
-
 function extractFamily(scssVar: string): string {
 	const name = scssVar.slice(1);
 	const parts = name.split('-');
@@ -271,73 +275,4 @@ function extractFamily(scssVar: string): string {
 	}
 	/* v8 ignore next -- @preserve */
 	return familyParts.join('-') || name;
-}
-
-function extractSortKey(scssVar: string): number {
-	const numbers = scssVar.match(/\d+/g);
-	/* v8 ignore next -- @preserve */
-	if (!numbers) return 0;
-	return numbers.reduce(
-		(acc, n, i) => acc + parseInt(n) * Math.pow(1000, Math.max(0, numbers.length - 1 - i)),
-		0
-	);
-}
-
-function resolveColorValue(token: FigmaColorToken): string | null {
-	const v = token.$value;
-	/* v8 ignore next -- @preserve */
-	if (!v || typeof v !== 'object') return null;
-	const [r, g, b] = v.components;
-	const alpha = parseFloat(v.alpha.toFixed(4));
-	if (alpha < 1) {
-		return figmaToHex(r, g, b, alpha);
-	}
-	return v.hex.toLowerCase();
-}
-
-// ─── Tree-walking Utilities ───────────────────────────────────────────────────
-
-function walkTokens(obj: unknown, fn: (token: FigmaColorToken) => void): void {
-	if (!obj || typeof obj !== 'object') return;
-	const o = obj as Record<string, unknown>;
-	if (o.$type === 'color') {
-		fn(o as unknown as FigmaColorToken);
-		return;
-	}
-	for (const [key, val] of Object.entries(o)) {
-		if (!key.startsWith('$')) walkTokens(val, fn);
-	}
-}
-
-function walkTokensWithPath(
-	obj: unknown,
-	fn: (path: string[], token: FigmaColorToken) => void,
-	path: string[] = []
-): void {
-	/* v8 ignore next -- @preserve */
-	if (!obj || typeof obj !== 'object') return;
-	const o = obj as Record<string, unknown>;
-	if (o.$type === 'color') {
-		fn(path, o as unknown as FigmaColorToken);
-		return;
-	}
-	for (const [key, val] of Object.entries(o)) {
-		/* v8 ignore next -- @preserve */
-		if (!key.startsWith('$')) walkTokensWithPath(val, fn, [...path, key]);
-	}
-}
-
-function getTokenAtPath(obj: unknown, path: string[]): FigmaColorToken | null {
-	let cur: unknown = obj;
-	for (const key of path) {
-		if (!cur || typeof cur !== 'object') return null;
-		cur = (cur as Record<string, unknown>)[key];
-	}
-	if (!cur || typeof cur !== 'object') return null;
-	const o = cur as Record<string, unknown>;
-	return o.$type === 'color' ? (o as unknown as FigmaColorToken) : null;
-}
-
-function capitalize(s: string): string {
-	return s.charAt(0).toUpperCase() + s.slice(1);
 }

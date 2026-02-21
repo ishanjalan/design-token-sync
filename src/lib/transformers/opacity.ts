@@ -8,6 +8,7 @@
  */
 
 import type { TransformResult, Platform } from '$lib/types.js';
+import { pathToKebab, pathToCamel } from './shared.js';
 
 interface OpacityEntry {
 	name: string;
@@ -71,22 +72,6 @@ function collectOpacityTokens(
 		}
 	}
 	return results;
-}
-
-function pathToKebab(path: string[]): string {
-	return path
-		.map((p) =>
-			p
-				.replace(/_/g, '-')
-				.replace(/([a-z])([A-Z])/g, '$1-$2')
-				.toLowerCase()
-		)
-		.join('-');
-}
-
-function pathToCamel(path: string[]): string {
-	const kebab = pathToKebab(path);
-	return kebab.replace(/-([a-z0-9])/g, (_, c: string) => c.toUpperCase());
 }
 
 // ─── SCSS Output ──────────────────────────────────────────────────────────────

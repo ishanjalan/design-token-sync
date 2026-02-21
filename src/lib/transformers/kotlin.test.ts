@@ -170,7 +170,7 @@ object MyColors {
   val TextPrimary = Primitives.Grey750
   val FillWhite = Primitives.Grey0
 }`;
-		const c = detectKotlinConventions(ref);
+		const c = detectKotlinConventions(ref, false);
 		expect(c.namingCase).toBe('pascal');
 	});
 
@@ -180,19 +180,19 @@ object AppColors {
   val textPrimary = Primitives.grey750
   val fillWhite = Primitives.grey0
 }`;
-		const c = detectKotlinConventions(ref);
+		const c = detectKotlinConventions(ref, false);
 		expect(c.namingCase).toBe('camel');
 	});
 
 	it('extracts object name from reference', () => {
 		const ref = `object BrandColors {`;
-		const c = detectKotlinConventions(ref);
+		const c = detectKotlinConventions(ref, false);
 		expect(c.objectName).toBe('BrandColors');
 	});
 
 	it('uses AppColors when no object found in reference', () => {
 		const ref = `// no object definition here`;
-		const c = detectKotlinConventions(ref);
+		const c = detectKotlinConventions(ref, false);
 		expect(c.objectName).toBe('AppColors');
 	});
 });
@@ -323,11 +323,9 @@ describe('transformToKotlin — Light/DarkColorTokens', () => {
 describe('transformToKotlin — convention: PascalCase', () => {
 	it('generates PascalCase val names when reference uses PascalCase', () => {
 		const ref = `object Colors {\n  val TextPrimary = Primitives.Grey750\n}`;
-		const { content } = transformToKotlin(lightColors, darkColors, ref);
-		// primitives use PascalCase
+		const { content } = transformToKotlin(lightColors, darkColors, ref, false);
 		expect(content).toContain('val Grey750');
-		// semantic tokens use PascalCase
-		expect(content).toContain('val TextPrimary = Primitives.Grey750');
+		expect(content).toContain('val TextPrimary = ColorsPrimitives.Grey750');
 		expect(content).not.toMatch(/\bval grey750\b/);
 	});
 });

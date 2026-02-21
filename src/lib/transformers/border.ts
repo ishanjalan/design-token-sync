@@ -7,6 +7,7 @@
 
 import type { TransformResult, Platform } from '$lib/types.js';
 import { figmaToHex } from '$lib/color-utils.js';
+import { pathToKebab, pathToCamel, extractNumericKey } from './shared.js';
 
 interface BorderEntry {
 	name: string;
@@ -75,27 +76,6 @@ function collectBorderTokens(
 		}
 	}
 	return results;
-}
-
-function pathToKebab(path: string[]): string {
-	return path
-		.map((p) =>
-			p
-				.replace(/_/g, '-')
-				.replace(/([a-z])([A-Z])/g, '$1-$2')
-				.toLowerCase()
-		)
-		.join('-');
-}
-
-function pathToCamel(path: string[]): string {
-	const kebab = pathToKebab(path);
-	return kebab.replace(/-([a-z0-9])/g, (_, c: string) => c.toUpperCase());
-}
-
-function extractNumericKey(s: string): number {
-	const m = s.match(/\d+/);
-	return m ? parseInt(m[0]) : 0;
 }
 
 // ─── SCSS Output ──────────────────────────────────────────────────────────────

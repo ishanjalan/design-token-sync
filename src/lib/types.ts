@@ -115,15 +115,34 @@ export interface DetectedConventions {
 	hasTypeAnnotations: boolean;
 }
 
+export const BEST_PRACTICE_WEB_CONVENTIONS: DetectedConventions = {
+	scssPrefix: '$',
+	scssSeparator: 'hyphen',
+	tsPrefix: 'export const ',
+	tsNamingCase: 'screaming_snake',
+	importStyle: 'use',
+	hasTypeAnnotations: true
+};
+
 export interface DetectedSwiftConventions {
 	namingCase: 'camel' | 'snake'; // camelCase (default) or snake_case
 	useComputedVar: boolean; // computed var (true) vs static let (false)
 }
 
+export const BEST_PRACTICE_SWIFT_CONVENTIONS: DetectedSwiftConventions = {
+	namingCase: 'camel',
+	useComputedVar: false
+};
+
 export interface DetectedKotlinConventions {
 	namingCase: 'camel' | 'pascal'; // camelCase vs PascalCase for property names
 	objectName: string; // e.g. "AppColors", "Colors" — detected from reference
 }
+
+export const BEST_PRACTICE_KOTLIN_CONVENTIONS: DetectedKotlinConventions = {
+	namingCase: 'camel',
+	objectName: 'AppColors'
+};
 
 // ─── Generation Stats ─────────────────────────────────────────────────────────
 
@@ -228,6 +247,7 @@ export const GenerateRequestSchema = z.object({
 	values: z.record(z.string(), z.unknown()),
 	platforms: z.array(z.enum(['web', 'android', 'ios'])),
 	typography: z.record(z.string(), z.unknown()).optional(),
+	bestPractices: z.boolean().optional().default(true),
 	// Web reference files (optional — used for convention detection)
 	referencePrimitivesScss: z.string().optional(),
 	referenceColorsScss: z.string().optional(),

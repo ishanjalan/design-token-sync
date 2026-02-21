@@ -9,7 +9,17 @@
 
 import type { FigmaColorExport, FigmaColorToken, TransformResult } from '$lib/types.js';
 import type { DetectedConventions } from '$lib/types.js';
-import { figmaToHex } from '$lib/color-utils.js';
+import {
+	walkColorTokens,
+	walkColorTokensWithPath,
+	getColorTokenAtPath,
+	pathToTokenName,
+	extractSortKey,
+	resolveColorValue,
+	capitalize,
+	orderCategories,
+	collectSpacingEntries
+} from './shared.js';
 
 interface PrimitiveEntry {
 	cssVar: string;
@@ -57,7 +67,7 @@ function buildPrimitiveMap(
 	const map = new Map<string, PrimitiveEntry>();
 
 	function collect(exp: FigmaColorExport) {
-		walkTokens(exp, (token) => {
+		walkColorTokens(exp, (token) => {
 			const figmaName = token.$extensions?.['com.figma.aliasData']?.targetVariableName;
 			if (!figmaName || map.has(figmaName)) return;
 
@@ -88,14 +98,14 @@ function buildSemanticEntries(
 ): SemanticEntry[] {
 	const entries: SemanticEntry[] = [];
 
-	walkTokensWithPath(lightColors, (path, lightToken) => {
+	walkColorTokensWithPath(lightColors, (path, lightToken) => {
 		const lightFigmaName = lightToken.$extensions?.['com.figma.aliasData']?.targetVariableName;
 		if (!lightFigmaName) return;
 
 		const lightPrim = primitiveMap.get(lightFigmaName);
 		if (!lightPrim) return;
 
-		const darkToken = getTokenAtPath(darkColors, path);
+		const darkToken = getColorTokenAtPath(darkColors, path);
 		const darkFigmaName = darkToken?.$extensions?.['com.figma.aliasData']?.targetVariableName;
 		const darkPrim = darkFigmaName ? (primitiveMap.get(darkFigmaName) ?? lightPrim) : lightPrim;
 
@@ -174,11 +184,7 @@ function generateColorsCSS(entries: SemanticEntry[]): TransformResult {
 		byCategory.set(category, list);
 	}
 
-	const CATEGORY_ORDER = ['fill', 'text', 'icon', 'background', 'stroke'];
-	const orderedCategories = [
-		...CATEGORY_ORDER.filter((c) => byCategory.has(c)),
-		...[...byCategory.keys()].filter((c) => !CATEGORY_ORDER.includes(c)).sort()
-	];
+	const orderedCategories = orderCategories(byCategory.keys());
 
 	for (const category of orderedCategories) {
 		lines.push(`  /* ${capitalize(category)} */`);
@@ -205,31 +211,8 @@ function generateColorsCSS(entries: SemanticEntry[]): TransformResult {
 // ─── Generate spacing.css ─────────────────────────────────────────────────────
 
 function generateSpacingCSS(valuesExport: Record<string, unknown>): TransformResult | null {
-	const integers = valuesExport['Integer'];
-	if (!integers || typeof integers !== 'object') return null;
-
-	const entries: { cssVar: string; value: string; sortKey: number }[] = [];
-
-	for (const [key, token] of Object.entries(integers as Record<string, unknown>)) {
-		if (key.startsWith('$')) continue;
-		if (!token || typeof token !== 'object') continue;
-		const t = token as Record<string, unknown>;
-		if (t.$type !== 'number' || typeof t.$value !== 'number') continue;
-
-		const raw = t.$value as number;
-		const cssVar =
-			key === '999'
-				? '--spacing-max'
-				: raw < 0
-					? `--spacing-neg-${Math.abs(raw)}`
-					: `--spacing-${raw}`;
-
-		entries.push({ cssVar, value: `${raw}px`, sortKey: raw });
-	}
-
+	const entries = collectSpacingEntries(valuesExport);
 	if (entries.length === 0) return null;
-
-	entries.sort((a, b) => a.sortKey - b.sortKey);
 
 	const lines: string[] = [
 		'/* spacing.css */',
@@ -239,8 +222,8 @@ function generateSpacingCSS(valuesExport: Record<string, unknown>): TransformRes
 		':root {'
 	];
 
-	for (const { cssVar, value } of entries) {
-		lines.push(`  ${cssVar}: ${value};`);
+	for (const { cssVar, pxValue } of entries) {
+		lines.push(`  ${cssVar}: ${pxValue};`);
 	}
 	lines.push('}');
 	lines.push('');
@@ -268,13 +251,6 @@ function figmaNameToCssVar(figmaName: string): string | null {
 	return '--' + converted.join('-');
 }
 
-function pathToTokenName(path: string[]): string {
-	return path
-		.filter((p) => p.toLowerCase() !== 'standard')
-		.map((p) => p.toLowerCase().replace(/\s+/g, '-'))
-		.join('-');
-}
-
 function extractFamily(cssVar: string): string {
 	const name = cssVar.slice(2); // strip "--"
 	const parts = name.split('-');
@@ -286,65 +262,3 @@ function extractFamily(cssVar: string): string {
 	return familyParts.join('-') || name;
 }
 
-function extractSortKey(cssVar: string): number {
-	const numbers = cssVar.match(/\d+/g);
-	if (!numbers) return 0;
-	return numbers.reduce(
-		(acc, n, i) => acc + parseInt(n) * Math.pow(1000, Math.max(0, numbers.length - 1 - i)),
-		0
-	);
-}
-
-function resolveColorValue(token: FigmaColorToken): string | null {
-	const v = token.$value;
-	if (!v || typeof v !== 'object') return null;
-	const [r, g, b] = v.components;
-	const alpha = parseFloat(v.alpha.toFixed(4));
-	if (alpha < 1) return figmaToHex(r, g, b, alpha);
-	return v.hex.toLowerCase();
-}
-
-function capitalize(s: string): string {
-	return s.charAt(0).toUpperCase() + s.slice(1);
-}
-
-// ─── Tree-walking Utilities ───────────────────────────────────────────────────
-
-function walkTokens(obj: unknown, fn: (token: FigmaColorToken) => void): void {
-	if (!obj || typeof obj !== 'object') return;
-	const o = obj as Record<string, unknown>;
-	if (o.$type === 'color') {
-		fn(o as unknown as FigmaColorToken);
-		return;
-	}
-	for (const [key, val] of Object.entries(o)) {
-		if (!key.startsWith('$')) walkTokens(val, fn);
-	}
-}
-
-function walkTokensWithPath(
-	obj: unknown,
-	fn: (path: string[], token: FigmaColorToken) => void,
-	path: string[] = []
-): void {
-	if (!obj || typeof obj !== 'object') return;
-	const o = obj as Record<string, unknown>;
-	if (o.$type === 'color') {
-		fn(path, o as unknown as FigmaColorToken);
-		return;
-	}
-	for (const [key, val] of Object.entries(o)) {
-		if (!key.startsWith('$')) walkTokensWithPath(val, fn, [...path, key]);
-	}
-}
-
-function getTokenAtPath(obj: unknown, path: string[]): FigmaColorToken | null {
-	let cur: unknown = obj;
-	for (const key of path) {
-		if (!cur || typeof cur !== 'object') return null;
-		cur = (cur as Record<string, unknown>)[key];
-	}
-	if (!cur || typeof cur !== 'object') return null;
-	const o = cur as Record<string, unknown>;
-	return o.$type === 'color' ? (o as unknown as FigmaColorToken) : null;
-}

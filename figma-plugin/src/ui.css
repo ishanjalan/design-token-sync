@@ -130,6 +130,15 @@ body {
   line-height: 1.4;
 }
 
+.field-endpoint {
+  margin-top: -6px;
+}
+
+.field-endpoint input {
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 11px;
+}
+
 .stats {
   display: flex;
   flex-wrap: wrap;

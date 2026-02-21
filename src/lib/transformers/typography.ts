@@ -16,6 +16,7 @@
  */
 
 import type { TransformResult, Platform } from '$lib/types.js';
+import { capitalize } from './shared.js';
 
 // ─── Internal types ───────────────────────────────────────────────────────────
 
@@ -550,10 +551,6 @@ function groupEntries(entries: ParsedEntry[]): Map<string, ParsedEntry[]> {
 	}
 
 	return map;
-}
-
-function capitalize(s: string): string {
-	return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
 function kebabToCamel(s: string): string {

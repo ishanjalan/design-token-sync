@@ -13,6 +13,7 @@
 import type { TransformResult } from '$lib/types.js';
 import type { DetectedConventions } from '$lib/types.js';
 import { scssVarToTsName } from '$lib/transformers/naming.js';
+import { collectSpacingEntries } from './shared.js';
 
 interface SpacingEntry {
 	scssVar: string;
@@ -39,33 +40,15 @@ function buildEntries(
 	valuesExport: Record<string, unknown>,
 	conventions: DetectedConventions
 ): SpacingEntry[] {
-	const integers = valuesExport['Integer'];
-	if (!integers || typeof integers !== 'object') return [];
-
-	const entries: SpacingEntry[] = [];
-
-	for (const [key, token] of Object.entries(integers as Record<string, unknown>)) {
-		if (key.startsWith('$')) continue;
-		if (!token || typeof token !== 'object') continue;
-
-		const t = token as Record<string, unknown>;
-		if (t.$type !== 'number' || typeof t.$value !== 'number') continue;
-
-		const raw = t.$value as number;
-		const scssVar = integerKeyToScssVar(key, raw);
-		const tsName = scssVarToTsName(scssVar, conventions.tsNamingCase);
-		const value = raw === 999 ? '999px' : `${raw}px`;
-
-		entries.push({ scssVar, tsName, value, sortKey: raw });
-	}
-
-	return entries.sort((a, b) => a.sortKey - b.sortKey);
-}
-
-function integerKeyToScssVar(key: string, value: number): string {
-	if (key === '999') return '$spacing-max';
-	if (value < 0) return `$spacing-neg-${Math.abs(value)}`;
-	return `$spacing-${value}`;
+	return collectSpacingEntries(valuesExport).map((raw) => {
+		const scssVar = raw.cssVar.replace('--', '$');
+		return {
+			scssVar,
+			tsName: scssVarToTsName(scssVar, conventions.tsNamingCase),
+			value: raw.pxValue,
+			sortKey: raw.rawValue
+		};
+	});
 }
 
 // ─── SCSS Output ──────────────────────────────────────────────────────────────

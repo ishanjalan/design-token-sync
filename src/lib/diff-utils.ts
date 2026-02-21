@@ -154,6 +154,27 @@ export function diffStats(lines: DiffLine[], mods?: TokenModification[]): DiffSu
 	};
 }
 
+// ─── Blame Map ────────────────────────────────────────────────────────────────
+
+export type BlameStatus = 'new' | 'modified' | 'unchanged';
+
+/**
+ * Map diff lines to a per-line blame status for the generated (new) file.
+ * Returns an array indexed by 0-based line number.
+ */
+export function computeBlameMap(lines: DiffLine[]): BlameStatus[] {
+	const blame: BlameStatus[] = [];
+	for (const line of lines) {
+		if (line.type === 'remove') continue;
+		if (line.type === 'equal') {
+			blame.push('unchanged');
+		} else {
+			blame.push(line.spans?.some((s) => s.changed) ? 'modified' : 'new');
+		}
+	}
+	return blame;
+}
+
 // ─── Diff Analysis ────────────────────────────────────────────────────────────
 
 export function extractModifiedTokens(

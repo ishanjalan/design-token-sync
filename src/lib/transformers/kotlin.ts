@@ -15,7 +15,16 @@
 
 import type { FigmaColorExport, FigmaColorToken, TransformResult } from '$lib/types.js';
 import type { DetectedKotlinConventions } from '$lib/types.js';
+import { BEST_PRACTICE_KOTLIN_CONVENTIONS } from '$lib/types.js';
 import { figmaToKotlinHex } from '$lib/color-utils.js';
+import {
+	walkColorTokens,
+	walkColorTokensWithPath,
+	getColorTokenAtPath,
+	pathToTokenName,
+	extractSortKey,
+	capitalize
+} from './shared.js';
 
 interface PrimitiveEntry {
 	kotlinName: string; // e.g. "Grey750"
@@ -40,9 +49,10 @@ interface SemanticEntry {
 export function transformToKotlin(
 	lightColors: FigmaColorExport,
 	darkColors: FigmaColorExport,
-	referenceKotlin?: string
+	referenceKotlin?: string,
+	bestPractices: boolean = true
 ): TransformResult {
-	const conventions = detectKotlinConventions(referenceKotlin);
+	const conventions = detectKotlinConventions(referenceKotlin, bestPractices);
 	const primitiveMap = buildPrimitiveMap(lightColors, darkColors, conventions);
 	const semanticEntries = buildSemanticEntries(lightColors, darkColors, primitiveMap, conventions);
 	const content = generateKotlin(primitiveMap, semanticEntries, conventions);
@@ -51,9 +61,9 @@ export function transformToKotlin(
 
 // ─── Convention Detection ─────────────────────────────────────────────────────
 
-export function detectKotlinConventions(reference?: string): DetectedKotlinConventions {
-	if (!reference) {
-		return { namingCase: 'camel', objectName: 'AppColors' };
+export function detectKotlinConventions(reference?: string, bestPractices: boolean = true): DetectedKotlinConventions {
+	if (bestPractices || !reference) {
+		return { ...BEST_PRACTICE_KOTLIN_CONVENTIONS };
 	}
 
 	// Detect val naming — PascalCase if starts with uppercase after "val "
@@ -78,7 +88,7 @@ function buildPrimitiveMap(
 	const map = new Map<string, PrimitiveEntry>();
 
 	function collect(export_: FigmaColorExport) {
-		walkTokens(export_, (token) => {
+		walkColorTokens(export_, (token) => {
 			const figmaName = token.$extensions?.['com.figma.aliasData']?.targetVariableName;
 			/* v8 ignore next -- @preserve */
 			if (!figmaName || map.has(figmaName)) return;
@@ -121,7 +131,7 @@ function buildSemanticEntries(
 ): SemanticEntry[] {
 	const entries: SemanticEntry[] = [];
 
-	walkTokensWithPath(lightColors, (path, lightToken) => {
+	walkColorTokensWithPath(lightColors, (path, lightToken) => {
 		const lightFigmaName = lightToken.$extensions?.['com.figma.aliasData']?.targetVariableName;
 		if (!lightFigmaName) return;
 
@@ -129,7 +139,7 @@ function buildSemanticEntries(
 		/* v8 ignore next -- @preserve */
 		if (!lightPrim) return;
 
-		const darkToken = getTokenAtPath(darkColors, path);
+		const darkToken = getColorTokenAtPath(darkColors, path);
 		const darkFigmaName = darkToken?.$extensions?.['com.figma.aliasData']?.targetVariableName;
 		const darkPrim = darkFigmaName ? (primitiveMap.get(darkFigmaName) ?? lightPrim) : lightPrim;
 
@@ -153,7 +163,7 @@ function buildSemanticEntries(
 function generateKotlin(
 	primitiveMap: Map<string, PrimitiveEntry>,
 	semanticEntries: SemanticEntry[],
-	_conventions: DetectedKotlinConventions
+	conventions: DetectedKotlinConventions
 ): string {
 	const lines: string[] = [];
 
@@ -169,9 +179,13 @@ function generateKotlin(
 	lines.push('import androidx.compose.ui.graphics.Color');
 	lines.push('');
 
+	const primitivesObj = conventions.objectName === 'AppColors' ? 'Primitives' : `${conventions.objectName}Primitives`;
+	const lightObj = conventions.objectName === 'AppColors' ? 'LightColorTokens' : `${conventions.objectName}Light`;
+	const darkObj = conventions.objectName === 'AppColors' ? 'DarkColorTokens' : `${conventions.objectName}Dark`;
+
 	// ── Primitives ──────────────────────────────────────────────────────────
 	lines.push('// Primitive color palette');
-	lines.push('object Primitives {');
+	lines.push(`object ${primitivesObj} {`);
 
 	const byFamily = new Map<string, PrimitiveEntry[]>();
 	for (const entry of primitiveMap.values()) {
@@ -196,19 +210,19 @@ function generateKotlin(
 	if (semanticEntries.length > 0) {
 		// ── Light theme ──────────────────────────────────────────────────────
 		lines.push('// Light theme semantic tokens');
-		lines.push('object LightColorTokens {');
+		lines.push(`object ${lightObj} {`);
 		for (const entry of semanticEntries) {
-			lines.push(`    val ${entry.kotlinName} = Primitives.${entry.lightPrimName}`);
+			lines.push(`    val ${entry.kotlinName} = ${primitivesObj}.${entry.lightPrimName}`);
 		}
 		lines.push('}');
 		lines.push('');
 
 		// ── Dark theme ───────────────────────────────────────────────────────
 		lines.push('// Dark theme semantic tokens');
-		lines.push('object DarkColorTokens {');
+		lines.push(`object ${darkObj} {`);
 		for (const entry of semanticEntries) {
 			const darkRef = entry.isStatic ? entry.lightPrimName : entry.darkPrimName;
-			lines.push(`    val ${entry.kotlinName} = Primitives.${darkRef}`);
+			lines.push(`    val ${entry.kotlinName} = ${primitivesObj}.${darkRef}`);
 		}
 		lines.push('}');
 		lines.push('');
@@ -228,22 +242,22 @@ function generateKotlin(
 		lines.push('// TODO: map your semantic tokens to Material3 color roles below.');
 		lines.push('@Suppress("UnusedReceiverParameter")');
 		lines.push('fun lightColors(): ColorScheme = lightColorScheme(');
-		lines.push('    // primary           = LightColorTokens.fillPrimary,');
-		lines.push('    // onPrimary         = LightColorTokens.textOnPrimary,');
-		lines.push('    // background        = LightColorTokens.backgroundDefault,');
-		lines.push('    // surface           = LightColorTokens.backgroundSurface,');
-		lines.push('    // onSurface         = LightColorTokens.textPrimary,');
-		lines.push('    // outline           = LightColorTokens.strokeDefault,');
+		lines.push(`    // primary           = ${lightObj}.fillPrimary,`);
+		lines.push(`    // onPrimary         = ${lightObj}.textOnPrimary,`);
+		lines.push(`    // background        = ${lightObj}.backgroundDefault,`);
+		lines.push(`    // surface           = ${lightObj}.backgroundSurface,`);
+		lines.push(`    // onSurface         = ${lightObj}.textPrimary,`);
+		lines.push(`    // outline           = ${lightObj}.strokeDefault,`);
 		lines.push(')');
 		lines.push('');
 		lines.push('@Suppress("UnusedReceiverParameter")');
 		lines.push('fun darkColors(): ColorScheme = darkColorScheme(');
-		lines.push('    // primary           = DarkColorTokens.fillPrimary,');
-		lines.push('    // onPrimary         = DarkColorTokens.textOnPrimary,');
-		lines.push('    // background        = DarkColorTokens.backgroundDefault,');
-		lines.push('    // surface           = DarkColorTokens.backgroundSurface,');
-		lines.push('    // onSurface         = DarkColorTokens.textPrimary,');
-		lines.push('    // outline           = DarkColorTokens.strokeDefault,');
+		lines.push(`    // primary           = ${darkObj}.fillPrimary,`);
+		lines.push(`    // onPrimary         = ${darkObj}.textOnPrimary,`);
+		lines.push(`    // background        = ${darkObj}.backgroundDefault,`);
+		lines.push(`    // surface           = ${darkObj}.backgroundSurface,`);
+		lines.push(`    // onSurface         = ${darkObj}.textPrimary,`);
+		lines.push(`    // outline           = ${darkObj}.strokeDefault,`);
 		lines.push(')');
 		lines.push('');
 	}
@@ -281,13 +295,6 @@ function tokenNameToKotlinName(tokenName: string, namingCase: 'camel' | 'pascal'
 	return toCamelCase(segments);
 }
 
-function pathToTokenName(path: string[]): string {
-	return path
-		.filter((p) => p.toLowerCase() !== 'standard')
-		.map((p) => p.toLowerCase().replace(/\s+/g, '-'))
-		.join('-');
-}
-
 function toCamelCase(parts: string[]): string {
 	return parts.map((p, i) => (i === 0 ? p : capitalize(p))).join('');
 }
@@ -311,62 +318,3 @@ function extractFamily(figmaName: string): string {
 	return familyParts.join('-') || topSegment;
 }
 
-function extractSortKey(figmaName: string): number {
-	const numbers = figmaName.match(/\d+/g);
-	/* v8 ignore next -- @preserve */
-	if (!numbers) return 0;
-	return numbers.reduce(
-		(acc, n, i) => acc + parseInt(n) * Math.pow(1000, Math.max(0, numbers.length - 1 - i)),
-		0
-	);
-}
-
-function capitalize(s: string): string {
-	return s.charAt(0).toUpperCase() + s.slice(1);
-}
-
-// ─── Tree-walking Utilities ───────────────────────────────────────────────────
-
-function walkTokens(obj: unknown, fn: (token: FigmaColorToken) => void): void {
-	/* v8 ignore next -- @preserve */
-	if (!obj || typeof obj !== 'object') return;
-	const o = obj as Record<string, unknown>;
-	if (o.$type === 'color') {
-		fn(o as unknown as FigmaColorToken);
-		return;
-	}
-	for (const [key, val] of Object.entries(o)) {
-		/* v8 ignore next -- @preserve */
-		if (!key.startsWith('$')) walkTokens(val, fn);
-	}
-}
-
-function walkTokensWithPath(
-	obj: unknown,
-	fn: (path: string[], token: FigmaColorToken) => void,
-	path: string[] = []
-): void {
-	/* v8 ignore next -- @preserve */
-	if (!obj || typeof obj !== 'object') return;
-	const o = obj as Record<string, unknown>;
-	if (o.$type === 'color') {
-		fn(path, o as unknown as FigmaColorToken);
-		return;
-	}
-	for (const [key, val] of Object.entries(o)) {
-		/* v8 ignore next -- @preserve */
-		if (!key.startsWith('$')) walkTokensWithPath(val, fn, [...path, key]);
-	}
-}
-
-function getTokenAtPath(obj: unknown, path: string[]): FigmaColorToken | null {
-	let cur: unknown = obj;
-	for (const key of path) {
-		if (!cur || typeof cur !== 'object') return null;
-		cur = (cur as Record<string, unknown>)[key];
-	}
-	/* v8 ignore next -- @preserve */
-	if (!cur || typeof cur !== 'object') return null;
-	const o = cur as Record<string, unknown>;
-	return o.$type === 'color' ? (o as unknown as FigmaColorToken) : null;
-}
