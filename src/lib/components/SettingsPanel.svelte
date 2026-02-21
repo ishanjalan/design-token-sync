@@ -200,7 +200,7 @@
 							<label class="sr-only" for="gh-owner-{platform}">Owner / org</label>
 							<input
 								id="gh-owner-{platform}"
-								class="settings-input settings-input--half"
+								class="settings-input"
 								type="text"
 								placeholder="owner / org"
 								value={githubRepos[platform]?.owner ?? ''}
@@ -209,7 +209,7 @@
 							<label class="sr-only" for="gh-repo-{platform}">Repository name</label>
 							<input
 								id="gh-repo-{platform}"
-								class="settings-input settings-input--half"
+								class="settings-input"
 								type="text"
 								placeholder="repo"
 								value={githubRepos[platform]?.repo ?? ''}
@@ -218,7 +218,7 @@
 							<label class="sr-only" for="gh-branch-{platform}">Base branch</label>
 							<input
 								id="gh-branch-{platform}"
-								class="settings-input settings-input--half"
+								class="settings-input"
 								type="text"
 								placeholder="base branch"
 								value={githubRepos[platform]?.branch ?? ''}
@@ -227,7 +227,7 @@
 							<label class="sr-only" for="gh-dir-{platform}">Target directory</label>
 							<input
 								id="gh-dir-{platform}"
-								class="settings-input settings-input--half"
+								class="settings-input"
 								type="text"
 								placeholder="target dir (optional)"
 								value={githubRepos[platform]?.dir ?? ''}
@@ -426,7 +426,7 @@
 	}
 	.settings-platform-fields {
 		display: flex;
-		flex-wrap: wrap;
+		flex-direction: column;
 		gap: 4px;
 	}
 	.figma-fetch-btn {
