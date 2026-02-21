@@ -82,7 +82,6 @@
 				/>
 				<p class="settings-hint" id="chat-webhook-hint">
 					Paste a Google Chat incoming webhook URL. A summary card is posted after each generation.
-					Press Escape to close settings.
 				</p>
 			</div>
 
@@ -132,7 +131,7 @@
 								id="gh-branch-{platform}"
 								class="settings-input settings-input--half"
 								type="text"
-								placeholder="base branch (main)"
+								placeholder="base branch"
 								value={githubRepos[platform]?.branch ?? ''}
 								oninput={(e) => onGithubRepoChange(platform, 'branch', e)}
 							/>
@@ -184,7 +183,8 @@
 				</button>
 				<p class="settings-hint" id="figma-api-hint">
 					Connect directly to Figma's Variables API. The file key is the ID in your Figma URL after <code>/design/</code>.
-					Your PAT needs read access. Requires Figma Organization or Enterprise plan.
+					Your PAT needs <code>file_variables:read</code> scope. Requires Organization or Enterprise plan.
+					For other plans, use the <strong>Tokensmith Sync</strong> Figma plugin instead.
 				</p>
 			</div>
 
@@ -195,11 +195,12 @@
 				<input
 					id="figma-webhook-passcode"
 					class="settings-input"
-					type="text"
-					placeholder="my-secret-passcode"
+					type="password"
+					placeholder="Enter a secure passcode"
 					value={figmaWebhookPasscode}
 					oninput={onFigmaPasscodeChange}
 					spellcheck="false"
+					autocomplete="off"
 					aria-describedby="figma-webhook-hint"
 				/>
 				{#if figmaWebhookPasscode}
