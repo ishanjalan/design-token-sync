@@ -4,15 +4,16 @@
  * Parses Figma's typography.tokens.json export format:
  *   { "typography": { "droid/body/body-R": { "$type": "typography", "$value": { ... } } } }
  *
- * Tokens whose names start with "ios/"   → platform: ios
- * Tokens whose names start with "droid/" → platform: android
- * All others                             → platform: web
+ * Platform mapping:
+ *   droid/ tokens → Web (SCSS + TS) AND Android (Kotlin)
+ *   ios/   tokens → iOS (Swift) only
+ *   other  tokens → shared (included in Web output)
  *
  * Outputs:
- *   Typography.scss   (all tokens — SCSS mixins + CSS custom properties)  — platform: web
- *   Typography.ts     (all tokens — typed TypeScript objects)              — platform: web
- *   Typography.swift  (ios/  tokens — SwiftUI Font extensions)             — platform: ios
- *   Typography.kt     (droid/ tokens — Compose TextStyle objects)          — platform: android
+ *   Typography.scss   (droid + shared tokens — SCSS mixins + CSS custom properties) — web
+ *   Typography.ts     (droid + shared tokens — typed TypeScript objects)             — web
+ *   Typography.swift  (ios/ tokens — SwiftUI Font extensions)                        — ios
+ *   Typography.kt     (droid/ tokens — Compose TextStyle objects)                    — android
  */
 
 import type { TransformResult, Platform } from '$lib/types.js';
@@ -54,8 +55,13 @@ export function transformToTypography(
 	const results: TransformResult[] = [];
 
 	if (platforms.includes('web')) {
-		results.push(generateScss(entries));
-		results.push(generateTs(entries));
+		const webEntries = entries
+			.filter((e) => e.targetPlatform !== 'ios')
+			.map((e) => (e.targetPlatform === 'android' ? { ...e, fullKey: e.shortKey } : e));
+		if (webEntries.length > 0) {
+			results.push(generateScss(webEntries));
+			results.push(generateTs(webEntries));
+		}
 	}
 
 	if (platforms.includes('ios')) {
@@ -213,7 +219,7 @@ function generateScss(entries: ParsedEntry[]): TransformResult {
 	lines.push('// Auto-generated from Figma Text Styles — DO NOT EDIT');
 	lines.push(`// Generated: ${new Date().toISOString()}`);
 	lines.push('');
-	lines.push('// Usage: @include typo-{name}; e.g. @include typo-droid-body-r;');
+	lines.push('// Usage: @include typo-{name}; e.g. @include typo-body-r;');
 	lines.push('');
 
 	// CSS custom properties block

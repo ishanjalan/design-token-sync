@@ -93,9 +93,9 @@
 	}
 
 	const platformOutputFiles: Record<Platform, string[]> = {
-		web: ['Primitives.scss', 'Colors.scss', 'Primitives.ts', 'Colors.ts', 'Spacing.scss', 'Spacing.ts', 'primitives.css', 'colors.css'],
-		ios: ['Colors.swift'],
-		android: ['Colors.kt']
+		web: ['Primitives.scss', 'Colors.scss', 'Typography.scss', 'Primitives.ts', 'Colors.ts', 'Typography.ts', 'Spacing.scss', 'Spacing.ts', 'primitives.css', 'colors.css'],
+		ios: ['Colors.swift', 'Typography.swift'],
+		android: ['Colors.kt', 'Typography.kt']
 	};
 
 	function outputPreview(plats: Platform[]): string[] {
