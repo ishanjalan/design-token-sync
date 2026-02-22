@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { Diamond } from 'lucide-svelte';
 	import { page } from '$app/stores';
 	import { base } from '$app/paths';
 </script>
@@ -10,9 +11,7 @@
 <div class="error-page">
 	<div class="error-card">
 		<span class="error-mark">
-			<svg width="32" height="32" viewBox="0 0 32 32" fill="currentColor">
-				<path fill-rule="evenodd" clip-rule="evenodd" d="M16 30c7.732 0 14-6.268 14-14S23.732 2 16 2 2 8.268 2 16s6.268 14 14 14zm0-2.5c6.351 0 11.5-5.149 11.5-11.5S22.351 4.5 16 4.5 4.5 9.649 4.5 16 9.649 27.5 16 27.5zM16 10l6 6-6 6-6-6 6-6z"/>
-			</svg>
+			<Diamond size={32} strokeWidth={1.5} />
 		</span>
 		<p class="error-code">{$page.status}</p>
 		<p class="error-message">{$page.error?.message ?? 'Something went wrong'}</p>

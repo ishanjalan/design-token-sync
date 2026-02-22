@@ -378,6 +378,9 @@
 		display: flex;
 		flex-direction: column;
 		gap: 6px;
+		border: none;
+		margin: 0;
+		padding: 0;
 	}
 	.settings-group-label {
 		display: block;
