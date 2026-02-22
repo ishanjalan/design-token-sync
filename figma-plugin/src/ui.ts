@@ -263,7 +263,7 @@ btnDownload.addEventListener('click', () => {
   ];
 
   if (extractedData.typography && Object.keys(extractedData.typography).length > 0) {
-    files.push({ name: 'typography.tokens.json', data: extractedData.typography });
+    files.push({ name: 'typography.tokens.json', data: { typography: extractedData.typography } });
   }
 
   for (const file of files) {

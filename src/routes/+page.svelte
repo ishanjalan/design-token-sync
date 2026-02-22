@@ -974,7 +974,7 @@
 			{ key: 'darkColors', content: JSON.stringify(data.darkColors, null, 2), name: 'Dark.tokens.json' },
 			{ key: 'values', content: JSON.stringify(data.values, null, 2), name: 'Value.tokens.json' }
 		];
-		if (data.typography && typeof data.typography === 'object' && Object.keys(data.typography as object).length > 0) slotEntries.push({ key: 'typography', content: JSON.stringify(data.typography, null, 2), name: 'typography.tokens.json' });
+		if (data.typography && typeof data.typography === 'object' && Object.keys(data.typography as object).length > 0) slotEntries.push({ key: 'typography', content: JSON.stringify({ typography: data.typography }, null, 2), name: 'typography.tokens.json' });
 		for (const entry of slotEntries) {
 			const file = new File([entry.content], entry.name, { type: 'application/json' });
 			slots[entry.key].file = file; slots[entry.key].restored = false;

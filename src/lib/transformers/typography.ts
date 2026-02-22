@@ -44,9 +44,18 @@ export function transformToTypography(
 	typographyJson: Record<string, unknown>,
 	platforms: Platform[]
 ): TransformResult[] {
-	const raw = typographyJson['typography'];
-	/* v8 ignore next -- @preserve */
-	if (!raw || typeof raw !== 'object') return [];
+	let raw = typographyJson['typography'];
+	if (!raw || typeof raw !== 'object') {
+		// Fallback: accept unwrapped format where entries are at the top level
+		const hasTypographyEntries = Object.values(typographyJson).some(
+			(v) => v && typeof v === 'object' && (v as Record<string, unknown>).$type === 'typography'
+		);
+		if (hasTypographyEntries) {
+			raw = typographyJson;
+		} else {
+			return [];
+		}
+	}
 
 	const entries = parseEntries(raw as Record<string, unknown>);
 	/* v8 ignore next -- @preserve */
@@ -79,11 +88,14 @@ export function transformToTypography(
 
 /** Returns the number of parsed typography entries (for stats). */
 export function countTypographyStyles(typographyJson: Record<string, unknown>): number {
-	const raw = typographyJson['typography'];
-	if (!raw || typeof raw !== 'object') return 0;
-	return Object.values(raw as Record<string, unknown>).filter(
-		(v) => v && typeof v === 'object' && (v as Record<string, unknown>).$type === 'typography'
-	).length;
+	const isTypoEntry = (v: unknown) =>
+		v && typeof v === 'object' && (v as Record<string, unknown>).$type === 'typography';
+	let raw = typographyJson['typography'];
+	if (!raw || typeof raw !== 'object') {
+		if (Object.values(typographyJson).some(isTypoEntry)) raw = typographyJson;
+		else return 0;
+	}
+	return Object.values(raw as Record<string, unknown>).filter(isTypoEntry).length;
 }
 
 // ─── Parsing ──────────────────────────────────────────────────────────────────
