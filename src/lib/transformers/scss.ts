@@ -210,12 +210,13 @@ function generatePrimitivesScss(primitiveMap: PrimitiveMap, _sep: string): Trans
 
 function generateColorsScss(semanticTokens: SemanticToken[], conventions: DetectedConventions): TransformResult {
 	const lines: string[] = [];
-	const useModern = conventions.importStyle === 'use';
+	const suffix = conventions.importSuffix ?? '';
+	const structure = conventions.scssColorStructure ?? 'modern';
 
-	if (useModern) {
-		lines.push("@use './Primitives' as *;");
+	if (conventions.importStyle === 'use') {
+		lines.push(`@use './Primitives${suffix}' as *;`);
 	} else {
-		lines.push("@import './Primitives';");
+		lines.push(`@import './Primitives${suffix}';`);
 	}
 	lines.push('');
 	lines.push('// Colors.scss');
@@ -235,7 +236,7 @@ function generateColorsScss(semanticTokens: SemanticToken[], conventions: Detect
 
 	const orderedCategories = orderCategories(byCategory.keys());
 
-	if (useModern) {
+	if (structure === 'modern') {
 		// Modern path: @property + light-dark()
 		lines.push('// @property typed declarations — enables CSS transitions on color tokens');
 		lines.push('// and provides browser DevTools type info. Requires: color-scheme: light dark.');
@@ -272,8 +273,21 @@ function generateColorsScss(semanticTokens: SemanticToken[], conventions: Detect
 			}
 			lines.push('');
 		}
+	} else if (structure === 'inline') {
+		// Inline path: flat $var: var(--prop, light-dark($light, $dark)) — no :root block
+		for (const category of orderedCategories) {
+			lines.push(`// ${capitalize(category)} colors`);
+			for (const token of byCategory.get(category)!) {
+				if (token.isStatic) {
+					lines.push(`${token.scssVar}: var(${token.cssVar}, ${token.lightPrimitive});`);
+				} else {
+					lines.push(`${token.scssVar}: var(${token.cssVar}, light-dark(${token.lightPrimitive}, ${token.darkPrimitive}));`);
+				}
+			}
+			lines.push('');
+		}
 	} else {
-		// Classic path: prefers-color-scheme media queries
+		// media-query path: :root + @media (prefers-color-scheme: dark) + aliases
 		lines.push(':root {');
 		for (const category of orderedCategories) {
 			lines.push(`  // ${capitalize(category)} colors`);

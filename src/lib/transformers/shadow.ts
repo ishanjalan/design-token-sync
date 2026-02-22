@@ -22,7 +22,8 @@ interface ShadowEntry {
 
 export function transformToShadows(
 	tokenExport: Record<string, unknown>,
-	platforms: Platform[]
+	platforms: Platform[],
+	kotlinPackage: string = 'com.example.design'
 ): TransformResult[] {
 	const entries = collectShadowTokens(tokenExport);
 	if (entries.length === 0) return [];
@@ -36,7 +37,7 @@ export function transformToShadows(
 		results.push(generateShadowSwift(entries));
 	}
 	if (platforms.includes('android')) {
-		results.push(generateShadowKotlin(entries));
+		results.push(generateShadowKotlin(entries, kotlinPackage));
 	}
 
 	return results;
@@ -142,25 +143,32 @@ function generateShadowSwift(entries: ShadowEntry[]): TransformResult {
 	lines.push('}');
 	lines.push('');
 
+	lines.push(...swiftHexColorInit());
+
 	return { filename: 'Shadows.swift', content: lines.join('\n') + '\n', format: 'swift', platform: 'ios' };
 }
 
 // ─── Kotlin Output ────────────────────────────────────────────────────────────
 
-function generateShadowKotlin(entries: ShadowEntry[]): TransformResult {
+function generateShadowKotlin(entries: ShadowEntry[], kotlinPackage: string): TransformResult {
 	const sorted = [...entries].sort((a, b) => a.sortKey - b.sortKey || a.name.localeCompare(b.name));
 	const lines: string[] = [
 		'// Shadows.kt',
 		'// Auto-generated from Figma Variables — DO NOT EDIT',
 		`// Generated: ${new Date().toISOString()}`,
 		'',
-		'package com.example.design // TODO: update to your package name',
+		`package ${kotlinPackage}`,
 		'',
 		'import androidx.compose.ui.Modifier',
 		'import androidx.compose.ui.draw.shadow',
 		'import androidx.compose.ui.graphics.Color',
 		'import androidx.compose.ui.unit.dp',
 		'import androidx.compose.foundation.shape.RoundedCornerShape',
+		'',
+		'data class ShadowSpec(',
+		'    val elevation: androidx.compose.ui.unit.Dp,',
+		'    val color: Color,',
+		')',
 		'',
 		'object Shadows {'
 	];
@@ -178,11 +186,31 @@ function generateShadowKotlin(entries: ShadowEntry[]): TransformResult {
 	}
 	lines.push('}');
 	lines.push('');
-	lines.push('data class ShadowSpec(');
-	lines.push('    val elevation: androidx.compose.ui.unit.Dp,');
-	lines.push('    val color: Color,');
-	lines.push(')');
-	lines.push('');
 
 	return { filename: 'Shadows.kt', content: lines.join('\n') + '\n', format: 'kotlin', platform: 'android' };
+}
+
+function swiftHexColorInit(): string[] {
+	return [
+		'// MARK: - Hex Color Init',
+		'private extension Color {',
+		'  init(hex: UInt64) {',
+		'    let hasAlpha = hex > 0xFFFFFF',
+		'    let r, g, b, a: Double',
+		'    if hasAlpha {',
+		'      r = Double((hex >> 24) & 0xFF) / 255',
+		'      g = Double((hex >> 16) & 0xFF) / 255',
+		'      b = Double((hex >>  8) & 0xFF) / 255',
+		'      a = Double( hex        & 0xFF) / 255',
+		'    } else {',
+		'      r = Double((hex >> 16) & 0xFF) / 255',
+		'      g = Double((hex >>  8) & 0xFF) / 255',
+		'      b = Double( hex        & 0xFF) / 255',
+		'      a = 1.0',
+		'    }',
+		'    self.init(.sRGB, red: r, green: g, blue: b, opacity: a)',
+		'  }',
+		'}',
+		''
+	];
 }

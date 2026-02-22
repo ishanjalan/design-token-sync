@@ -49,6 +49,15 @@ async function optionalFileText(formData: FormData, key: string): Promise<string
 	return entry.text();
 }
 
+function parseJsonFile(text: string, label: string): Record<string, unknown> {
+	try {
+		return JSON.parse(text) as Record<string, unknown>;
+	} catch (e) {
+		const msg = e instanceof SyntaxError ? e.message : 'Invalid JSON';
+		throw error(400, `Failed to parse ${label}: ${msg}`);
+	}
+}
+
 async function optionalFileJson(
 	formData: FormData,
 	key: string
@@ -112,10 +121,14 @@ export const POST: RequestHandler = async ({ request }) => {
 		const bestPracticesRaw = formData.get('bestPractices');
 		const bestPractices = bestPracticesRaw === 'false' ? false : true;
 
+		const lightColors = parseJsonFile(await lightColorsFile.text(), 'lightColors');
+		const darkColors = parseJsonFile(await darkColorsFile.text(), 'darkColors');
+		const values = parseJsonFile(await valuesFile.text(), 'values');
+
 		body = {
-			lightColors: JSON.parse(await lightColorsFile.text()),
-			darkColors: JSON.parse(await darkColorsFile.text()),
-			values: JSON.parse(await valuesFile.text()),
+			lightColors,
+			darkColors,
+			values,
 			platforms,
 			bestPractices,
 			typography: await optionalFileJson(formData, 'typography'),

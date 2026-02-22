@@ -54,6 +54,13 @@
 						>{/if}
 					<span class="history-files">{entry.files.length} files</span>
 				</div>
+				{#if entry.prUrls?.length}
+					<div class="history-pr-links">
+						{#each entry.prUrls as url}
+							<a class="pr-link" href={url} target="_blank" rel="noopener noreferrer">PR ↗</a>
+						{/each}
+					</div>
+				{/if}
 				<button class="ctrl-btn history-restore" onclick={() => onRestore(entry)}>restore</button>
 			</div>
 		{/each}
@@ -132,6 +139,27 @@
 		color: var(--fgColor-disabled);
 		white-space: nowrap;
 	}
+	.history-pr-links {
+		display: flex;
+		gap: 4px;
+		flex-shrink: 0;
+	}
+
+	.pr-link {
+		font-family: 'IBM Plex Mono', monospace;
+		font-size: 10px;
+		color: var(--fgColor-success);
+		text-decoration: none;
+		padding: 1px 6px;
+		border: 1px solid var(--borderColor-success-muted, #2ea04340);
+		border-radius: var(--borderRadius-small);
+		transition: background 0.1s;
+	}
+
+	.pr-link:hover {
+		background: var(--bgColor-success-muted, #2ea04320);
+	}
+
 	.history-restore {
 		flex-shrink: 0;
 	}

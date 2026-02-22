@@ -31,7 +31,7 @@ export function transformToSpacing(
 	const entries = buildEntries(valuesExport, conventions);
 	if (entries.length === 0) return [];
 
-	return [generateSpacingScss(entries), generateSpacingTs(entries)];
+	return [generateSpacingScss(entries), generateSpacingTs(entries, conventions.hasTypeAnnotations)];
 }
 
 // ─── Build Entries ────────────────────────────────────────────────────────────
@@ -83,15 +83,16 @@ function generateSpacingScss(entries: SpacingEntry[]): TransformResult {
 
 // ─── TypeScript Output ────────────────────────────────────────────────────────
 
-function generateSpacingTs(entries: SpacingEntry[]): TransformResult {
+function generateSpacingTs(entries: SpacingEntry[], hasTypeAnnotations: boolean): TransformResult {
 	const lines: string[] = [];
 	lines.push('// Spacing.ts');
 	lines.push('// Auto-generated from Figma Variables — DO NOT EDIT');
 	lines.push(`// Generated: ${new Date().toISOString()}`);
 	lines.push('');
 	lines.push('// Spacing scale (px)');
+	const typeAnnotation = hasTypeAnnotations ? ': string' : '';
 	for (const { tsName, value } of entries) {
-		lines.push(`export const ${tsName} = '${value}' as const;`);
+		lines.push(`export const ${tsName}${typeAnnotation} = '${value}' as const;`);
 	}
 	lines.push('');
 

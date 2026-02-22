@@ -40,14 +40,15 @@ interface SemanticEntry {
 export function transformToCSS(
 	lightColors: FigmaColorExport,
 	darkColors: FigmaColorExport,
-	_conventions: DetectedConventions,
+	conventions: DetectedConventions,
 	values?: Record<string, unknown>
 ): TransformResult[] {
 	const primitiveMap = buildPrimitiveMap(lightColors, darkColors);
 	const semanticEntries = buildSemanticEntries(lightColors, darkColors, primitiveMap);
+	const structure = conventions.scssColorStructure ?? 'modern';
 	const results: TransformResult[] = [
 		generatePrimitivesCSS(primitiveMap),
-		generateColorsCSS(semanticEntries)
+		generateColorsCSS(semanticEntries, structure)
 	];
 
 	if (values) {
@@ -165,14 +166,14 @@ function generatePrimitivesCSS(primitiveMap: Map<string, PrimitiveEntry>): Trans
 
 // ─── Generate colors.css ──────────────────────────────────────────────────────
 
-function generateColorsCSS(entries: SemanticEntry[]): TransformResult {
+function generateColorsCSS(
+	entries: SemanticEntry[],
+	structure: 'modern' | 'media-query' | 'inline'
+): TransformResult {
 	const lines: string[] = [
 		'/* colors.css */',
 		'/* Auto-generated from Figma Variables — DO NOT EDIT */',
 		`/* Generated: ${new Date().toISOString()} */`,
-		'',
-		':root {',
-		'  color-scheme: light dark;',
 		''
 	];
 
@@ -186,19 +187,46 @@ function generateColorsCSS(entries: SemanticEntry[]): TransformResult {
 
 	const orderedCategories = orderCategories(byCategory.keys());
 
-	for (const category of orderedCategories) {
-		lines.push(`  /* ${capitalize(category)} */`);
-		for (const entry of byCategory.get(category)!) {
-			if (entry.isStatic) {
+	if (structure === 'media-query') {
+		lines.push(':root {');
+		for (const category of orderedCategories) {
+			lines.push(`  /* ${capitalize(category)} */`);
+			for (const entry of byCategory.get(category)!) {
 				lines.push(`  ${entry.cssVar}: ${entry.lightValue};`);
-			} else {
-				lines.push(`  ${entry.cssVar}: light-dark(${entry.lightValue}, ${entry.darkValue});`);
 			}
 		}
-	}
+		lines.push('}');
+		lines.push('');
 
-	lines.push('}');
-	lines.push('');
+		lines.push('@media (prefers-color-scheme: dark) {');
+		lines.push('  :root {');
+		for (const category of orderedCategories) {
+			for (const entry of byCategory.get(category)!) {
+				if (!entry.isStatic) {
+					lines.push(`    ${entry.cssVar}: ${entry.darkValue};`);
+				}
+			}
+		}
+		lines.push('  }');
+		lines.push('}');
+		lines.push('');
+	} else {
+		lines.push(':root {');
+		lines.push('  color-scheme: light dark;');
+		lines.push('');
+		for (const category of orderedCategories) {
+			lines.push(`  /* ${capitalize(category)} */`);
+			for (const entry of byCategory.get(category)!) {
+				if (entry.isStatic) {
+					lines.push(`  ${entry.cssVar}: ${entry.lightValue};`);
+				} else {
+					lines.push(`  ${entry.cssVar}: light-dark(${entry.lightValue}, ${entry.darkValue});`);
+				}
+			}
+		}
+		lines.push('}');
+		lines.push('');
+	}
 
 	return {
 		filename: 'colors.css',

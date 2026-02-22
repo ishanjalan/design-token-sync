@@ -9,6 +9,8 @@ const defaultConventions: DetectedConventions = {
 	tsPrefix: 'export const ',
 	tsNamingCase: 'screaming_snake',
 	importStyle: 'use',
+	importSuffix: '',
+	scssColorStructure: 'modern',
 	hasTypeAnnotations: false
 };
 

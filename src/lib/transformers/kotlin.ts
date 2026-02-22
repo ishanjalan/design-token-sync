@@ -75,7 +75,11 @@ export function detectKotlinConventions(reference?: string, bestPractices: boole
 	const objectMatch = reference.match(/\bobject\s+(\w+)\s*\{/);
 	const objectName = objectMatch ? objectMatch[1] : 'AppColors';
 
-	return { namingCase, objectName };
+	// Detect package name from "package com.foo.bar" declaration
+	const packageMatch = reference.match(/^package\s+([\w.]+)/m);
+	const kotlinPackage = packageMatch ? packageMatch[1] : 'com.example.design';
+
+	return { namingCase, objectName, kotlinPackage };
 }
 
 // ─── Build Primitive Map ──────────────────────────────────────────────────────
@@ -171,7 +175,7 @@ function generateKotlin(
 	lines.push('// Auto-generated from Figma Variables — DO NOT EDIT');
 	lines.push(`// Generated: ${new Date().toISOString()}`);
 	lines.push('');
-	lines.push('package com.example.design // TODO: update to your package name');
+	lines.push(`package ${conventions.kotlinPackage}`);
 	lines.push('');
 	lines.push('import androidx.compose.material3.ColorScheme');
 	lines.push('import androidx.compose.material3.darkColorScheme');

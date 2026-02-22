@@ -110,6 +110,7 @@
 	let selectedPlatforms = $state<Platform[]>(['web']);
 	let bestPractices = $state(true);
 	let prevPlatforms = $state<string>(JSON.stringify(['web']));
+	let needsRegeneration = $state(false);
 
 	function selectPlatform(id: Platform) {
 		selectedPlatforms = [id];
@@ -121,8 +122,9 @@
 		if (key !== prevPlatforms) {
 			prevPlatforms = key;
 			if (result && canGenerate) {
-				generate();
-			} else if (visibleFiles.length && !visibleFiles.some((f) => f.filename === activeTab)) {
+				needsRegeneration = true;
+			}
+			if (visibleFiles.length && !visibleFiles.some((f) => f.filename === activeTab)) {
 				activeTab = visibleFiles[0].filename;
 			}
 		}
@@ -160,7 +162,7 @@
 		referenceColorsTs: { label: 'Colors.ts', accept: '.ts,text/plain', hint: 'Current file — semantic color constants', ext: 'ts', platforms: ['web'], required: false, file: null, dragging: false, restored: false, warning: null },
 		referenceColorsSwift: { label: 'Colors.swift', accept: '.swift,text/plain', hint: 'Current file — matches existing naming conventions', ext: 'swift', platforms: ['ios'], required: false, file: null, dragging: false, restored: false, warning: null },
 		referenceColorsKotlin: { label: 'Colors.kt', accept: '.kt,text/plain', hint: 'Current file — matches existing naming conventions', ext: 'kt', platforms: ['android'], required: false, file: null, dragging: false, restored: false, warning: null },
-		typography: { label: 'typography.tokens.json', accept: 'application/json,.json', hint: 'Figma text styles export', ext: 'json', platforms: ['web', 'android', 'ios'], required: false, file: null, dragging: false, restored: false, warning: null }
+		typography: { label: 'typography.tokens.json', accept: 'application/json,.json', hint: 'Figma text styles — prefix with ios/ or droid/ for platform output', ext: 'json', platforms: ['web', 'android', 'ios'], required: false, file: null, dragging: false, restored: false, warning: null }
 	});
 
 	const requiredFilled = $derived((['lightColors', 'darkColors', 'values'] as DropZoneKey[]).filter((k) => !!slots[k].file).length);
@@ -497,6 +499,14 @@
 	function handleFileInput(key: DropZoneKey, e: Event) { const input = e.target as HTMLInputElement; if (input.files?.[0]) assignFile(key, input.files[0]); }
 
 	async function assignFile(key: DropZoneKey, file: File) {
+		if (REF_KEYS.includes(key)) {
+			const expectedExt = `.${slots[key].ext}`;
+			const fileExt = file.name.includes('.') ? `.${file.name.split('.').pop()!.toLowerCase()}` : '';
+			if (fileExt && fileExt !== expectedExt && fileExt !== '.txt') {
+				toast.error(`Expected a ${expectedExt} file for ${slots[key].label}, got "${file.name}"`);
+				return;
+			}
+		}
 		let content: string;
 		try { content = await file.text(); } catch { toast.error(`Could not read ${file.name}`); slots[key].file = null; return; }
 		slots[key].file = file;
@@ -556,7 +566,7 @@
 
 	async function generate() {
 		if (!canGenerate) return;
-		loading = true; errorMsg = null; result = null; highlights = {}; diffs = {}; viewModes = {};
+		loading = true; errorMsg = null; result = null; highlights = {}; diffs = {}; viewModes = {}; needsRegeneration = false;
 		try {
 			const fd = new FormData();
 			fd.append('lightColors', slots.lightColors.file!);
@@ -624,11 +634,17 @@
 		const { codeToHtml } = await import('shiki');
 		const theme = THEMES.find((t) => t.id === selectedTheme) ?? THEMES[2];
 		const langMap: Record<string, string> = { css: 'css', scss: 'scss', typescript: 'typescript', swift: 'swift', kotlin: 'kotlin' };
+		const next: Record<string, string> = {};
 		for (const file of files) {
 			const lang = langMap[file.format] ?? 'text';
-			try { const raw = await codeToHtml(file.content, { lang, theme: theme.id, colorReplacements: { [theme.bg]: 'transparent' } }); highlights[file.filename] = injectColorSwatches(raw); }
-			catch { /* fallback */ }
+			try {
+				const raw = await codeToHtml(file.content, { lang, theme: theme.id, colorReplacements: { [theme.bg]: 'transparent' } });
+				next[file.filename] = injectColorSwatches(raw);
+			} catch (err) {
+				console.error('[shiki] highlight failed for', file.filename, err);
+			}
 		}
+		highlights = next;
 	}
 
 	// ─── Diff ────────────────────────────────────────────────────────────────────
@@ -687,6 +703,10 @@
 	function handleCodeKeydown(e: KeyboardEvent) {
 		if ((e.metaKey || e.ctrlKey) && e.key === 'f') { e.preventDefault(); searchInputEl?.focus(); }
 		if (e.key === 'Escape') highlightedLines = null;
+		if (e.altKey && activeTab && diffs[activeTab]) {
+			if (e.key === 'ArrowDown') { e.preventDefault(); navigateDiff(activeTab, 'next'); }
+			else if (e.key === 'ArrowUp') { e.preventDefault(); navigateDiff(activeTab, 'prev'); }
+		}
 	}
 
 	function handleLineClick(lineNum: number, e: MouseEvent) {
@@ -828,10 +848,20 @@
 		if (!githubPat) { toast.error('Add your GitHub PAT in Settings first'); activePanel = 'settings'; return; }
 		sendingPrs = true; prResults = [];
 		try {
-			const repos = result.platforms.map((platform) => {
-				const cfg = githubRepos[platform]; if (!cfg?.owner || !cfg?.repo) return null;
-				return { platform, owner: cfg.owner, repo: cfg.repo, baseBranch: cfg.branch || 'main', targetDir: cfg.dir || '', files: result!.files.filter((f) => f.platform === platform).map((f) => ({ filename: f.filename, content: f.content })) };
-			}).filter(Boolean);
+			const grouped = new Map<string, { platforms: string[]; owner: string; repo: string; baseBranch: string; targetDir: string; files: { filename: string; content: string }[] }>();
+			for (const platform of result.platforms) {
+				const cfg = githubRepos[platform]; if (!cfg?.owner || !cfg?.repo) continue;
+				const repoKey = `${cfg.owner}/${cfg.repo}`;
+				const existing = grouped.get(repoKey);
+				const platFiles = result.files.filter((f) => f.platform === platform).map((f) => ({ filename: f.filename, content: f.content }));
+				if (existing) {
+					existing.platforms.push(platform);
+					existing.files.push(...platFiles);
+				} else {
+					grouped.set(repoKey, { platforms: [platform], owner: cfg.owner, repo: cfg.repo, baseBranch: cfg.branch || 'main', targetDir: cfg.dir || '', files: platFiles });
+				}
+			}
+			const repos = Array.from(grouped.values()).map((g) => ({ platform: g.platforms.join('+'), owner: g.owner, repo: g.repo, baseBranch: g.baseBranch, targetDir: g.targetDir, files: g.files }));
 			if (repos.length === 0) { toast.error('Configure repo settings for at least one platform'); activePanel = 'settings'; return; }
 			const changelog = generateChangelog(buildChangelogCtx());
 			const res = await fetch('/api/github/pr', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: githubPat, repos, description: changelog }) });
@@ -841,10 +871,23 @@
 			const successResults: PrResult[] = (data.prs ?? []).map((p) => ({ ...p, status: 'success' as const }));
 			const failedResults: PrResult[] = (data.errors ?? []).map((errMsg) => { const platformMatch = errMsg.match(/^(\w+)\s*\(/); return { platform: platformMatch?.[1] ?? 'unknown', url: '', status: 'failed' as const, error: errMsg }; });
 			prResults = [...successResults, ...failedResults];
-			if (successResults.length > 0) toast.success(`${successResults.length} PR${successResults.length > 1 ? 's' : ''} created`);
+			if (successResults.length > 0) {
+				toast.success(`${successResults.length} PR${successResults.length > 1 ? 's' : ''} created`);
+				storePrUrlsInHistory(successResults.map((p) => p.url));
+			}
 			if (failedResults.length > 0) toast.error(`${failedResults.length} PR${failedResults.length > 1 ? 's' : ''} failed`);
 		} catch (e) { toast.error(`PR creation failed: ${e instanceof Error ? e.message : String(e)}`); }
 		finally { sendingPrs = false; }
+	}
+
+	function storePrUrlsInHistory(urls: string[]) {
+		if (!urls.length) return;
+		const all = loadHistory();
+		if (all.length > 0) {
+			all[0].prUrls = [...(all[0].prUrls ?? []), ...urls];
+			if (browser) localStorage.setItem('tokensmith:history', JSON.stringify(all));
+			history = all;
+		}
 	}
 
 	async function retryPr(platform: string) {
@@ -989,7 +1032,9 @@
 	});
 </script>
 
-<Toaster theme="dark" position="bottom-right" richColors />
+<div aria-live="polite" aria-atomic="false" role="region" aria-label="Notifications">
+	<Toaster theme="dark" position="bottom-right" richColors />
+</div>
 
 <AppShell {activePanel} bind:panelWidth={panelWidth} onClosePanel={() => (activePanel = null)}>
 	{#snippet header()}
@@ -998,6 +1043,7 @@
 			{selectedPlatforms}
 			{canGenerate}
 			{loading}
+			{needsRegeneration}
 			{requiredFilled}
 			{appColorMode}
 			{pluginSyncAvailable}
@@ -1184,6 +1230,7 @@
 			onNavigateDiff={navigateDiff}
 			onSeekMinimap={seekMinimap}
 			onDownloadZip={downloadZip}
+			onCopyFile={() => { if (activeFile) copyToClipboard(activeFile.content); }}
 			onSendPRs={sendPRs}
 			onCopyChangelog={() => copyToClipboard(generateChangelog(buildChangelogCtx()))}
 			onToggleSwatches={() => (showSwatches = !showSwatches)}
@@ -1209,6 +1256,7 @@
 			{diffs}
 			{modifications}
 			{diffTotals}
+			warnings={result?.warnings ?? []}
 			{lastGeneratedAt}
 			{langLabel}
 			{formatFileSize}

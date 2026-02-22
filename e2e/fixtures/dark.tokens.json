@@ -1,0 +1,42 @@
+{
+  "Text": {
+    "primary": {
+      "$type": "color",
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.961, 0.961, 0.961],
+        "alpha": 1,
+        "hex": "#f5f5f5"
+      },
+      "$extensions": {
+        "com.figma.aliasData": {
+          "targetVariableId": "v3",
+          "targetVariableName": "Colour/Grey/50",
+          "targetVariableSetId": "set-1",
+          "targetVariableSetName": "_Primitives"
+        }
+      }
+    }
+  },
+  "Fill": {
+    "Static": {
+      "white": {
+        "$type": "color",
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [1, 1, 1],
+          "alpha": 1,
+          "hex": "#ffffff"
+        },
+        "$extensions": {
+          "com.figma.aliasData": {
+            "targetVariableId": "v2",
+            "targetVariableName": "Colour/Grey/0",
+            "targetVariableSetId": "set-1",
+            "targetVariableSetName": "_Primitives"
+          }
+        }
+      }
+    }
+  }
+}

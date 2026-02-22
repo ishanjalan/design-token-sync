@@ -82,15 +82,36 @@
 		if (ext === 'kt') return '#B060FF';
 		return '#F5A623';
 	}
+
+	function bestPracticeHint(on: boolean, plats: Platform[]): string {
+		if (!on) return 'Matches your reference file conventions';
+		const parts: string[] = [];
+		if (plats.includes('web')) parts.push('@use, light-dark(), type annotations');
+		if (plats.includes('ios')) parts.push('static let, SwiftUI Color(hex:)');
+		if (plats.includes('android')) parts.push('camelCase, Compose Color()');
+		return parts.length ? `Modern patterns: ${parts.join(' · ')}` : 'Modern patterns';
+	}
+
+	const platformOutputFiles: Record<Platform, string[]> = {
+		web: ['Primitives.scss', 'Colors.scss', 'Primitives.ts', 'Colors.ts', 'Spacing.scss', 'Spacing.ts', 'primitives.css', 'colors.css'],
+		ios: ['Colors.swift'],
+		android: ['Colors.kt']
+	};
+
+	function outputPreview(plats: Platform[]): string[] {
+		const files: string[] = [];
+		for (const p of plats) files.push(...(platformOutputFiles[p] ?? []));
+		return files;
+	}
 </script>
 
 <div class="import-panel">
 	<div class="panel-eyebrow">
 		<span>INPUT</span>
 		<div class="panel-actions">
-			<button class="action-link" onclick={onExportConfig} title="Export config" aria-label="Export config">↑</button>
+			<button class="action-link" onclick={onExportConfig} title="Export config" aria-label="Export config">↑ Save</button>
 			<label class="action-link" for="import-config-input" title="Import config" aria-label="Import config">
-				↓
+				↓ Load
 				<input id="import-config-input" type="file" accept=".json,application/json" class="sr-only" onchange={onImportConfig} />
 			</label>
 			<button class="action-link" onclick={onClearAll}>Clear</button>
@@ -106,9 +127,9 @@
 				<input type="checkbox" class="sr-only" checked={bestPractices} onchange={(e) => onBestPracticesChange((e.target as HTMLInputElement).checked)} />
 				<span class="bp-text">{bestPractices ? 'Best practices' : 'Match existing'}</span>
 			</label>
-			<span class="bp-hint">
-				{bestPractices ? 'Modern patterns (@use, type annotations)' : 'Matches your reference file conventions'}
-			</span>
+		<span class="bp-hint">
+			{bestPracticeHint(bestPractices, selectedPlatforms)}
+		</span>
 		</div>
 	{/if}
 
@@ -255,6 +276,18 @@
 
 		<div class="generate-footer">
 			<span class="gen-hint">{visibleFilled} of {visibleKeys.length} files loaded</span>
+			{#if !selectedPlatforms.includes('web') && selectedPlatforms.length > 0}
+				<span class="platform-note">Spacing tokens are generated for Web only.</span>
+			{/if}
+			{#if canGenerate}
+				{@const preview = outputPreview(selectedPlatforms)}
+				{#if preview.length > 0}
+					<span class="output-preview">Will generate: {preview.join(', ')}</span>
+				{/if}
+				<button class="import-generate-btn" onclick={onGenerate} disabled={loading}>
+					{loading ? 'Generating…' : 'Generate →'}
+				</button>
+			{/if}
 		</div>
 	</div>
 </div>
@@ -662,6 +695,51 @@
 	.gen-hint {
 		font-size: 10px;
 		color: var(--fgColor-disabled);
+	}
+
+	.platform-note {
+		display: block;
+		font-size: 10px;
+		color: var(--fgColor-attention);
+		margin-top: 4px;
+	}
+
+	.output-preview {
+		display: block;
+		font-family: var(--fontStack-monospace);
+		font-size: 10px;
+		color: var(--fgColor-disabled);
+		margin-top: 4px;
+		line-height: 1.5;
+		word-break: break-word;
+	}
+
+	.import-generate-btn {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		margin-top: 8px;
+		padding: 6px 16px;
+		font-family: 'JetBrains Mono', var(--fontStack-monospace);
+		font-size: 11px;
+		font-weight: 600;
+		background: var(--brand-color);
+		color: #fff;
+		border: none;
+		border-radius: 6px;
+		cursor: pointer;
+		transition: opacity 0.15s;
+		width: 100%;
+		justify-content: center;
+	}
+
+	.import-generate-btn:hover {
+		opacity: 0.9;
+	}
+
+	.import-generate-btn:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
 	}
 
 	/* ─── Responsive: small ──────────────────────── */

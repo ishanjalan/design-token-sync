@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Download, ClipboardCopy, GitPullRequest, List, WrapText } from 'lucide-svelte';
+	import { Download, ClipboardCopy, GitPullRequest, List, WrapText, Check, X } from 'lucide-svelte';
 	import type { GeneratedFile, Platform } from '$lib/types.js';
 	import {
 		type DiffLine,
@@ -16,7 +16,6 @@
 	import type { Swatch, SwatchComparison } from '$lib/swatch-utils.js';
 	import { buildSearchHighlight } from '$lib/search-utils.js';
 	import CodeMinimap from './CodeMinimap.svelte';
-	import OutputHeader from './OutputHeader.svelte';
 	import PlatformConsistency from './PlatformConsistency.svelte';
 	import SwatchPanel from './SwatchPanel.svelte';
 	import HistoryPanel from './HistoryPanel.svelte';
@@ -93,6 +92,7 @@
 		onNavigateDiff: (filename: string, dir: 'prev' | 'next') => void;
 		onSeekMinimap: (fraction: number) => void;
 		onDownloadZip: () => void;
+		onCopyFile: () => void;
 		onSendPRs: () => void;
 		onCopyChangelog: () => void;
 		onToggleSwatches: () => void;
@@ -124,12 +124,23 @@
 		onTabSelect, onTabKeydown, onViewModeChange, onSearchChange, onSearchInputBind,
 		onCodeKeydown, onCodeScroll, onCodeScrollBind, onLineClick, onSectionNavToggle,
 		onScrollToLine, onWrapToggle, onChangeSummaryToggle, onNavigateDiff,
-		onSeekMinimap, onDownloadZip, onSendPRs, onCopyChangelog, onToggleSwatches,
+		onSeekMinimap, onDownloadZip, onCopyFile, onSendPRs, onCopyChangelog, onToggleSwatches,
 		onSwatchTabChange, onToggleHistory, onRestoreHistory, onDismissPrResults,
 		onRetryPr, onChangeTheme, onThemePickerToggle,
 		extractSections, extractDiffColor, computeHunkHeaders, nearestContext,
 		langLabel, formatFileSize
 	}: Props = $props();
+
+	let showSuccessBanner = $state(false);
+	let prevResultId = $state<number | null>(null);
+
+	$effect(() => {
+		const id = result?.files?.length ?? 0;
+		if (result && id !== prevResultId) {
+			showSuccessBanner = true;
+			prevResultId = id;
+		}
+	});
 
 	function getViewMode(filename: string): ViewMode {
 		return viewModes[filename] ?? 'code';
@@ -173,6 +184,9 @@
 						{selectedPlatforms.includes('ios') ? 'Swift' : ''}
 						{selectedPlatforms.includes('android') ? 'Kotlin' : ''} output.
 					</p>
+					<a class="idle-link" href="https://help.figma.com/hc/en-us/articles/15339657135383-Guide-to-variables-in-Figma" target="_blank" rel="noopener noreferrer">
+						How to export variables from Figma ↗
+					</a>
 				</div>
 			{/if}
 		</div>
@@ -227,6 +241,11 @@
 				</div>
 
 				<!-- Action buttons -->
+				<button class="ctrl-btn" onclick={onCopyFile} title="Copy file to clipboard">
+					<ClipboardCopy size={12} strokeWidth={2} />
+					Copy
+				</button>
+
 				<button class="ctrl-btn" onclick={onDownloadZip} title="Download ZIP">
 					<Download size={12} strokeWidth={2} />
 					ZIP
@@ -249,6 +268,34 @@
 				{/if}
 			</div>
 		</div>
+
+		{#if showSuccessBanner}
+			<div class="success-banner">
+				<div class="success-banner-inner">
+					<Check size={14} strokeWidth={2.5} />
+					<span>{visibleFiles.length} file{visibleFiles.length !== 1 ? 's' : ''} generated</span>
+				</div>
+				<div class="success-banner-actions">
+					<button class="success-action" onclick={onCopyFile}>
+						<ClipboardCopy size={12} strokeWidth={2} />
+						Copy
+					</button>
+					<button class="success-action" onclick={onDownloadZip}>
+						<Download size={12} strokeWidth={2} />
+						ZIP
+					</button>
+					{#if Object.keys(diffs).length > 0}
+						<button class="success-action success-action--primary" onclick={onSendPRs}>
+							<GitPullRequest size={12} strokeWidth={2} />
+							Send PR
+						</button>
+					{/if}
+					<button class="success-dismiss" onclick={() => (showSuccessBanner = false)} aria-label="Dismiss">
+						<X size={12} />
+					</button>
+				</div>
+			</div>
+		{/if}
 
 		<!-- Per-file views -->
 		{#each visibleFiles as file (file.filename)}
@@ -598,6 +645,93 @@
 		line-height: 1.5;
 	}
 
+	.idle-link {
+		display: inline-block;
+		margin-top: 12px;
+		font-size: var(--base-text-size-xs);
+		color: var(--fgColor-accent);
+		text-decoration: none;
+		opacity: 0.8;
+		transition: opacity 0.15s;
+	}
+
+	.idle-link:hover {
+		opacity: 1;
+		text-decoration: underline;
+	}
+
+	/* ─── Success Banner ─────────────────────────── */
+	.success-banner {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 12px;
+		padding: 8px 16px;
+		background: color-mix(in srgb, var(--bgColor-success-muted, #2ea04326) 40%, var(--bgColor-default));
+		border-bottom: 1px solid var(--borderColor-success-muted, #2ea04340);
+	}
+
+	.success-banner-inner {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		font-size: var(--base-text-size-xs);
+		font-weight: 600;
+		color: var(--fgColor-success, #2ea043);
+	}
+
+	.success-banner-actions {
+		display: flex;
+		align-items: center;
+		gap: 4px;
+	}
+
+	.success-action {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		padding: 3px 10px;
+		font-size: 11px;
+		font-weight: 500;
+		font-family: 'JetBrains Mono', var(--fontStack-monospace);
+		border: 1px solid var(--borderColor-default);
+		border-radius: 4px;
+		background: var(--bgColor-default);
+		color: var(--fgColor-default);
+		cursor: pointer;
+		transition: background 0.1s;
+	}
+
+	.success-action:hover {
+		background: var(--bgColor-muted);
+	}
+
+	.success-action--primary {
+		background: var(--bgColor-success-emphasis, #2ea043);
+		color: #fff;
+		border-color: transparent;
+	}
+
+	.success-action--primary:hover {
+		opacity: 0.9;
+	}
+
+	.success-dismiss {
+		display: inline-flex;
+		align-items: center;
+		padding: 2px;
+		border: none;
+		background: transparent;
+		color: var(--fgColor-muted);
+		cursor: pointer;
+		border-radius: 3px;
+	}
+
+	.success-dismiss:hover {
+		color: var(--fgColor-default);
+		background: var(--bgColor-muted);
+	}
+
 	/* ─── Swatch preview ─────────────────────────── */
 	.idle-swatch-preview {
 		width: 100%;
@@ -649,6 +783,9 @@
 		scrollbar-width: none;
 		flex-shrink: 0;
 		min-height: 36px;
+		position: relative;
+		mask-image: linear-gradient(to right, transparent 0, black 8px, black calc(100% - 24px), transparent 100%);
+		-webkit-mask-image: linear-gradient(to right, transparent 0, black 8px, black calc(100% - 24px), transparent 100%);
 	}
 
 	.file-tabs::-webkit-scrollbar {

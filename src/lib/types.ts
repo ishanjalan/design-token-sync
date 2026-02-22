@@ -105,6 +105,7 @@ export interface TransformResult {
 
 export type NamingCase = 'kebab' | 'snake' | 'screaming_snake' | 'camel' | 'pascal';
 export type SeparatorStyle = 'hyphen' | 'underscore' | 'none';
+export type ScssColorStructure = 'modern' | 'media-query' | 'inline';
 
 export interface DetectedConventions {
 	scssPrefix: string; // e.g. "$"
@@ -112,6 +113,8 @@ export interface DetectedConventions {
 	tsPrefix: string; // e.g. "export const "
 	tsNamingCase: NamingCase;
 	importStyle: 'use' | 'import'; // @use vs @import
+	importSuffix: '.scss' | ''; // whether @import/@use includes .scss extension
+	scssColorStructure: ScssColorStructure;
 	hasTypeAnnotations: boolean;
 }
 
@@ -121,6 +124,8 @@ export const BEST_PRACTICE_WEB_CONVENTIONS: DetectedConventions = {
 	tsPrefix: 'export const ',
 	tsNamingCase: 'screaming_snake',
 	importStyle: 'use',
+	importSuffix: '',
+	scssColorStructure: 'modern',
 	hasTypeAnnotations: true
 };
 
@@ -137,11 +142,13 @@ export const BEST_PRACTICE_SWIFT_CONVENTIONS: DetectedSwiftConventions = {
 export interface DetectedKotlinConventions {
 	namingCase: 'camel' | 'pascal'; // camelCase vs PascalCase for property names
 	objectName: string; // e.g. "AppColors", "Colors" — detected from reference
+	kotlinPackage: string; // e.g. "com.example.design" — detected from reference
 }
 
 export const BEST_PRACTICE_KOTLIN_CONVENTIONS: DetectedKotlinConventions = {
 	namingCase: 'camel',
-	objectName: 'AppColors'
+	objectName: 'AppColors',
+	kotlinPackage: 'com.example.design'
 };
 
 // ─── Generation Stats ─────────────────────────────────────────────────────────
@@ -190,6 +197,7 @@ export interface HistoryEntry {
 	platforms: Platform[];
 	stats: GenerationStats;
 	files: GeneratedFile[];
+	prUrls?: string[];
 }
 
 // ─── GitHub Config ────────────────────────────────────────────────────────────

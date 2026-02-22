@@ -6,7 +6,7 @@
  * output matches the team's existing codebase exactly.
  */
 
-import type { DetectedConventions, NamingCase } from '$lib/types.js';
+import type { DetectedConventions, NamingCase, ScssColorStructure } from '$lib/types.js';
 import { BEST_PRACTICE_WEB_CONVENTIONS } from '$lib/types.js';
 import { capitalize } from './shared.js';
 
@@ -39,6 +39,8 @@ export function detectConventions(
 		tsPrefix: 'export const ',
 		tsNamingCase: detectTsNamingCase(allTs || undefined),
 		importStyle: detectImportStyle(allScss || undefined),
+		importSuffix: detectImportSuffix(allScss || undefined),
+		scssColorStructure: detectScssColorStructure(colorsScss),
 		hasTypeAnnotations: detectTypeAnnotations(allTs || undefined)
 	};
 }
@@ -114,5 +116,23 @@ function detectImportStyle(scss: string | undefined): 'use' | 'import' {
 function detectTypeAnnotations(ts: string | undefined): boolean {
 	if (!ts) return false;
 	return /export\s+const\s+\w+\s*:\s*string\s*=/.test(ts);
+}
+
+function detectImportSuffix(scss: string | undefined): '.scss' | '' {
+	if (!scss) return '';
+	if (/(?:@import|@use)\s+['"][^'"]*\.scss['"]/.test(scss)) return '.scss';
+	return '';
+}
+
+function detectScssColorStructure(colorsScss: string | undefined): ScssColorStructure {
+	if (!colorsScss) return 'modern';
+	const hasRoot = colorsScss.includes(':root');
+	const hasLightDark = colorsScss.includes('light-dark(');
+	const hasMediaQuery = /prefers-color-scheme/.test(colorsScss);
+
+	if (hasLightDark && !hasRoot) return 'inline';
+	if (hasRoot && hasMediaQuery) return 'media-query';
+	if (hasRoot) return 'modern';
+	return 'inline';
 }
 

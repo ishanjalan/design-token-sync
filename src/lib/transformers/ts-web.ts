@@ -143,7 +143,8 @@ function buildSemanticEntries(
 		const darkPrim = darkFigmaName ? (primitiveMap.get(darkFigmaName) ?? lightPrim) : lightPrim;
 
 		const isStatic = path.some((p) => p.toLowerCase() === 'static');
-		const tokenName = pathToTokenName(path);
+		const sep = conventions.scssSeparator === 'underscore' ? '_' : '-';
+		const tokenName = pathToTokenName(path, sep);
 		const cssVar = `--${tokenName}`;
 		const tsName = scssVarToTsName(`$${tokenName}`, conventions.tsNamingCase);
 
@@ -214,9 +215,10 @@ function generateColorsTs(
 	lines.push(`// Generated: ${new Date().toISOString()}`);
 	lines.push('');
 
+	const sepChar = conventions.scssSeparator === 'underscore' ? '_' : '-';
 	const byCategory = new Map<string, SemanticEntry[]>();
 	for (const entry of entries) {
-		const category = entry.cssVar.replace('--', '').split('-')[0];
+		const category = entry.cssVar.replace('--', '').split(sepChar)[0];
 		const list = byCategory.get(category) ?? [];
 		list.push(entry);
 		byCategory.set(category, list);

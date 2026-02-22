@@ -89,6 +89,64 @@ describe('detectConventions', () => {
 		// @use found in colorsScss
 		expect(c.importStyle).toBe('use');
 	});
+
+	// ─── scssColorStructure detection ────────────────────────────────────────
+
+	it('detects inline structure when Colors.scss has light-dark() and no :root', () => {
+		const colorsScss = [
+			"@import './Primitives.scss';",
+			'',
+			'$fill-brand-primary: var(--fill-brand-primary, light-dark($red-300, $red-200));',
+			'$fill-static-white: var(--fill-static-white, $grey-0);'
+		].join('\n');
+		const c = detectConventions(undefined, colorsScss, undefined, undefined, false);
+		expect(c.scssColorStructure).toBe('inline');
+	});
+
+	it('detects media-query structure when Colors.scss has :root + @media prefers-color-scheme', () => {
+		const colorsScss = [
+			"@import './Primitives';",
+			':root { --text-primary: #{$grey-750}; }',
+			'@media (prefers-color-scheme: dark) { :root { --text-primary: #{$grey-50}; } }',
+			'$text-primary: var(--text-primary);'
+		].join('\n');
+		const c = detectConventions(undefined, colorsScss, undefined, undefined, false);
+		expect(c.scssColorStructure).toBe('media-query');
+	});
+
+	it('defaults to modern structure when Colors.scss has :root without media query', () => {
+		const colorsScss = [
+			"@use './Primitives' as *;",
+			':root { color-scheme: light dark; --text-primary: light-dark(#{$grey-750}, #{$grey-50}); }'
+		].join('\n');
+		const c = detectConventions(undefined, colorsScss, undefined, undefined, false);
+		expect(c.scssColorStructure).toBe('modern');
+	});
+
+	it('returns modern structure when no Colors.scss is provided', () => {
+		const c = detectConventions('$grey-50: #fff;', undefined, undefined, undefined, false);
+		expect(c.scssColorStructure).toBe('modern');
+	});
+
+	// ─── importSuffix detection ──────────────────────────────────────────────
+
+	it('detects .scss import suffix', () => {
+		const scss = "@import './Primitives.scss';\n$grey-50: #fff;";
+		const c = detectConventions(scss, undefined, undefined, undefined, false);
+		expect(c.importSuffix).toBe('.scss');
+	});
+
+	it('detects empty import suffix when .scss extension is absent', () => {
+		const scss = "@import './Primitives';\n$grey-50: #fff;";
+		const c = detectConventions(scss, undefined, undefined, undefined, false);
+		expect(c.importSuffix).toBe('');
+	});
+
+	it('detects .scss suffix from @use statements', () => {
+		const scss = "@use './Primitives.scss' as *;\n$grey-50: #fff;";
+		const c = detectConventions(scss, undefined, undefined, undefined, false);
+		expect(c.importSuffix).toBe('.scss');
+	});
 });
 
 // ─── scssVarToTsName ──────────────────────────────────────────────────────────

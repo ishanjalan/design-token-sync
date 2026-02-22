@@ -19,7 +19,8 @@ interface BorderEntry {
 
 export function transformToBorders(
 	tokenExport: Record<string, unknown>,
-	platforms: Platform[]
+	platforms: Platform[],
+	kotlinPackage: string = 'com.example.design'
 ): TransformResult[] {
 	const entries = collectBorderTokens(tokenExport);
 	if (entries.length === 0) return [];
@@ -33,7 +34,7 @@ export function transformToBorders(
 		results.push(generateBorderSwift(entries));
 	}
 	if (platforms.includes('android')) {
-		results.push(generateBorderKotlin(entries));
+		results.push(generateBorderKotlin(entries, kotlinPackage));
 	}
 
 	return results;
@@ -138,14 +139,14 @@ function generateBorderSwift(entries: BorderEntry[]): TransformResult {
 
 // ─── Kotlin Output ────────────────────────────────────────────────────────────
 
-function generateBorderKotlin(entries: BorderEntry[]): TransformResult {
+function generateBorderKotlin(entries: BorderEntry[], kotlinPackage: string): TransformResult {
 	const sorted = [...entries].sort((a, b) => a.sortKey - b.sortKey || a.name.localeCompare(b.name));
 	const lines: string[] = [
 		'// Borders.kt',
 		'// Auto-generated from Figma Variables — DO NOT EDIT',
 		`// Generated: ${new Date().toISOString()}`,
 		'',
-		'package com.example.design // TODO: update to your package name',
+		`package ${kotlinPackage}`,
 		'',
 		'import androidx.compose.foundation.BorderStroke',
 		'import androidx.compose.ui.graphics.Color',

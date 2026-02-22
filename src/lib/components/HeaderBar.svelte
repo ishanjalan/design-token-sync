@@ -15,6 +15,7 @@
 		selectedPlatforms: Platform[];
 		canGenerate: boolean;
 		loading: boolean;
+		needsRegeneration?: boolean;
 		requiredFilled: number;
 		appColorMode: 'dark' | 'light';
 		pluginSyncAvailable: boolean;
@@ -34,6 +35,7 @@
 		selectedPlatforms,
 		canGenerate,
 		loading,
+		needsRegeneration = false,
 		requiredFilled,
 		appColorMode,
 		pluginSyncAvailable,
@@ -77,12 +79,16 @@
 
 		<button
 			class="generate-btn"
+			class:generate-btn--stale={needsRegeneration}
 			disabled={!canGenerate}
 			onclick={onGenerate}
 		>
 			{#if loading}
 				<span class="btn-spinner"></span>
 				Generating…
+			{:else if needsRegeneration}
+				Regenerate
+				<span class="btn-arrow">↻</span>
 			{:else}
 				Generate
 				<span class="btn-arrow">→</span>
@@ -276,9 +282,19 @@
 		animation: gen-ready-pulse 2s ease-in-out infinite;
 	}
 
+	.generate-btn--stale:not(:disabled) {
+		background: var(--bgColor-attention-emphasis);
+		animation: gen-stale-pulse 1.2s ease-in-out infinite;
+	}
+
 	@keyframes gen-ready-pulse {
 		0%, 100% { box-shadow: none; }
 		50% { box-shadow: 0 0 16px color-mix(in srgb, var(--brand-color) 25%, transparent); }
+	}
+
+	@keyframes gen-stale-pulse {
+		0%, 100% { box-shadow: none; }
+		50% { box-shadow: 0 0 16px color-mix(in srgb, var(--bgColor-attention-emphasis) 40%, transparent); }
 	}
 
 	.generate-btn:disabled {
