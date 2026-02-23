@@ -1011,10 +1011,10 @@
 			if (!res.ok) return;
 			const data = await res.json();
 			if (!data.available) return;
-			const requiredEmpty = !slots.lightColors.file && !slots.darkColors.file && !slots.values.file;
-			if (!requiredEmpty) return;
 			storedTokenVersion = data.manifest?.version ?? null;
 			storedTokenPushedAt = data.manifest?.pushedAt ?? null;
+			const requiredEmpty = !slots.lightColors.file && !slots.darkColors.file && !slots.values.file;
+			if (!requiredEmpty) return;
 			await applyStoredTokenData(data);
 			toast.success(`Loaded design tokens v${storedTokenVersion}`);
 		} catch { /* silent — fallback to manual upload */ }
