@@ -79,6 +79,12 @@ export function isConfigured(): boolean {
 	return getConfig() !== null;
 }
 
+export async function fetchManifestOnly(): Promise<TokenManifest | null> {
+	const cfg = getConfig();
+	if (!cfg) return null;
+	return fetchManifest(cfg);
+}
+
 /**
  * Commits token files + manifest to the GitHub repo as a single atomic commit.
  * Returns the new manifest on success, or null if storage is not configured.

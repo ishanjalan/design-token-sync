@@ -81,7 +81,12 @@
 		uiStore.init();
 		settingsStore.init();
 		historyStore.init();
-		tokenStore.loadStoredTokens().then(() => tokenStore.loadStoredVersions());
+		tokenStore.loadStoredTokens().then((loaded) => {
+			tokenStore.loadStoredVersions();
+			if (loaded && settingsStore.autoGenerate && fileStore.canGenerate) {
+				setTimeout(generate, 100);
+			}
+		});
 	});
 
 	// ─── Platform change effect ──────────────────────────────────────────────────
@@ -113,18 +118,6 @@
 			const theme = THEMES.find((t) => t.id === uiStore.selectedTheme) ?? THEMES[2];
 			genStore.highlightAll(genStore.result.files, theme.id, theme.bg);
 		}
-	});
-
-	// ─── Auto-triggered notification (only when plugin push causes diffs) ────────
-
-	$effect(() => {
-		if (!autoTriggered || !genStore.result) return;
-		const totals = genStore.diffTotals;
-		if (totals.added === 0 && totals.removed === 0) return;
-		const filesWithDiffs = Object.keys(genStore.diffs).length;
-		if (filesWithDiffs === 0) return;
-		autoTriggered = false;
-		notifyGoogleChat(genStore.result, { added: totals.added, removed: totals.removed, filesChanged: filesWithDiffs }).catch(() => {});
 	});
 
 	// ─── Highlighted lines effect ────────────────────────────────────────────────
@@ -461,18 +454,13 @@
 
 	// ─── Google Chat ─────────────────────────────────────────────────────────────
 
-	let autoTriggered = false;
-
-	async function notifyGoogleChat(res: GenerateResponse, diffs: { added: number; removed: number; filesChanged: number }) {
+	async function notifyTokenUpdate(change: { version: number; added: number; removed: number; summary: string }) {
 		try {
-			const changelog = generateChangelog(buildChangelogCtx());
 			const payload: Record<string, unknown> = {
-				platforms: res.platforms,
-				stats: res.stats,
-				filesCount: res.files.length,
-				generatedAt: new Date().toISOString(),
-				changelog,
-				diffSummary: diffs
+				platforms: fileStore.selectedPlatforms,
+				version: change.version,
+				tokenChanges: { added: change.added, removed: change.removed, summary: change.summary },
+				generatedAt: new Date().toISOString()
 			};
 			if (settingsStore.chatWebhookUrl) payload.webhookUrl = settingsStore.chatWebhookUrl;
 			const r = await fetch('/api/notify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
@@ -561,12 +549,26 @@
 		const interval = setInterval(() => {
 			tokenStore.checkPluginSync(() => {
 				if (settingsStore.autoGenerate && fileStore.canGenerate) {
-					autoTriggered = true;
 					setTimeout(generate, 100);
 				}
 			});
 		}, 3_000);
 		tokenStore.checkPluginSync();
+		return () => clearInterval(interval);
+	});
+
+	// ─── Stored token version polling (detects pushes to GitHub token repo) ─────
+
+	$effect(() => {
+		if (!browser) return;
+		const interval = setInterval(() => {
+			tokenStore.pollTokenVersion((change) => {
+				notifyTokenUpdate(change).catch(() => {});
+				if (settingsStore.autoGenerate && fileStore.canGenerate) {
+					setTimeout(generate, 100);
+				}
+			});
+		}, 30_000);
 		return () => clearInterval(interval);
 	});
 

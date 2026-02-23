@@ -6,22 +6,23 @@ import type { RequestHandler } from './$types';
 const BodySchema = z.object({
 	webhookUrl: z.string().url().optional(),
 	platforms: z.array(z.string()),
-	stats: z.object({
-		primitiveColors: z.number(),
-		semanticColors: z.number(),
-		spacingSteps: z.number(),
-		typographyStyles: z.number()
-	}),
-	filesCount: z.number(),
-	generatedAt: z.string(),
-	changelog: z.string().optional(),
-	diffSummary: z
+	version: z.number().optional(),
+	tokenChanges: z
 		.object({
 			added: z.number(),
 			removed: z.number(),
-			filesChanged: z.number()
+			summary: z.string()
 		})
-		.optional()
+		.optional(),
+	stats: z
+		.object({
+			primitiveColors: z.number(),
+			semanticColors: z.number(),
+			spacingSteps: z.number(),
+			typographyStyles: z.number()
+		})
+		.optional(),
+	generatedAt: z.string()
 });
 
 export const POST: RequestHandler = async ({ request }) => {
@@ -42,81 +43,51 @@ export const POST: RequestHandler = async ({ request }) => {
 		throw error(422, 'No webhook URL configured (set GOOGLE_CHAT_WEBHOOK_URL or pass webhookUrl)');
 	}
 
-	const { platforms, stats, filesCount, generatedAt, changelog, diffSummary } = parsed.data;
+	const { platforms, version, tokenChanges, stats, generatedAt } = parsed.data;
 
 	const platformStr = platforms.join(' · ');
-	const statLines = [
-		stats.primitiveColors > 0 ? `${stats.primitiveColors} primitive colors` : null,
-		stats.semanticColors > 0 ? `${stats.semanticColors} semantic colors` : null,
-		stats.spacingSteps > 0 ? `${stats.spacingSteps} spacing steps` : null,
-		stats.typographyStyles > 0 ? `${stats.typographyStyles} text styles` : null
-	]
-		.filter(Boolean)
-		.join(' · ');
+	const title = version
+		? `Tokensmith — Design System Updated (v${version})`
+		: 'Tokensmith — Design System Updated';
 
-	const diffLine = diffSummary
-		? `+${diffSummary.added} / -${diffSummary.removed} across ${diffSummary.filesChanged} file${diffSummary.filesChanged !== 1 ? 's' : ''}`
-		: null;
+	const widgets: Record<string, unknown>[] = [
+		{ keyValue: { topLabel: 'Platforms', content: platformStr } }
+	];
+
+	if (tokenChanges) {
+		const parts: string[] = [];
+		if (tokenChanges.added > 0) parts.push(`+${tokenChanges.added} added`);
+		if (tokenChanges.removed > 0) parts.push(`-${tokenChanges.removed} removed`);
+		widgets.push({ keyValue: { topLabel: 'Token changes', content: parts.join(', ') || 'Updated' } });
+	}
+
+	if (stats) {
+		const statLines = [
+			stats.primitiveColors > 0 ? `${stats.primitiveColors} primitive colors` : null,
+			stats.semanticColors > 0 ? `${stats.semanticColors} semantic colors` : null,
+			stats.spacingSteps > 0 ? `${stats.spacingSteps} spacing steps` : null,
+			stats.typographyStyles > 0 ? `${stats.typographyStyles} text styles` : null
+		]
+			.filter(Boolean)
+			.join(' · ');
+		if (statLines) widgets.push({ keyValue: { topLabel: 'Tokens', content: statLines } });
+	}
+
+	widgets.push({
+		keyValue: { topLabel: 'Updated at', content: new Date(generatedAt).toLocaleString() }
+	});
 
 	const card = {
 		cards: [
 			{
 				header: {
-					title: 'Tokensmith — Design Tokens Updated',
+					title,
 					subtitle: platformStr,
 					imageUrl:
 						'https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsoutlined/token/default/24px.svg',
 					imageStyle: 'AVATAR'
 				},
-				sections: [
-					{
-						widgets: [
-							{
-								keyValue: {
-									topLabel: 'Platforms',
-									content: platformStr
-								}
-							},
-							{
-								keyValue: {
-									topLabel: 'Tokens',
-									content: statLines || 'No token stats available'
-								}
-							},
-							...(diffLine
-								? [
-										{
-											keyValue: {
-												topLabel: 'Changes',
-												content: diffLine
-											}
-										}
-									]
-								: []),
-							{
-								keyValue: {
-									topLabel: 'Files generated',
-									content: String(filesCount)
-								}
-							},
-							{
-								keyValue: {
-									topLabel: 'Generated at',
-									content: new Date(generatedAt).toLocaleString()
-								}
-							},
-							...(changelog
-								? [
-										{
-											textParagraph: {
-												text: changelog.slice(0, 1000)
-											}
-										}
-									]
-								: [])
-						]
-					}
-				]
+				sections: [{ widgets }]
 			}
 		]
 	};

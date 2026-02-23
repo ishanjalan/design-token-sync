@@ -219,6 +219,47 @@ class TokenStoreClientClass {
 		}
 	}
 
+	async pollTokenVersion(onNewVersion?: (change: { version: number; added: number; removed: number; summary: string }) => void) {
+		try {
+			const res = await fetch('/api/tokens?mode=version');
+			if (!res.ok) return;
+			const data = await res.json();
+			if (!data.available) return;
+			const remoteVersion = data.manifest?.version ?? null;
+			if (remoteVersion === null || remoteVersion === this.storedTokenVersion) return;
+			this.storedTokensLoading = true;
+			const fullRes = await fetch('/api/tokens');
+			if (!fullRes.ok) return;
+			const fullData = await fullRes.json();
+			if (!fullData.available) return;
+			const prevVersion = this.storedTokenVersion;
+			this.storedTokenVersion = fullData.manifest?.version ?? null;
+			this.storedTokenPushedAt = fullData.manifest?.pushedAt ?? null;
+			const newKeys = this.computeTokenKeys(fullData);
+			let added = 0, removed = 0;
+			let summary = '';
+			if (prevVersion !== null && this.storedTokenVersion !== prevVersion) {
+				for (const cat of Object.keys(newKeys)) {
+					const prev = this.previousTokenKeys[cat] ?? new Set<string>();
+					const curr = newKeys[cat];
+					for (const k of curr) { if (!prev.has(k)) added++; }
+					for (const k of prev) { if (!curr.has(k)) removed++; }
+				}
+				summary = this.computeChangeSummary(this.previousTokenKeys, newKeys) ?? '';
+				this.tokenChangeSummary = summary;
+				this.tokensUpdatedBanner = { version: this.storedTokenVersion ?? 0, summary };
+			}
+			this.previousTokenKeys = newKeys;
+			fileStore.applyTokenData(this.buildSlotEntries(fullData));
+			await this.loadStoredVersions();
+			toast.success(`New tokens detected — v${this.storedTokenVersion}`);
+			if (added > 0 || removed > 0) {
+				onNewVersion?.({ version: this.storedTokenVersion ?? 0, added, removed, summary });
+			}
+		} catch { /* silent */ }
+		finally { this.storedTokensLoading = false; }
+	}
+
 	async checkPluginSync(onAutoApply?: () => void) {
 		try {
 			const res = await fetch('/api/figma/plugin-sync');
