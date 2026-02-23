@@ -443,9 +443,6 @@ exports[`Swift snapshots > default conventions > Colors.swift 1`] = `
 // Generated: [TIMESTAMP]
 
 import SwiftUI
-#if canImport(UIKit)
-import UIKit
-#endif
 
 // MARK: - Hex Color Init
 private extension Color {
@@ -467,6 +464,27 @@ private extension Color {
   }
 }
 
+// MARK: - Dynamic Color Init
+private extension Color {
+  init(light: Color, dark: Color) {
+    #if canImport(UIKit)
+    self.init(uiColor: UIColor { trait in
+      trait.userInterfaceStyle == .dark
+        ? UIColor(dark)
+        : UIColor(light)
+    })
+    #elseif canImport(AppKit)
+    self.init(nsColor: NSColor(name: nil) { appearance in
+      appearance.bestMatch(from: [.darkAqua, .vibrantDark]) != nil
+        ? NSColor(dark)
+        : NSColor(light)
+    })
+    #else
+    self = light
+    #endif
+  }
+}
+
 // MARK: - Primitives
 public extension Color {
   // grey
@@ -475,27 +493,13 @@ public extension Color {
   static let grey750 = Color(hex: 0x1D1D1D)
 }
 
-#if canImport(UIKit)
-// MARK: - Semantic Colors (UIColor — supports dynamic light/dark)
-public extension UIColor {
-  // Fill
-  static let fillStaticWhite = UIColor(Color.grey0)
-  // Text
-  static let textPrimary = UIColor { trait in
-    trait.userInterfaceStyle == .dark
-      ? UIColor(Color.grey50)
-      : UIColor(Color.grey750)
-  }
-}
-
-// MARK: - Semantic Colors (SwiftUI Color)
+// MARK: - Semantic Colors
 public extension Color {
   // Fill
   static let fillStaticWhite = Color.grey0
   // Text
   static let textPrimary = Color(light: .grey750, dark: .grey50)
 }
-#endif
 
 "
 `;

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Download, GitPullRequest, ClipboardCopy, History } from 'lucide-svelte';
+	import { Download, GitPullRequest, ClipboardCopy, History, Palette } from 'lucide-svelte';
 	import type { GenerateResponse, GenerationStats } from '$lib/types.js';
 
 	interface DiffTotals {
@@ -92,7 +92,7 @@
 					class="ctrl-btn"
 					class:ctrl-btn--active={showSwatches}
 					onclick={onToggleSwatches}
-					title="Toggle color swatch preview">◈</button
+					title="Toggle color swatch preview"><Palette size={13} strokeWidth={2} /></button
 				>
 			{/if}
 			{#if historyCount > 0}

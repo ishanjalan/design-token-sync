@@ -130,13 +130,31 @@ export const BEST_PRACTICE_WEB_CONVENTIONS: DetectedConventions = {
 };
 
 export interface DetectedSwiftConventions {
-	namingCase: 'camel' | 'snake'; // camelCase (default) or snake_case
-	useComputedVar: boolean; // computed var (true) vs static let (false)
+	namingCase: 'camel' | 'snake';
+	useComputedVar: boolean;
+	indent: string;
+	primitiveFormat: 'colorHex' | 'stringHex';
+	containerStyle: 'extension' | 'enum';
+	primitiveEnumName: string;
+	primitiveAccess: string;
+	semanticFormat: 'dynamic' | 'flatLightDark';
+	semanticEnumName: string;
+	apiEnumName: string;
+	imports: string[];
 }
 
 export const BEST_PRACTICE_SWIFT_CONVENTIONS: DetectedSwiftConventions = {
 	namingCase: 'camel',
-	useComputedVar: false
+	useComputedVar: false,
+	indent: '  ',
+	primitiveFormat: 'colorHex',
+	containerStyle: 'extension',
+	primitiveEnumName: '',
+	primitiveAccess: '',
+	semanticFormat: 'dynamic',
+	semanticEnumName: '',
+	apiEnumName: 'ColorStyle',
+	imports: ['SwiftUI']
 };
 
 export interface DetectedKotlinConventions {

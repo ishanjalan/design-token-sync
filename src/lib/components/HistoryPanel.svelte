@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { X } from 'lucide-svelte';
 	import type { HistoryEntry, Platform } from '$lib/types.js';
 
 	interface Props {
@@ -24,7 +25,7 @@
 <div class="history-panel">
 	<div class="history-header">
 		<span>Generation history</span>
-		<button class="ctrl-btn" onclick={onClose} aria-label="Close history panel">✕ close</button>
+		<button class="ctrl-btn" onclick={onClose} aria-label="Close history panel"><X size={10} strokeWidth={2} /> close</button>
 	</div>
 	{#if history.length === 0}
 		<p class="history-empty">No history yet.</p>

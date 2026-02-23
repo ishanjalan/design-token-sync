@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Moon, Sun, Diamond } from 'lucide-svelte';
+	import { Moon, Sun, Diamond, RefreshCw, ArrowRight } from 'lucide-svelte';
 	import type { Platform } from '$lib/types.js';
 
 	interface PlatformOption {
@@ -8,6 +8,7 @@
 		sublabel: string;
 		color: string;
 		icon: string;
+		techIcons: { svg: string; color: string; label: string }[];
 	}
 
 	interface Props {
@@ -16,18 +17,12 @@
 		canGenerate: boolean;
 		loading: boolean;
 		needsRegeneration?: boolean;
-		requiredFilled: number;
 		appColorMode: 'dark' | 'light';
-		pluginSyncAvailable: boolean;
-		pluginAutoLoad: boolean;
-		figmaWebhookEvent: { file_name: string; timestamp: string; receivedAt: string } | null;
-		figmaWebhookSeen: boolean;
+		tokensAutoLoaded?: boolean;
+		welcomeMode?: boolean;
 		onSelectPlatform: (id: Platform) => void;
 		onGenerate: () => void;
 		onThemeToggle: () => void;
-		onLoadPluginSync: () => void;
-		onAutoLoadChange: (val: boolean) => void;
-		onWebhookDismiss: () => void;
 	}
 
 	let {
@@ -36,18 +31,12 @@
 		canGenerate,
 		loading,
 		needsRegeneration = false,
-		requiredFilled,
 		appColorMode,
-		pluginSyncAvailable,
-		pluginAutoLoad,
-		figmaWebhookEvent,
-		figmaWebhookSeen,
+		tokensAutoLoaded = false,
+		welcomeMode = false,
 		onSelectPlatform,
 		onGenerate,
-		onThemeToggle,
-		onLoadPluginSync,
-		onAutoLoadChange,
-		onWebhookDismiss
+		onThemeToggle
 	}: Props = $props();
 </script>
 
@@ -60,81 +49,46 @@
 			<span class="brand-name">Tokensmith</span>
 		</div>
 
-		<div class="platform-segmented" role="radiogroup" aria-label="Select platform">
-			{#each platforms as p (p.id)}
-				<button
-					class="seg-btn"
-					class:seg-btn--active={selectedPlatforms.includes(p.id)}
-					style="--p-color: {p.color}"
-					onclick={() => onSelectPlatform(p.id)}
-					role="radio"
-					aria-checked={selectedPlatforms.includes(p.id)}
-				>
-					<!-- eslint-disable-next-line svelte/no-at-html-tags -->
-					<span class="seg-icon">{@html p.icon}</span>
-					<span class="seg-label">{p.label}</span>
-				</button>
-			{/each}
-		</div>
+		{#if !welcomeMode}
+			<div class="platform-segmented" role="radiogroup" aria-label="Select platform">
+				{#each platforms as p (p.id)}
+					<button
+						class="seg-btn"
+						class:seg-btn--active={selectedPlatforms.includes(p.id)}
+						style="--p-color: {p.color}"
+						onclick={() => onSelectPlatform(p.id)}
+						role="radio"
+						aria-checked={selectedPlatforms.includes(p.id)}
+					>
+						<!-- eslint-disable-next-line svelte/no-at-html-tags -->
+						<span class="seg-icon">{@html p.icon}</span>
+						<span class="seg-label">{p.label}</span>
+					</button>
+				{/each}
+			</div>
 
-		<button
-			class="generate-btn"
-			class:generate-btn--stale={needsRegeneration}
-			disabled={!canGenerate}
-			onclick={onGenerate}
-		>
-			{#if loading}
-				<span class="btn-spinner"></span>
-				Generating…
-			{:else if needsRegeneration}
-				Regenerate
-				<span class="btn-arrow">↻</span>
-			{:else}
-				Generate
-				<span class="btn-arrow">→</span>
-			{/if}
-		</button>
+			<button
+				class="generate-btn"
+				class:generate-btn--stale={needsRegeneration}
+				class:generate-btn--ready={tokensAutoLoaded && canGenerate && !loading}
+				disabled={!canGenerate}
+				onclick={onGenerate}
+			>
+				{#if loading}
+					<span class="btn-spinner"></span>
+					Generating…
+				{:else if needsRegeneration}
+					Regenerate
+					<span class="btn-arrow"><RefreshCw size={12} strokeWidth={2} /></span>
+				{:else}
+					Generate
+					<span class="btn-arrow"><ArrowRight size={12} strokeWidth={2} /></span>
+				{/if}
+			</button>
+		{/if}
 	</div>
 
 	<div class="header-right">
-		{#if pluginSyncAvailable}
-			<button
-				class="alert-badge"
-				onclick={onLoadPluginSync}
-				title="Load tokens synced from Figma plugin"
-			>
-				<span class="alert-dot"></span>
-				Plugin sync
-			</button>
-		{/if}
-
-		{#if figmaWebhookEvent && !figmaWebhookSeen}
-			<button
-				class="alert-badge alert-badge--warn"
-				onclick={onWebhookDismiss}
-				title="Figma file updated"
-			>
-				<span class="alert-dot alert-dot--warn"></span>
-				Figma updated
-			</button>
-		{/if}
-
-		<label class="auto-load" title="Automatically load tokens when synced from Figma plugin">
-			<input type="checkbox" checked={pluginAutoLoad} onchange={(e) => onAutoLoadChange((e.target as HTMLInputElement).checked)} />
-			<span class="auto-load-text">Auto</span>
-		</label>
-
-		<div class="status-badge">
-			<span class="status-dot" class:status-dot--active={requiredFilled > 0}></span>
-			<span class="status-text">
-				{#if requiredFilled === 3}
-					Ready
-				{:else}
-					{requiredFilled}/3
-				{/if}
-			</span>
-		</div>
-
 		<button
 			class="theme-toggle"
 			onclick={onThemeToggle}
@@ -282,6 +236,11 @@
 		animation: gen-ready-pulse 2s ease-in-out infinite;
 	}
 
+	.generate-btn--ready:not(:disabled) {
+		animation: gen-autoloaded-pulse 1.5s ease-in-out infinite;
+		box-shadow: 0 0 20px color-mix(in srgb, var(--brand-color) 40%, transparent);
+	}
+
 	.generate-btn--stale:not(:disabled) {
 		background: var(--bgColor-attention-emphasis);
 		animation: gen-stale-pulse 1.2s ease-in-out infinite;
@@ -290,6 +249,11 @@
 	@keyframes gen-ready-pulse {
 		0%, 100% { box-shadow: none; }
 		50% { box-shadow: 0 0 16px color-mix(in srgb, var(--brand-color) 25%, transparent); }
+	}
+
+	@keyframes gen-autoloaded-pulse {
+		0%, 100% { box-shadow: 0 0 12px color-mix(in srgb, var(--brand-color) 25%, transparent); }
+		50% { box-shadow: 0 0 28px color-mix(in srgb, var(--brand-color) 50%, transparent); }
 	}
 
 	@keyframes gen-stale-pulse {
@@ -327,99 +291,6 @@
 
 	@keyframes spin {
 		to { transform: rotate(360deg); }
-	}
-
-	/* ─── Alert Badges ─────────────────────────────── */
-	.alert-badge {
-		display: flex;
-		align-items: center;
-		gap: 5px;
-		padding: 3px 10px;
-		background: var(--bgColor-accent-muted);
-		border: 1px solid var(--borderColor-accent-muted);
-		border-radius: var(--borderRadius-full);
-		font-family: var(--fontStack-sansSerif);
-		font-size: 10px;
-		font-weight: 600;
-		color: var(--fgColor-accent);
-		cursor: pointer;
-		white-space: nowrap;
-		animation: fade-in 0.3s ease;
-	}
-
-	.alert-badge--warn {
-		background: var(--bgColor-attention-muted);
-		border-color: var(--borderColor-attention-muted);
-		color: var(--fgColor-attention);
-	}
-
-	.alert-dot {
-		width: 6px;
-		height: 6px;
-		border-radius: 50%;
-		background: var(--fgColor-accent);
-		animation: pulse 2s ease-in-out infinite;
-	}
-
-	.alert-dot--warn {
-		background: var(--fgColor-attention);
-	}
-
-	@keyframes pulse {
-		0%, 100% { opacity: 1; }
-		50% { opacity: 0.4; }
-	}
-
-	@keyframes fade-in {
-		from { opacity: 0; transform: translateY(-4px); }
-		to { opacity: 1; transform: translateY(0); }
-	}
-
-	/* ─── Auto-load toggle ─────────────────────────── */
-	.auto-load {
-		display: flex;
-		align-items: center;
-		gap: 4px;
-		cursor: pointer;
-		font-size: 10px;
-		color: var(--fgColor-disabled);
-	}
-
-	.auto-load input {
-		width: 12px;
-		height: 12px;
-		accent-color: var(--brand-color);
-	}
-
-	.auto-load-text {
-		white-space: nowrap;
-	}
-
-	/* ─── Status Badge ─────────────────────────────── */
-	.status-badge {
-		display: flex;
-		align-items: center;
-		gap: 5px;
-		padding: 2px 8px;
-		font-family: var(--fontStack-monospace);
-		font-size: 10px;
-		color: var(--fgColor-disabled);
-	}
-
-	.status-dot {
-		width: 6px;
-		height: 6px;
-		border-radius: 50%;
-		background: var(--fgColor-disabled);
-		transition: background var(--base-duration-200) var(--base-easing-ease);
-	}
-
-	.status-dot--active {
-		background: var(--fgColor-success);
-	}
-
-	.status-text {
-		white-space: nowrap;
 	}
 
 	/* ─── Theme toggle ─────────────────────────────── */
@@ -467,19 +338,6 @@
 
 		.header-right {
 			gap: 4px;
-		}
-
-		.auto-load {
-			display: none;
-		}
-
-		.alert-badge {
-			font-size: 0;
-			padding: 3px 6px;
-		}
-
-		.alert-badge .alert-dot {
-			margin: 0;
 		}
 	}
 </style>

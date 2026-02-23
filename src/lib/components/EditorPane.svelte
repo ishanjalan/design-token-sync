@@ -1,6 +1,8 @@
 <script lang="ts">
-	import { Download, ClipboardCopy, GitPullRequest, List, WrapText, Check, X } from 'lucide-svelte';
-	import type { GeneratedFile, Platform } from '$lib/types.js';
+	import { Download, ClipboardCopy, GitPullRequest, List, WrapText, Check, X, ChevronRight, ChevronUp, ChevronDown, RefreshCw, AlertTriangle, ArrowLeftRight, Target, Pencil, Search, ArrowRight } from 'lucide-svelte';
+	import type { GeneratedFile, Platform, DropZoneKey, FileSlot } from '$lib/types.js';
+	import type { FileInsight } from '$lib/file-validation.js';
+	import WelcomeView from './WelcomeView.svelte';
 	import {
 		type DiffLine,
 		type ViewMode,
@@ -21,13 +23,22 @@
 	import HistoryPanel from './HistoryPanel.svelte';
 	import PrResults from './PrResults.svelte';
 	import type { HistoryEntry, PrResult, GenerateResponse } from '$lib/types.js';
-	import type { PlatformMismatch } from '$lib/diff-utils.js';
+	import { type PlatformMismatch, diffStats as computeDiffStats } from '$lib/diff-utils.js';
 
 	interface ThemeOption {
 		id: string;
 		label: string;
 		bg: string;
 		mode: 'dark' | 'light';
+	}
+
+	interface PlatformOption {
+		id: Platform;
+		label: string;
+		sublabel: string;
+		color: string;
+		icon: string;
+		techIcons: { svg: string; color: string; label: string }[];
 	}
 
 	interface Props {
@@ -72,7 +83,31 @@
 		selectedTheme: string;
 		showThemePicker: boolean;
 		selectedPlatforms: Platform[];
-		idleGrid: string[];
+		storedTokenVersion?: number | null;
+		storedTokenPushedAt?: string | null;
+		tokensUpdatedBanner?: { version: number; summary: string } | null;
+		onRegenerate?: () => void;
+		platforms: PlatformOption[];
+		onSelectPlatform: (id: Platform) => void;
+		swatchCount: number;
+		refKeys: DropZoneKey[];
+		visibleKeysAll: DropZoneKey[];
+		slots: Record<DropZoneKey, FileSlot>;
+		fileInsights: Partial<Record<DropZoneKey, FileInsight>>;
+		hasRefFiles: boolean;
+		bestPractices: boolean;
+		onBestPracticesChange: (val: boolean) => void;
+		canGenerate: boolean;
+		loading: boolean;
+		onGenerate: () => void;
+		onOpenImportPanel: () => void;
+		onWelcomeDragEnter: (key: DropZoneKey, e: DragEvent) => void;
+		onWelcomeDragOver: (key: DropZoneKey, e: DragEvent) => void;
+		onWelcomeDragLeave: (key: DropZoneKey) => void;
+		onWelcomeDrop: (key: DropZoneKey, e: DragEvent) => void;
+		onWelcomeFileInput: (key: DropZoneKey, e: Event) => void;
+		onWelcomeClearFile: (key: DropZoneKey, e: MouseEvent) => void;
+		requiredFilled: number;
 		formatTime: (d: Date) => string;
 		timeAgo: (d: Date) => string;
 		platformColor: (platform: Platform) => string;
@@ -120,7 +155,14 @@
 		lastGeneratedAt, sendingPrs, diffTotals, diffNavIndex, swatches,
 		showSwatches, swatchComparisons, swatchTab, showHistory, history, prResults,
 		platformMismatches, themes, selectedTheme, showThemePicker, selectedPlatforms,
-		idleGrid, formatTime, timeAgo, platformColor,
+		storedTokenVersion = null, storedTokenPushedAt = null,
+		tokensUpdatedBanner = null, onRegenerate,
+		platforms, onSelectPlatform, swatchCount,
+		refKeys, visibleKeysAll, slots, fileInsights, hasRefFiles, bestPractices,
+		onBestPracticesChange, canGenerate, loading, onGenerate, onOpenImportPanel,
+		onWelcomeDragEnter, onWelcomeDragOver, onWelcomeDragLeave, onWelcomeDrop,
+		onWelcomeFileInput, onWelcomeClearFile, requiredFilled,
+		formatTime, timeAgo, platformColor,
 		onTabSelect, onTabKeydown, onViewModeChange, onSearchChange, onSearchInputBind,
 		onCodeKeydown, onCodeScroll, onCodeScrollBind, onLineClick, onSectionNavToggle,
 		onScrollToLine, onWrapToggle, onChangeSummaryToggle, onNavigateDiff,
@@ -149,65 +191,70 @@
 
 <div class="editor-pane atmosphere-noise">
 	{#if !result}
-		<div class="idle-state">
-			{#if swatches.length > 0}
-				<div class="idle-swatch-preview">
-					<div class="idle-swatch-header">
-						<span class="idle-swatch-title">◈ Color Primitives — {swatches.length} tokens</span>
-						<span class="idle-swatch-hint">Generate to produce code output →</span>
-					</div>
-					{#each [...new Set(swatches.map((s) => s.family))] as family (family)}
-						<div class="idle-swatch-group">
-							<span class="idle-swatch-group-name">{family}</span>
-							<div class="swatch-row">
-								{#each swatches.filter((s) => s.family === family) as swatch (swatch.name)}
-									<div class="swatch-item" title="{swatch.name}\n{swatch.hex}">
-										<div class="swatch-color" style="background: {swatch.hex}"></div>
-										<span class="swatch-hex">{swatch.hex}</span>
-									</div>
-								{/each}
-							</div>
-						</div>
-					{/each}
-				</div>
-			{:else}
-				<div class="idle-grid" aria-hidden="true">
-					{#each idleGrid as cell, i (i)}
-						<span class="idle-cell">{cell}</span>
-					{/each}
-				</div>
-				<div class="idle-message">
-					<p class="idle-title">Awaiting input</p>
-					<p class="idle-sub">
-						Load the 3 Figma JSON files and hit Generate to produce
-						{selectedPlatforms.includes('web') ? 'SCSS + TypeScript' : ''}
-						{selectedPlatforms.includes('ios') ? 'Swift' : ''}
-						{selectedPlatforms.includes('android') ? 'Kotlin' : ''} output.
-					</p>
-					<a class="idle-link" href="https://help.figma.com/hc/en-us/articles/15339657135383-Guide-to-variables-in-Figma" target="_blank" rel="noopener noreferrer">
-						How to export variables from Figma ↗
-					</a>
-				</div>
-			{/if}
+		<div class="welcome-wrapper">
+		<WelcomeView
+			{platforms}
+			{selectedPlatforms}
+			{onSelectPlatform}
+			{swatchCount}
+			{storedTokenVersion}
+			storedTokenPushedAt={storedTokenPushedAt ?? null}
+			{refKeys}
+			visibleKeys={visibleKeysAll}
+			{slots}
+			{fileInsights}
+			{hasRefFiles}
+			{bestPractices}
+			{onBestPracticesChange}
+			{canGenerate}
+			{loading}
+			{onGenerate}
+			{onOpenImportPanel}
+			onDragEnter={onWelcomeDragEnter}
+			onDragOver={onWelcomeDragOver}
+			onDragLeave={onWelcomeDragLeave}
+			onDrop={onWelcomeDrop}
+			onFileInput={onWelcomeFileInput}
+			onClearFile={onWelcomeClearFile}
+			{requiredFilled}
+		/>
 		</div>
 	{:else}
+		<div class="editor-wrapper">
+		{#if tokensUpdatedBanner}
+			<div class="tokens-updated-banner">
+				<span class="tokens-updated-text">
+					Tokens updated to v{tokensUpdatedBanner.version}{tokensUpdatedBanner.summary ? ` — ${tokensUpdatedBanner.summary}` : ''}
+				</span>
+				<button class="tokens-updated-btn" onclick={onRegenerate}>Regenerate</button>
+			</div>
+		{/if}
 		<!-- File tabs bar -->
-		<div class="file-tabs" role="tablist" aria-label="Open files">
-			{#each visibleFiles as file (file.filename)}
-				{@const dotColor = file.format === 'scss' ? '#F06090' : file.format === 'css' ? '#2196F3' : file.format === 'typescript' ? '#3178C6' : file.format === 'swift' ? '#FF8040' : file.format === 'kotlin' ? '#B060FF' : '#4D9EFF'}
-				<button
-					class="file-tab"
-					class:file-tab--active={activeTab === file.filename}
-					role="tab"
-					aria-selected={activeTab === file.filename}
-					onclick={() => onTabSelect(file.filename)}
-					onkeydown={onTabKeydown}
-					style="--tab-accent: {dotColor}"
-				>
-					<span class="tab-dot" style="background: {dotColor}"></span>
-					{file.filename}
-				</button>
-			{/each}
+		<div class="file-tabs-bar">
+			<div class="file-tabs" role="tablist" aria-label="Open files">
+				{#each visibleFiles as file (file.filename)}
+					{@const dotColor = file.format === 'scss' ? '#F06090' : file.format === 'css' ? '#2196F3' : file.format === 'typescript' ? '#3178C6' : file.format === 'swift' ? '#FF8040' : file.format === 'kotlin' ? '#B060FF' : '#4D9EFF'}
+					{@const fileDiffs = diffs[file.filename]}
+					{@const fileDiffStats = fileDiffs ? computeDiffStats(fileDiffs, modifications[file.filename]) : null}
+					<button
+						class="file-tab"
+						class:file-tab--active={activeTab === file.filename}
+						role="tab"
+						aria-selected={activeTab === file.filename}
+						onclick={() => onTabSelect(file.filename)}
+						onkeydown={onTabKeydown}
+						style="--tab-accent: {dotColor}"
+					>
+						<span class="tab-dot" style="background: {dotColor}"></span>
+						{file.filename}
+						{#if fileDiffStats && (fileDiffStats.added > 0 || fileDiffStats.removed > 0)}
+							<span class="tab-diff-pill" title="+{fileDiffStats.added} / -{fileDiffStats.removed}">
+								{fileDiffStats.added + fileDiffStats.removed}
+							</span>
+						{/if}
+					</button>
+				{/each}
+			</div>
 
 			<div class="tab-actions">
 				<!-- Theme picker -->
@@ -274,6 +321,12 @@
 				<div class="success-banner-inner">
 					<Check size={14} strokeWidth={2.5} />
 					<span>{visibleFiles.length} file{visibleFiles.length !== 1 ? 's' : ''} generated</span>
+					{#if diffTotals.added > 0 || diffTotals.removed > 0}
+						<span class="success-stats">
+							{#if diffTotals.added > 0}<span class="success-stat success-stat--add">+{diffTotals.added}</span>{/if}
+							{#if diffTotals.removed > 0}<span class="success-stat success-stat--del">-{diffTotals.removed}</span>{/if}
+						</span>
+					{/if}
 				</div>
 				<div class="success-banner-actions">
 					<button class="success-action" onclick={onCopyFile}>
@@ -332,9 +385,9 @@
 									{@const changeCount = diffs[file.filename] ? diffChangeIndices(diffs[file.filename]).length : 0}
 									{#if changeCount > 0}
 										<div class="diff-nav" role="navigation" aria-label="Diff navigation">
-											<button class="diff-nav-btn" onclick={() => onNavigateDiff(file.filename, 'prev')} aria-label="Previous change">↑</button>
+											<button class="diff-nav-btn" onclick={() => onNavigateDiff(file.filename, 'prev')} aria-label="Previous change"><ChevronUp size={12} strokeWidth={2} /></button>
 											<span class="diff-nav-count">{(diffNavIndex[file.filename] ?? 0) + 1}/{changeCount}</span>
-											<button class="diff-nav-btn" onclick={() => onNavigateDiff(file.filename, 'next')} aria-label="Next change">↓</button>
+											<button class="diff-nav-btn" onclick={() => onNavigateDiff(file.filename, 'next')} aria-label="Next change"><ChevronDown size={12} strokeWidth={2} /></button>
 										</div>
 									{/if}
 								{/if}
@@ -375,7 +428,7 @@
 									{#if sr}
 										<span class="search-count" class:search-count--zero={sr.count === 0}>{sr.count} found</span>
 									{/if}
-									<button class="search-clear" onclick={() => onSearchChange('')}>✕</button>
+									<button class="search-clear" onclick={() => onSearchChange('')}><X size={10} strokeWidth={2} /></button>
 								{/if}
 							</div>
 							<div class="toolbar-divider"></div>
@@ -389,50 +442,50 @@
 					{#if totalInsights > 0 && !searchQuery && mode === 'code'}
 						<div class="change-summary">
 							<button class="change-summary-toggle" onclick={() => onChangeSummaryToggle(file.filename)}>
-								<span class="cs-chevron" class:cs-chevron--open={showChangeSummary[file.filename]}>▸</span>
+								<span class="cs-chevron" class:cs-chevron--open={showChangeSummary[file.filename]}><ChevronRight size={10} strokeWidth={2} /></span>
 								<span class="cs-label">
-									{#if depCount > 0}<span class="cs-tag cs-tag--warn">⚠ {depCount} deprecated</span>{/if}
+									{#if depCount > 0}<span class="cs-tag cs-tag--warn"><AlertTriangle size={10} strokeWidth={2} /> {depCount} deprecated</span>{/if}
 									{#if modCountBanner > 0}<span class="cs-tag cs-tag--info">{modCountBanner} modified</span>{/if}
-									{#if renameCount > 0}<span class="cs-tag">↔ {renameCount} rename{renameCount > 1 ? 's' : ''}</span>{/if}
-									{#if cov}<span class="cs-tag" class:cs-tag--ok={cov.coveragePercent >= 95} class:cs-tag--warn={cov.coveragePercent >= 80 && cov.coveragePercent < 95} class:cs-tag--danger={cov.coveragePercent < 80}>◎ {cov.coveragePercent.toFixed(0)}%</span>{/if}
+									{#if renameCount > 0}<span class="cs-tag"><ArrowLeftRight size={10} strokeWidth={2} /> {renameCount} rename{renameCount > 1 ? 's' : ''}</span>{/if}
+									{#if cov}<span class="cs-tag" class:cs-tag--ok={cov.coveragePercent >= 95} class:cs-tag--warn={cov.coveragePercent >= 80 && cov.coveragePercent < 95} class:cs-tag--danger={cov.coveragePercent < 80}><Target size={10} strokeWidth={2} /> {cov.coveragePercent.toFixed(0)}%</span>{/if}
 								</span>
-								{#if hasDiff}<button class="cs-diff-link" onclick={(e) => { e.stopPropagation(); onViewModeChange(file.filename, 'diff'); }}>View diff →</button>{/if}
+								{#if hasDiff}<span class="cs-diff-link" role="link" tabindex="0" onclick={(e) => { e.stopPropagation(); onViewModeChange(file.filename, 'diff'); }} onkeydown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); onViewModeChange(file.filename, 'diff'); } }}>View diff <ArrowRight size={10} strokeWidth={2} /></span>{/if}
 							</button>
 							{#if showChangeSummary[file.filename]}
 								<div class="cs-body">
 									{#if depCount > 0}
 										<div class="cs-row cs-row--warn">
-											<span class="cs-row-icon">⚠</span>
+											<span class="cs-row-icon"><AlertTriangle size={11} strokeWidth={2} /></span>
 											<span class="cs-row-text">{deprecations[file.filename].slice(0, 5).join(', ')}{depCount > 5 ? ` … +${depCount - 5} more` : ''}</span>
 										</div>
 									{/if}
 									{#if modCountBanner > 0}
 										<div class="cs-row cs-row--info">
-											<span class="cs-row-icon">Δ</span>
+											<span class="cs-row-icon"><Pencil size={11} strokeWidth={2} /></span>
 											<span class="cs-row-text">{modifications[file.filename].slice(0, 3).map(m => `${m.name}: ${m.oldValue} → ${m.newValue}`).join(', ')}{modCountBanner > 3 ? ` … +${modCountBanner - 3} more` : ''}</span>
 										</div>
 									{/if}
 									{#if fileFamilyRenames.length > 0}
 										<div class="cs-row">
-											<span class="cs-row-icon">↔</span>
+											<span class="cs-row-icon"><ArrowLeftRight size={11} strokeWidth={2} /></span>
 											<span class="cs-row-text">{fileFamilyRenames.slice(0, 2).map(fr => `${fr.oldPrefix}* → ${fr.newPrefix}* (${fr.members.length})`).join(', ')}</span>
 										</div>
 									{/if}
 									{#if individualRenames.length > 0}
 										<div class="cs-row">
-											<span class="cs-row-icon">↔</span>
+											<span class="cs-row-icon"><ArrowLeftRight size={11} strokeWidth={2} /></span>
 											<span class="cs-row-text">{individualRenames.slice(0, 3).map(r => `${r.oldName} → ${r.newName}`).join(', ')}{individualRenames.length > 3 ? ` … +${individualRenames.length - 3} more` : ''}</span>
 										</div>
 									{/if}
 									{#if cov}
 										<div class="cs-row" class:cs-row--ok={cov.coveragePercent >= 95} class:cs-row--warn={cov.coveragePercent >= 80 && cov.coveragePercent < 95} class:cs-row--danger={cov.coveragePercent < 80}>
-											<span class="cs-row-icon">◎</span>
+											<span class="cs-row-icon"><Target size={11} strokeWidth={2} /></span>
 											<span class="cs-row-text">Coverage: {cov.covered}/{cov.total} ({cov.coveragePercent.toFixed(1)}%){cov.orphaned.length ? ` · ${cov.orphaned.length} orphaned` : ''}{cov.unimplemented.length ? ` · ${cov.unimplemented.length} unimplemented` : ''}</span>
 										</div>
 									{/if}
 									{#if relevantImpacts.length > 0}
 										<div class="cs-row cs-row--info">
-											<span class="cs-row-icon">◎</span>
+											<span class="cs-row-icon"><Target size={11} strokeWidth={2} /></span>
 											<span class="cs-row-text">{relevantImpacts.slice(0, 3).map(it => `${it.primitiveName} ${it.changeType} → affects ${it.affectedSemantics.length} semantic token${it.affectedSemantics.length > 1 ? 's' : ''}`).join(' · ')}</span>
 										</div>
 									{/if}
@@ -564,6 +617,7 @@
 			onRetry={onRetryPr}
 			onDismiss={onDismissPrResults}
 		/>
+		</div>
 	{/if}
 </div>
 
@@ -593,71 +647,32 @@
 		z-index: 1;
 	}
 
-	/* ─── Idle State ──────────────────────────────── */
-	.idle-state {
-		flex: 1;
+	/* ─── View Wrappers ──────────────────────────── */
+	.welcome-wrapper {
 		display: flex;
-		align-items: center;
-		justify-content: center;
-		position: relative;
-		overflow: hidden;
+		flex: 1;
+		min-height: 0;
+		animation: view-enter 300ms ease both;
 	}
 
-	.idle-grid {
-		position: absolute;
-		inset: 0;
-		display: grid;
-		grid-template-columns: repeat(10, 1fr);
-		align-content: start;
-		padding: 24px;
-		gap: 16px 0;
-		opacity: 0.1;
-		pointer-events: none;
+	.editor-wrapper {
+		display: flex;
+		flex-direction: column;
+		flex: 1;
+		min-height: 0;
+		animation: view-enter 200ms ease both;
 	}
 
-	.idle-cell {
-		font-size: var(--base-text-size-xs);
-		font-weight: 300;
-		color: var(--fgColor-muted);
-		text-align: center;
-		font-variant-numeric: tabular-nums;
+	@keyframes view-enter {
+		from { opacity: 0; }
+		to { opacity: 1; }
 	}
 
-	.idle-message {
-		position: relative;
-		text-align: center;
-		padding: 32px;
-	}
-
-	.idle-title {
-		font-family: 'JetBrains Mono', var(--fontStack-monospace);
-		font-size: var(--base-text-size-sm);
-		font-weight: 600;
-		color: var(--fgColor-disabled);
-		margin-bottom: 8px;
-	}
-
-	.idle-sub {
-		font-size: var(--base-text-size-sm);
-		color: var(--fgColor-disabled);
-		opacity: 0.7;
-		max-width: 320px;
-		line-height: 1.5;
-	}
-
-	.idle-link {
-		display: inline-block;
-		margin-top: 12px;
-		font-size: var(--base-text-size-xs);
-		color: var(--fgColor-accent);
-		text-decoration: none;
-		opacity: 0.8;
-		transition: opacity 0.15s;
-	}
-
-	.idle-link:hover {
-		opacity: 1;
-		text-decoration: underline;
+	@media (prefers-reduced-motion: reduce) {
+		.welcome-wrapper,
+		.editor-wrapper {
+			animation-duration: 0.01ms !important;
+		}
 	}
 
 	/* ─── Success Banner ─────────────────────────── */
@@ -679,6 +694,24 @@
 		font-weight: 600;
 		color: var(--fgColor-success, #2ea043);
 	}
+
+	.success-stats {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		margin-left: 4px;
+		padding-left: 8px;
+		border-left: 1px solid var(--borderColor-muted);
+	}
+
+	.success-stat {
+		font-family: var(--fontStack-monospace);
+		font-size: 11px;
+		font-weight: 600;
+	}
+
+	.success-stat--add { color: var(--fgColor-success, #2ea043); }
+	.success-stat--del { color: var(--fgColor-danger, #f85149); }
 
 	.success-banner-actions {
 		display: flex;
@@ -733,59 +766,69 @@
 	}
 
 	/* ─── Swatch preview ─────────────────────────── */
-	.idle-swatch-preview {
-		width: 100%;
-		padding: 24px 28px;
-		overflow-y: auto;
-		max-height: 100%;
-		scrollbar-width: thin;
-	}
-
-	.idle-swatch-header {
-		display: flex;
-		align-items: baseline;
-		justify-content: space-between;
-		margin-bottom: 20px;
-		gap: 12px;
-	}
-
-	.idle-swatch-title {
-		font-size: var(--base-text-size-xs);
-		font-weight: 600;
-		color: var(--fgColor-muted);
-	}
-
-	.idle-swatch-hint {
-		font-size: var(--base-text-size-xs);
-		color: var(--fgColor-disabled);
-	}
-
-	.idle-swatch-group {
-		margin-bottom: 16px;
-	}
-
-	.idle-swatch-group-name {
-		display: block;
-		font-size: var(--base-text-size-xs);
-		font-weight: 600;
-		color: var(--fgColor-disabled);
-		margin-bottom: 8px;
-	}
-
 	/* ─── File Tabs ──────────────────────────────── */
-	.file-tabs {
+	/* ─── Tokens Updated Banner ─────────────────── */
+	.tokens-updated-banner {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 12px;
+		padding: 8px 16px;
+		background: var(--bgColor-attention-muted);
+		border-bottom: 1px solid var(--borderColor-attention-muted);
+		font-size: 12px;
+		color: var(--fgColor-attention);
+		animation: banner-slide-in 0.3s ease;
+		z-index: 2;
+		position: relative;
+	}
+
+	.tokens-updated-text {
+		font-weight: 500;
+	}
+
+	.tokens-updated-btn {
+		flex-shrink: 0;
+		padding: 4px 12px;
+		background: var(--bgColor-attention-emphasis);
+		color: var(--fgColor-onEmphasis);
+		border: none;
+		border-radius: var(--borderRadius-medium);
+		font-size: 11px;
+		font-weight: 600;
+		cursor: pointer;
+		transition: opacity var(--base-duration-100) var(--base-easing-ease);
+	}
+
+	.tokens-updated-btn:hover {
+		opacity: 0.85;
+	}
+
+	@keyframes banner-slide-in {
+		from { transform: translateY(-100%); opacity: 0; }
+		to { transform: translateY(0); opacity: 1; }
+	}
+
+	.file-tabs-bar {
 		display: flex;
 		align-items: center;
 		background: var(--bgColor-inset);
 		border-bottom: 1px solid var(--borderColor-muted);
-		overflow-x: auto;
-		overflow-y: hidden;
-		scrollbar-width: none;
 		flex-shrink: 0;
 		min-height: 36px;
 		position: relative;
-		mask-image: linear-gradient(to right, transparent 0, black 8px, black calc(100% - 24px), transparent 100%);
-		-webkit-mask-image: linear-gradient(to right, transparent 0, black 8px, black calc(100% - 24px), transparent 100%);
+	}
+
+	.file-tabs {
+		display: flex;
+		align-items: center;
+		flex: 1;
+		min-width: 0;
+		overflow-x: auto;
+		overflow-y: hidden;
+		scrollbar-width: none;
+		mask-image: linear-gradient(to right, transparent 0, black 8px, black calc(100% - 4px), transparent 100%);
+		-webkit-mask-image: linear-gradient(to right, transparent 0, black 8px, black calc(100% - 4px), transparent 100%);
 	}
 
 	.file-tabs::-webkit-scrollbar {
@@ -832,11 +875,26 @@
 		opacity: 1;
 	}
 
+	.tab-diff-pill {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		min-width: 16px;
+		height: 16px;
+		padding: 0 4px;
+		font-family: var(--fontStack-monospace);
+		font-size: 9px;
+		font-weight: 600;
+		color: var(--fgColor-attention);
+		background: var(--bgColor-attention-muted);
+		border-radius: var(--borderRadius-full);
+		line-height: 1;
+	}
+
 	.tab-actions {
 		display: flex;
 		align-items: center;
 		gap: 4px;
-		margin-left: auto;
 		padding: 0 8px;
 		flex-shrink: 0;
 	}

@@ -1,9 +1,10 @@
 import { json, error } from '@sveltejs/kit';
+import { env } from '$env/dynamic/private';
 import { z } from 'zod';
 import type { RequestHandler } from './$types';
 
 const BodySchema = z.object({
-	webhookUrl: z.string().url(),
+	webhookUrl: z.string().url().optional(),
 	platforms: z.array(z.string()),
 	stats: z.object({
 		primitiveColors: z.number(),
@@ -13,7 +14,14 @@ const BodySchema = z.object({
 	}),
 	filesCount: z.number(),
 	generatedAt: z.string(),
-	changelog: z.string().optional()
+	changelog: z.string().optional(),
+	diffSummary: z
+		.object({
+			added: z.number(),
+			removed: z.number(),
+			filesChanged: z.number()
+		})
+		.optional()
 });
 
 export const POST: RequestHandler = async ({ request }) => {
@@ -29,7 +37,12 @@ export const POST: RequestHandler = async ({ request }) => {
 		throw error(422, `Invalid request: ${parsed.error.message}`);
 	}
 
-	const { webhookUrl, platforms, stats, filesCount, generatedAt, changelog } = parsed.data;
+	const webhookUrl = parsed.data.webhookUrl || env.GOOGLE_CHAT_WEBHOOK_URL;
+	if (!webhookUrl) {
+		throw error(422, 'No webhook URL configured (set GOOGLE_CHAT_WEBHOOK_URL or pass webhookUrl)');
+	}
+
+	const { platforms, stats, filesCount, generatedAt, changelog, diffSummary } = parsed.data;
 
 	const platformStr = platforms.join(' · ');
 	const statLines = [
@@ -41,12 +54,15 @@ export const POST: RequestHandler = async ({ request }) => {
 		.filter(Boolean)
 		.join(' · ');
 
-	// Google Chat Cards v1 format
+	const diffLine = diffSummary
+		? `+${diffSummary.added} / -${diffSummary.removed} across ${diffSummary.filesChanged} file${diffSummary.filesChanged !== 1 ? 's' : ''}`
+		: null;
+
 	const card = {
 		cards: [
 			{
 				header: {
-					title: 'Tokensmith — Files Generated',
+					title: 'Tokensmith — Design Tokens Updated',
 					subtitle: platformStr,
 					imageUrl:
 						'https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsoutlined/token/default/24px.svg',
@@ -67,6 +83,16 @@ export const POST: RequestHandler = async ({ request }) => {
 									content: statLines || 'No token stats available'
 								}
 							},
+							...(diffLine
+								? [
+										{
+											keyValue: {
+												topLabel: 'Changes',
+												content: diffLine
+											}
+										}
+									]
+								: []),
 							{
 								keyValue: {
 									topLabel: 'Files generated',

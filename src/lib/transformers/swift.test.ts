@@ -1,5 +1,5 @@
 /**
- * Tests for swift.ts — modern SwiftUI / UIKit output.
+ * Tests for swift.ts — pure SwiftUI Color output.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -204,6 +204,70 @@ describe('detectSwiftConventions', () => {
 		const c = detectSwiftConventions(ref, false);
 		expect(c.namingCase).toBe('camel');
 	});
+
+	it('detects enum container style, string hex, flat Light/Dark, and imports', () => {
+		const ref = `import Foundation
+import SwiftUI
+import UIKit
+
+fileprivate enum primitiveColorCode {
+    static let red50 = "#FDE6E5"
+    static let red100 = "#FBC8C6"
+}
+
+enum ColorCodes {
+    static let neutralPrimaryTextLight = "#1D1D1D"
+    static let neutralPrimaryTextDark = "#FCFCFC"
+}
+`;
+		const c = detectSwiftConventions(ref, false);
+		expect(c.indent).toBe('    ');
+		expect(c.primitiveFormat).toBe('stringHex');
+		expect(c.containerStyle).toBe('enum');
+		expect(c.primitiveEnumName).toBe('primitiveColorCode');
+		expect(c.primitiveAccess).toBe('fileprivate');
+		expect(c.semanticFormat).toBe('flatLightDark');
+		expect(c.semanticEnumName).toBe('ColorCodes');
+		expect(c.apiEnumName).toBe('ColorStyle');
+		expect(c.imports).toEqual(['Foundation', 'SwiftUI', 'UIKit']);
+	});
+
+	it('detects apiEnumName from the third enum in reference', () => {
+		const ref = `import Foundation
+import SwiftUI
+import UIKit
+
+fileprivate enum primitiveColorCode {
+    static let red50 = "#FDE6E5"
+}
+
+enum ColorCodes {
+    static let textLight = "#1D1D1D"
+    static let textDark = "#FCFCFC"
+}
+
+public enum AppColorStyle {
+    public static var text: UIColor = color(ColorCodes.textLight)
+}
+`;
+		const c = detectSwiftConventions(ref, false);
+		expect(c.apiEnumName).toBe('AppColorStyle');
+	});
+
+	it('returns best-practice defaults when bestPractices is true even with reference', () => {
+		const ref = `fileprivate enum primitiveColorCode { static let x = "#FFF" }`;
+		const c = detectSwiftConventions(ref, true);
+		expect(c.containerStyle).toBe('extension');
+		expect(c.primitiveFormat).toBe('colorHex');
+		expect(c.semanticFormat).toBe('dynamic');
+	});
+
+	it('detects extension style when reference uses extension Color', () => {
+		const ref = `import SwiftUI\npublic extension Color {\n  static let red = Color(hex: 0xFF0000)\n}`;
+		const c = detectSwiftConventions(ref, false);
+		expect(c.containerStyle).toBe('extension');
+		expect(c.primitiveFormat).toBe('colorHex');
+	});
 });
 
 // ─── transformToSwift ─────────────────────────────────────────────────────────
@@ -216,14 +280,12 @@ describe('transformToSwift — output structure', () => {
 		expect(r.platform).toBe('ios');
 	});
 
-	it('includes file header and imports', () => {
+	it('includes file header and SwiftUI import only', () => {
 		const { content } = transformToSwift(lightColors, darkColors);
 		expect(content).toContain('// Colors.swift');
 		expect(content).toContain('// Auto-generated from Figma Variables');
 		expect(content).toContain('import SwiftUI');
-		expect(content).toContain('#if canImport(UIKit)');
-		expect(content).toContain('import UIKit');
-		expect(content).toContain('#endif');
+		expect(content).not.toMatch(/^import UIKit$/m);
 	});
 });
 
@@ -279,58 +341,50 @@ describe('transformToSwift — primitives block', () => {
 });
 
 describe('transformToSwift — semantic block', () => {
-	it('outputs UIColor dynamic provider for light/dark tokens', () => {
+	it('generates private Color(light:dark:) initializer for dynamic tokens', () => {
 		const { content } = transformToSwift(lightColors, darkColors);
-		expect(content).toContain('UIColor { trait in');
-		expect(content).toContain('trait.userInterfaceStyle == .dark');
-		expect(content).toContain('UIColor(Color.grey50)');
-		expect(content).toContain('UIColor(Color.grey750)');
+		expect(content).toContain('init(light: Color, dark: Color)');
+		expect(content).toContain('// MARK: - Dynamic Color Init');
 	});
 
-	it('outputs static UIColor for Static tokens (no trait)', () => {
-		const { content } = transformToSwift(lightColors, darkColors);
-		// Fill/Static/white is in "Static" group so should be UIColor(Color.grey0)
-		expect(content).toContain('UIColor(Color.grey0)');
-	});
-
-	it('outputs Color(light:dark:) for SwiftUI semantic tokens', () => {
+	it('outputs Color(light:dark:) for dynamic semantic tokens', () => {
 		const { content } = transformToSwift(lightColors, darkColors);
 		expect(content).toContain('Color(light: .grey750, dark: .grey50)');
 	});
 
-	it('outputs Color.primitiveName for static SwiftUI semantic tokens', () => {
+	it('outputs Color.primitiveName for static semantic tokens', () => {
 		const { content } = transformToSwift(lightColors, darkColors);
 		expect(content).toContain('Color.grey0');
 	});
 
+	it('does not expose UIColor in public extensions', () => {
+		const { content } = transformToSwift(lightColors, darkColors);
+		expect(content).not.toContain('public extension UIColor');
+	});
+
 	it('falls back to lightPrim when dark has unknown primitive', () => {
 		const { content } = transformToSwift(lightColors, darkColorsUnknownPrimitive);
-		// dark references Colour/Blue/900 which is not in primitive map → fallback
-		expect(content).toContain('UIColor(Color.grey750)'); // light side still used
+		expect(content).toContain('.grey750');
 	});
 
 	it('skips semantic tokens with no aliasData', () => {
 		const { content } = transformToSwift(lightColorsNoAlias, darkColors);
-		// noAlias token should NOT appear as a semantic entry
 		expect(content).not.toContain('noAlias');
 	});
 
 	it('falls back to lightPrim when dark aliases a non-Colour path', () => {
 		const { content } = transformToSwift(lightColors, darkColorsNonColourAlias);
-		// Both light and dark should reference grey750
-		expect(content).toContain('UIColor(Color.grey750)');
+		expect(content).toContain('light: .grey750, dark: .grey750');
 	});
 
 	it('handles non-object intermediate path in dark (getTokenAtPath returns null)', () => {
 		const { content } = transformToSwift(lightColors, darkColorsNonObjectPath);
-		// Should still generate output (dark path null → falls back to light)
-		expect(content).toContain('UIColor(Color.grey750)');
+		expect(content).toContain('light: .grey750, dark: .grey750');
 	});
 
 	it('handles non-color node at exact path in dark', () => {
 		const { content } = transformToSwift(lightColors, darkColorsNonColorAtPath);
-		// dark node is string, not color → falls back to light primitive
-		expect(content).toContain('UIColor(Color.grey750)');
+		expect(content).toContain('light: .grey750, dark: .grey750');
 	});
 });
 
@@ -368,11 +422,108 @@ describe('transformToSwift — digit-leading family name (topSegment fallback)',
 });
 
 describe('transformToSwift — no semantic tokens', () => {
-	it('omits UIColor semantic block when there are no semantic tokens', () => {
+	it('omits semantic block and dynamic init when there are no semantic tokens', () => {
 		const { content } = transformToSwift({}, {});
-		// The #if canImport(UIKit) header is present but the UIColor semantic extension is not
-		expect(content).not.toContain('UIColor {');
 		expect(content).not.toContain('MARK: - Semantic Colors');
+		expect(content).not.toContain('MARK: - Dynamic Color Init');
+	});
+});
+
+describe('transformToSwift — match existing (enum + stringHex + flatLightDark)', () => {
+	const enumRef = `import Foundation
+import SwiftUI
+import UIKit
+
+fileprivate enum primitiveColorCode {
+    static let red50 = "#FDE6E5"
+    static let red100 = "#FBC8C6"
+}
+
+enum ColorCodes {
+    static let neutralPrimaryTextLight = "#1D1D1D"
+    static let neutralPrimaryTextDark = "#FCFCFC"
+}
+`;
+
+	it('emits fileprivate enum container for primitives', () => {
+		const { content } = transformToSwift(lightColors, darkColors, enumRef, false);
+		expect(content).toContain('fileprivate enum primitiveColorCode {');
+	});
+
+	it('uses string hex format for primitive values', () => {
+		const { content } = transformToSwift(lightColors, darkColors, enumRef, false);
+		expect(content).toMatch(/static let grey\d+ = "#[0-9A-F]{6}"/);
+	});
+
+	it('emits semantic enum with flat Light/Dark suffixed properties', () => {
+		const { content } = transformToSwift(lightColors, darkColors, enumRef, false);
+		expect(content).toContain('enum ColorCodes {');
+		expect(content).toContain('textPrimaryLight = "#');
+		expect(content).toContain('textPrimaryDark = "#');
+	});
+
+	it('uses 4-space indentation from reference', () => {
+		const { content } = transformToSwift(lightColors, darkColors, enumRef, false);
+		expect(content).toMatch(/^ {4}static let/m);
+	});
+
+	it('includes all three imports from reference', () => {
+		const { content } = transformToSwift(lightColors, darkColors, enumRef, false);
+		expect(content).toContain('import Foundation');
+		expect(content).toContain('import SwiftUI');
+		expect(content).toContain('import UIKit');
+	});
+
+	it('omits Color(hex:) and Color(light:dark:) helper extensions', () => {
+		const { content } = transformToSwift(lightColors, darkColors, enumRef, false);
+		expect(content).not.toContain('init(hex: UInt64)');
+		expect(content).not.toContain('init(light: Color, dark: Color)');
+	});
+
+	it('emits single property (no Light/Dark suffix) for static semantic tokens', () => {
+		const { content } = transformToSwift(lightColors, darkColors, enumRef, false);
+		expect(content).toMatch(/static let fillStaticWhite = "#FFFFFF"/);
+	});
+
+	it('generates ColorStyle enum with suiColor helper (Tier 4)', () => {
+		const { content } = transformToSwift(lightColors, darkColors, enumRef, false);
+		expect(content).toContain('public enum ColorStyle {');
+		expect(content).toContain('static func suiColor(');
+		expect(content).toContain('colorFromHex');
+	});
+
+	it('generates SwiftUI Color API properties referencing primitiveColorCode', () => {
+		const { content } = transformToSwift(lightColors, darkColors, enumRef, false);
+		expect(content).toContain('public extension ColorStyle {');
+		expect(content).toMatch(/static var textPrimary: Color = suiColor\(primitiveColorCode\.grey750, primitiveColorCode\.grey50\)/);
+	});
+
+	it('uses static suiColor with same primitive for static tokens in Tier 4', () => {
+		const { content } = transformToSwift(lightColors, darkColors, enumRef, false);
+		expect(content).toMatch(/static var fillStaticWhite: Color = suiColor\(primitiveColorCode\.grey0, primitiveColorCode\.grey0\)/);
+	});
+
+	it('detects custom apiEnumName from reference with 3 enums', () => {
+		const ref3 = `import Foundation
+import SwiftUI
+import UIKit
+
+fileprivate enum primitiveColorCode {
+    static let red50 = "#FDE6E5"
+}
+
+enum ColorCodes {
+    static let textLight = "#1D1D1D"
+    static let textDark = "#FCFCFC"
+}
+
+public enum MyColors {
+    public static var text: UIColor = color(ColorCodes.textLight)
+}
+`;
+		const { content } = transformToSwift(lightColors, darkColors, ref3, false);
+		expect(content).toContain('public enum MyColors {');
+		expect(content).toContain('public extension MyColors {');
 	});
 });
 

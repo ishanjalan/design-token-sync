@@ -27,6 +27,9 @@ vite.config.ts.timestamp-*
 # Coverage
 coverage/
 
+# Playwright
+test-results/
+
 # IDE
 .idea/
 *.swp

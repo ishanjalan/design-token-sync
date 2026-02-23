@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { Palette, Globe, Smartphone, Settings as SettingsIcon, ChevronUp, ChevronDown } from 'lucide-svelte';
 	import type { Platform, GithubConfigs, GithubRepoConfig } from '$lib/types.js';
 
 	type SettingsTab = 'design' | 'web' | 'android' | 'ios' | 'general';
@@ -49,12 +50,12 @@
 
 	let activeSettingsTab = $state<SettingsTab>('design');
 
-	const TABS: { id: SettingsTab; label: string; icon: string }[] = [
-		{ id: 'design', label: 'Design', icon: '🎨' },
-		{ id: 'web', label: 'Web', icon: '🌐' },
-		{ id: 'android', label: 'Android', icon: '🤖' },
-		{ id: 'ios', label: 'iOS', icon: '🍎' },
-		{ id: 'general', label: 'General', icon: '⚙' }
+	const TABS: { id: SettingsTab; label: string }[] = [
+		{ id: 'design', label: 'Design' },
+		{ id: 'web', label: 'Web' },
+		{ id: 'android', label: 'Android' },
+		{ id: 'ios', label: 'iOS' },
+		{ id: 'general', label: 'General' }
 	];
 </script>
 
@@ -66,8 +67,8 @@
 		aria-expanded={show}
 		aria-controls="settings-body"
 	>
-		<span>⚙ Settings</span>
-		<span class="settings-arrow" aria-hidden="true">{show ? '▲' : '▼'}</span>
+		<span class="settings-toggle-label"><SettingsIcon size={12} strokeWidth={2} /> Settings</span>
+		<span class="settings-arrow" aria-hidden="true">{#if show}<ChevronUp size={12} strokeWidth={2} />{:else}<ChevronDown size={12} strokeWidth={2} />{/if}</span>
 	</button>
 	{#if show}
 		<div class="settings-body" id="settings-body" role="group" aria-label="Settings">
@@ -81,7 +82,13 @@
 						aria-selected={activeSettingsTab === tab.id}
 						onclick={() => (activeSettingsTab = tab.id)}
 					>
-						<span class="settings-tab-icon">{tab.icon}</span>
+						<span class="settings-tab-icon">
+						{#if tab.id === 'design'}<Palette size={14} strokeWidth={1.75} />
+						{:else if tab.id === 'web'}<Globe size={14} strokeWidth={1.75} />
+						{:else if tab.id === 'android'}<Smartphone size={14} strokeWidth={1.75} />
+						{:else if tab.id === 'ios'}<Smartphone size={14} strokeWidth={1.75} />
+						{:else}<SettingsIcon size={14} strokeWidth={1.75} />{/if}
+					</span>
 						<span class="settings-tab-label">{tab.label}</span>
 					</button>
 				{/each}
@@ -251,19 +258,19 @@
 			{#if activeSettingsTab === 'general'}
 				<div class="settings-tab-body" role="tabpanel" aria-label="General settings">
 					<div class="settings-group">
-						<label class="settings-group-label" for="chat-webhook-input">Google Chat webhook</label>
+						<label class="settings-group-label" for="chat-webhook-input">Google Chat webhook (override)</label>
 						<input
 							id="chat-webhook-input"
 							class="settings-input"
 							type="url"
-							placeholder="https://chat.googleapis.com/v1/spaces/…/messages?key=…"
+							placeholder="Configured via GOOGLE_CHAT_WEBHOOK_URL env var"
 							value={chatWebhookUrl}
 							oninput={onChatWebhookChange}
 							spellcheck="false"
 							aria-describedby="chat-webhook-hint"
 						/>
 						<p class="settings-hint" id="chat-webhook-hint">
-							A summary card is posted after each generation.
+							Notifies when auto-sync detects changes. Configured server-side via <code>GOOGLE_CHAT_WEBHOOK_URL</code>; enter a URL here only to override.
 						</p>
 					</div>
 				</div>
@@ -306,8 +313,14 @@
 		color: var(--fgColor-muted);
 		border-bottom: 1px solid var(--borderColor-muted);
 	}
+	.settings-toggle-label {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+	}
 	.settings-arrow {
-		font-size: 10px;
+		display: flex;
+		align-items: center;
 		opacity: 0.6;
 	}
 	.settings-body {
@@ -358,7 +371,9 @@
 		border-bottom-color: var(--borderColor-accent-emphasis);
 	}
 	.settings-tab-icon {
-		font-size: 14px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
 		line-height: 1;
 	}
 	.settings-tab-label {
@@ -415,10 +430,6 @@
 	}
 	.settings-input::placeholder {
 		color: var(--control-fgColor-placeholder);
-	}
-	.settings-input--half {
-		flex: 1;
-		min-width: 0;
 	}
 	.settings-hint {
 		font-family: var(--fontStack-sansSerif);

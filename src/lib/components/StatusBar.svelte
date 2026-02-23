@@ -1,7 +1,8 @@
 <script lang="ts">
 	import type { GeneratedFile, GenerateWarning } from '$lib/types.js';
 	import { type DiffLine, type TokenModification, diffStats } from '$lib/diff-utils.js';
-	import { AlertTriangle } from 'lucide-svelte';
+	import { AlertTriangle, Keyboard } from 'lucide-svelte';
+	import { browser } from '$app/environment';
 
 	interface Props {
 		activeFile: GeneratedFile | undefined;
@@ -18,10 +19,28 @@
 	let { activeFile, diffs, modifications, diffTotals, warnings, lastGeneratedAt, langLabel, formatFileSize, timeAgo }: Props = $props();
 
 	let showWarnings = $state(false);
+	let showShortcuts = $state(false);
+
+	const isMac = browser && /Mac|iPhone|iPad/.test(navigator.userAgent);
+	const mod = isMac ? '⌘' : 'Ctrl';
+
+	const SHORTCUTS: { keys: string; desc: string }[] = [
+		{ keys: `${mod}+F`, desc: 'Search in file' },
+		{ keys: 'Alt+↓', desc: 'Next diff change' },
+		{ keys: 'Alt+↑', desc: 'Previous diff change' },
+		{ keys: '↑ ↓ ← →', desc: 'Navigate file tabs' },
+		{ keys: 'Click line', desc: 'Highlight line' },
+		{ keys: 'Shift+click', desc: 'Highlight range' },
+		{ keys: 'Esc', desc: 'Clear selection' }
+	];
 
 	function handleKeydown(e: KeyboardEvent) {
-		if (e.key === 'Escape' && showWarnings) {
-			showWarnings = false;
+		if (e.key === 'Escape') {
+			if (showWarnings) showWarnings = false;
+			if (showShortcuts) showShortcuts = false;
+		}
+		if (e.key === '?' && !e.ctrlKey && !e.metaKey && !(e.target instanceof HTMLInputElement) && !(e.target instanceof HTMLTextAreaElement)) {
+			showShortcuts = !showShortcuts;
 		}
 	}
 </script>
@@ -68,8 +87,35 @@
 
 	{#if lastGeneratedAt}
 		<span class="status-item">{timeAgo(lastGeneratedAt)}</span>
+		<span class="status-sep">|</span>
 	{/if}
+
+	<button class="status-shortcuts" onclick={() => (showShortcuts = !showShortcuts)} title="Keyboard shortcuts (?)">
+		<Keyboard size={10} strokeWidth={2} />
+	</button>
 </div>
+
+{#if showShortcuts}
+	<div class="shortcuts-panel">
+		<div class="shortcuts-header">
+			<span>Keyboard shortcuts</span>
+			<button class="shortcuts-close" onclick={() => (showShortcuts = false)}>&times;</button>
+		</div>
+		<dl class="shortcuts-list">
+			{#each SHORTCUTS as s}
+				<div class="shortcut-row">
+					<dt class="shortcut-keys">
+						{#each s.keys.split('+') as part, i}
+							{#if i > 0}<span class="shortcut-plus">+</span>{/if}
+							<kbd>{part}</kbd>
+						{/each}
+					</dt>
+					<dd class="shortcut-desc">{s.desc}</dd>
+				</div>
+			{/each}
+		</dl>
+	</div>
+{/if}
 
 {#if showWarnings && warnings.length > 0}
 	<div class="warnings-panel">
@@ -117,6 +163,102 @@
 	.status-item--add { color: var(--fgColor-success); }
 	.status-item--rm { color: var(--fgColor-danger); }
 	.status-item--mod { color: var(--fgColor-attention); }
+
+	/* ─── Shortcuts ────────────────────────────── */
+	.status-shortcuts {
+		display: inline-flex;
+		align-items: center;
+		background: none;
+		border: none;
+		padding: 0;
+		color: var(--fgColor-disabled);
+		cursor: pointer;
+		transition: color 100ms ease;
+	}
+
+	.status-shortcuts:hover {
+		color: var(--fgColor-default);
+	}
+
+	.shortcuts-panel {
+		position: absolute;
+		bottom: 100%;
+		right: 0;
+		width: 280px;
+		background: var(--overlay-bgColor);
+		border: 1px solid var(--borderColor-muted);
+		border-radius: var(--borderRadius-medium);
+		box-shadow: var(--shadow-floating-large);
+		z-index: 50;
+	}
+
+	.shortcuts-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 8px 12px;
+		font-size: 11px;
+		font-weight: 600;
+		color: var(--fgColor-default);
+		border-bottom: 1px solid var(--borderColor-muted);
+	}
+
+	.shortcuts-close {
+		background: none;
+		border: none;
+		color: var(--fgColor-muted);
+		font-size: 14px;
+		cursor: pointer;
+		line-height: 1;
+	}
+
+	.shortcuts-list {
+		padding: 6px 0;
+		margin: 0;
+	}
+
+	.shortcut-row {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 4px 12px;
+		gap: 12px;
+	}
+
+	.shortcut-keys {
+		display: flex;
+		align-items: center;
+		gap: 2px;
+		flex-shrink: 0;
+	}
+
+	.shortcut-keys kbd {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		min-width: 20px;
+		height: 20px;
+		padding: 0 5px;
+		background: var(--bgColor-inset);
+		border: 1px solid var(--borderColor-muted);
+		border-radius: 3px;
+		font-family: var(--fontStack-monospace);
+		font-size: 10px;
+		color: var(--fgColor-muted);
+	}
+
+	.shortcut-plus {
+		font-size: 9px;
+		color: var(--fgColor-disabled);
+		margin: 0 1px;
+	}
+
+	.shortcut-desc {
+		font-size: 11px;
+		color: var(--fgColor-muted);
+		text-align: right;
+		margin: 0;
+	}
 
 	/* ─── Warnings ─────────────────────────────── */
 	.status-warnings {

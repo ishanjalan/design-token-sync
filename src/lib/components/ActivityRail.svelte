@@ -1,7 +1,7 @@
 <script lang="ts">
-	import { Upload, Files, History, Settings } from 'lucide-svelte';
+	import { Upload, Files, History, Settings, HelpCircle } from 'lucide-svelte';
 
-	type PanelId = 'import' | 'files' | 'history' | 'settings';
+	type PanelId = 'import' | 'files' | 'history' | 'settings' | 'help';
 
 	interface Props {
 		active: PanelId | null;
@@ -16,7 +16,8 @@
 		{ id: 'import', label: 'Import', icon: 'upload' },
 		{ id: 'files', label: 'Files', icon: 'files', needsOutput: true },
 		{ id: 'history', label: 'History', icon: 'history' },
-		{ id: 'settings', label: 'Settings', icon: 'settings' }
+		{ id: 'settings', label: 'Settings', icon: 'settings' },
+		{ id: 'help', label: 'Help', icon: 'help' }
 	];
 </script>
 
@@ -33,18 +34,20 @@
 				aria-pressed={active === item.id}
 			>
 				<span class="rail-accent" class:rail-accent--visible={active === item.id}></span>
-				{#if item.icon === 'upload'}
-					<Upload size={18} strokeWidth={1.75} />
-				{:else if item.icon === 'files'}
-					<Files size={18} strokeWidth={1.75} />
-				{:else if item.icon === 'history'}
-					<History size={18} strokeWidth={1.75} />
-					{#if historyCount > 0}
-						<span class="rail-badge">{historyCount > 9 ? '9+' : historyCount}</span>
-					{/if}
-				{:else if item.icon === 'settings'}
-					<Settings size={18} strokeWidth={1.75} />
+			{#if item.icon === 'upload'}
+				<Upload size={18} strokeWidth={1.75} />
+			{:else if item.icon === 'files'}
+				<Files size={18} strokeWidth={1.75} />
+			{:else if item.icon === 'history'}
+				<History size={18} strokeWidth={1.75} />
+				{#if historyCount > 0}
+					<span class="rail-badge">{historyCount > 9 ? '9+' : historyCount}</span>
 				{/if}
+			{:else if item.icon === 'settings'}
+				<Settings size={18} strokeWidth={1.75} />
+			{:else if item.icon === 'help'}
+				<HelpCircle size={18} strokeWidth={1.75} />
+			{/if}
 			</button>
 		{/if}
 	{/each}

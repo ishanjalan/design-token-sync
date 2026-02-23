@@ -1,11 +1,12 @@
 <script lang="ts">
 	import '$lib/styles/shared.css';
 
-	type SidePanelId = 'import' | 'files' | 'history' | 'settings' | null;
+	type SidePanelId = 'import' | 'files' | 'history' | 'settings' | 'help' | null;
 
 	interface Props {
 		activePanel: SidePanelId;
 		panelWidth: number;
+		welcomeMode?: boolean;
 		onClosePanel?: () => void;
 		header: import('svelte').Snippet;
 		rail: import('svelte').Snippet;
@@ -15,7 +16,7 @@
 		bottomTab?: import('svelte').Snippet;
 	}
 
-	let { activePanel, panelWidth = $bindable(), onClosePanel, header, rail, sidePanel, editor, statusBar, bottomTab }: Props = $props();
+	let { activePanel, panelWidth = $bindable(), welcomeMode = false, onClosePanel, header, rail, sidePanel, editor, statusBar, bottomTab }: Props = $props();
 
 	let resizing = $state(false);
 	let startX = 0;
@@ -48,11 +49,13 @@
 	</div>
 
 	<div class="shell-main">
-		<div class="shell-rail">
-			{@render rail()}
-		</div>
+		{#if !welcomeMode}
+			<div class="shell-rail">
+				{@render rail()}
+			</div>
+		{/if}
 
-		{#if activePanel}
+		{#if activePanel && !welcomeMode}
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
 			<!-- svelte-ignore a11y_click_events_have_key_events -->
 			<div class="shell-overlay" onclick={onClosePanel}></div>

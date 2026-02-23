@@ -1,14 +1,14 @@
 <script lang="ts">
-	import { Check } from 'lucide-svelte';
-	import type { Platform, DropZoneKey, FileSlot, GithubConfigs } from '$lib/types.js';
+	import { Check, X, RotateCcw, ChevronRight, ChevronDown, AlertTriangle, RefreshCw, Trash2, Save, FolderOpen, Upload } from 'lucide-svelte';
+	import type { Platform, DropZoneKey, FileSlot } from '$lib/types.js';
 	import type { FileInsight } from '$lib/file-validation.js';
-	import SettingsPanel from './SettingsPanel.svelte';
 
 	interface PlatformOption {
 		id: Platform;
 		label: string;
 		color: string;
 		icon: string;
+		techIcons: { svg: string; color: string; label: string }[];
 	}
 
 	interface Props {
@@ -25,16 +25,6 @@
 		loading: boolean;
 		errorMsg: string | null;
 		requiredFilled: number;
-		visibleFilled: number;
-		figmaConnected: boolean;
-		figmaFetching: boolean;
-		showSettings: boolean;
-		chatWebhookUrl: string;
-		githubPat: string;
-		githubRepos: GithubConfigs;
-		figmaFileKey: string;
-		figmaPat: string;
-		figmaWebhookPasscode: string;
 		iconFigma: string;
 		onDragEnter: (key: DropZoneKey, e: DragEvent) => void;
 		onDragOver: (key: DropZoneKey, e: DragEvent) => void;
@@ -51,18 +41,11 @@
 		onImportConfig: (e: Event) => void;
 		onClearAll: () => void;
 		onGenerate: () => void;
-		onFigmaFetch: () => void;
-		onSettingsToggle: () => void;
-		onChatWebhookChange: (e: Event) => void;
-		onGithubPatChange: (e: Event) => void;
-		onGithubRepoChange: (platform: Platform, field: string, e: Event) => void;
-		onFigmaFileKeyChange: (e: Event) => void;
-		onFigmaPatChange: (e: Event) => void;
-		onFigmaPasscodeChange: (e: Event) => void;
 		storedTokenVersion: number | null;
 		storedTokenPushedAt: string | null;
 		storedTokenVersions: Array<{ sha: string; version: number; pushedAt: string; message: string }>;
 		storedTokensLoading: boolean;
+		tokenChangeSummary: string | null;
 		onRefreshStoredTokens: () => void;
 		onLoadTokenVersion: (sha: string) => void;
 	}
@@ -70,20 +53,25 @@
 	let {
 		slots, visibleKeys, refKeys, fileInsights, platforms, selectedPlatforms,
 		hasRefFiles, bestPractices, bulkDropActive, canGenerate, loading, errorMsg,
-		requiredFilled, visibleFilled, figmaConnected, figmaFetching, showSettings,
-		chatWebhookUrl, githubPat, githubRepos, figmaFileKey, figmaPat, figmaWebhookPasscode,
-		iconFigma,
+		requiredFilled, iconFigma,
 		onDragEnter, onDragOver, onDragLeave, onDrop, onFileInput, onClearFile,
 		onBulkDragEnter, onBulkDragOver, onBulkDragLeave, onBulkDrop,
 		onBestPracticesChange, onExportConfig, onImportConfig, onClearAll, onGenerate,
-		onFigmaFetch, onSettingsToggle,
-		onChatWebhookChange, onGithubPatChange, onGithubRepoChange,
-		onFigmaFileKeyChange, onFigmaPatChange, onFigmaPasscodeChange,
 		storedTokenVersion, storedTokenPushedAt, storedTokenVersions, storedTokensLoading,
+		tokenChangeSummary,
 		onRefreshStoredTokens, onLoadTokenVersion
 	}: Props = $props();
 
 	let showVersionPicker = $state(false);
+	let tokensCollapsedOverride = $state<boolean | null>(null);
+	let tokensCollapsed = $derived(tokensCollapsedOverride ?? storedTokenVersion !== null);
+
+	function setTokensCollapsed(val: boolean) {
+		tokensCollapsedOverride = val;
+	}
+
+	let refVisible = $derived(visibleKeys.some((k) => refKeys.includes(k)));
+	let activePlatform = $derived(platforms.find((p) => selectedPlatforms.includes(p.id)));
 
 	function formatTokenDate(iso: string): string {
 		const d = new Date(iso);
@@ -116,44 +104,42 @@
 		return parts.length ? `Modern patterns: ${parts.join(' · ')}` : 'Modern patterns';
 	}
 
-	const platformOutputFiles: Record<Platform, string[]> = {
-		web: ['Primitives.scss', 'Colors.scss', 'Typography.scss', 'Primitives.ts', 'Colors.ts', 'Typography.ts', 'Spacing.scss', 'Spacing.ts', 'primitives.css', 'colors.css'],
-		ios: ['Colors.swift', 'Typography.swift'],
-		android: ['Colors.kt', 'Typography.kt']
-	};
-
-	function outputPreview(plats: Platform[]): string[] {
-		const files: string[] = [];
-		for (const p of plats) files.push(...(platformOutputFiles[p] ?? []));
-		return files;
-	}
 </script>
 
 <div class="import-panel">
-	<div class="panel-eyebrow">
-		<span>INPUT</span>
+	<div class="panel-header">
+		<span class="panel-title">Token files</span>
 		<div class="panel-actions">
-			<button class="action-link" onclick={onExportConfig} title="Export config" aria-label="Export config">↑ Save</button>
-			<label class="action-link" for="import-config-input" title="Import config" aria-label="Import config">
-				↓ Load
+			<button class="panel-icon-btn" onclick={onExportConfig} title="Export config" aria-label="Export config"><Save size={12} strokeWidth={2} /></button>
+			<label class="panel-icon-btn" for="import-config-input" title="Import config" aria-label="Import config">
+				<FolderOpen size={12} strokeWidth={2} />
 				<input id="import-config-input" type="file" accept=".json,application/json" class="sr-only" onchange={onImportConfig} />
 			</label>
-			<button class="action-link" onclick={onClearAll}>Clear</button>
+			<button class="panel-icon-btn" onclick={onClearAll} title="Clear all" aria-label="Clear all"><Trash2 size={12} strokeWidth={2} /></button>
 		</div>
 	</div>
 
 	{#if hasRefFiles}
-		<div class="best-practices-toggle">
-			<label class="bp-label">
-				<span class="bp-track" class:bp-track--active={bestPractices}>
-					<span class="bp-thumb"></span>
-				</span>
-				<input type="checkbox" class="sr-only" checked={bestPractices} onchange={(e) => onBestPracticesChange((e.target as HTMLInputElement).checked)} />
-				<span class="bp-text">{bestPractices ? 'Best practices' : 'Match existing'}</span>
-			</label>
-		<span class="bp-hint">
-			{bestPracticeHint(bestPractices, selectedPlatforms)}
-		</span>
+		<div class="best-practices-area">
+			<div class="bp-segmented" role="radiogroup" aria-label="Output convention">
+				<button
+					class="bp-option"
+					class:bp-option--active={!bestPractices}
+					role="radio"
+					aria-checked={!bestPractices}
+					onclick={() => onBestPracticesChange(false)}
+				>Match existing</button>
+				<button
+					class="bp-option"
+					class:bp-option--active={bestPractices}
+					role="radio"
+					aria-checked={bestPractices}
+					onclick={() => onBestPracticesChange(true)}
+				>Best practices</button>
+			</div>
+			<span class="bp-hint">
+				{bestPracticeHint(bestPractices, selectedPlatforms)}
+			</span>
 		</div>
 	{/if}
 
@@ -171,120 +157,24 @@
 			</div>
 		{/if}
 
-		<div class="section-label">
-			<span class="section-brand">
-				<!-- eslint-disable-next-line svelte/no-at-html-tags -->
-				{@html iconFigma}
-				Figma export
-			</span>
-			<span class="section-sub">Required: Light · Dark · Value</span>
-		</div>
-
-		{#if storedTokenVersion !== null}
-			<div class="stored-tokens-bar">
-				<div class="stored-tokens-info">
-					<span class="stored-version-badge">v{storedTokenVersion}</span>
-					{#if storedTokenPushedAt}
-						<span class="stored-date">{formatTokenDate(storedTokenPushedAt)}</span>
-					{/if}
-					{#if storedTokenVersions.length > 0 && storedTokenVersions[0]?.version === storedTokenVersion}
-						<span class="stored-latest-tag">Latest</span>
-					{/if}
-				</div>
-				<div class="stored-tokens-actions">
-					{#if storedTokenVersions.length > 1}
-						<div class="version-picker-wrap">
-							<button
-								class="stored-action-btn"
-								onclick={() => (showVersionPicker = !showVersionPicker)}
-								disabled={storedTokensLoading}
-							>
-								{showVersionPicker ? 'Close' : 'Versions'}
-							</button>
-							{#if showVersionPicker}
-								<div class="version-picker-dropdown">
-									{#each storedTokenVersions as ver (ver.sha)}
-										<button
-											class="version-picker-item"
-											class:version-picker-item--active={ver.version === storedTokenVersion}
-											onclick={() => { onLoadTokenVersion(ver.sha); showVersionPicker = false; }}
-											disabled={storedTokensLoading}
-										>
-											<span class="version-picker-v">v{ver.version}</span>
-											<span class="version-picker-date">{formatTokenDate(ver.pushedAt)}</span>
-										</button>
-									{/each}
-								</div>
-							{/if}
-						</div>
-					{/if}
-					<button
-						class="stored-action-btn"
-						onclick={onRefreshStoredTokens}
-						disabled={storedTokensLoading}
-						title="Fetch latest from GitHub"
-					>
-						{storedTokensLoading ? '…' : '↻'}
-					</button>
-				</div>
-			</div>
-		{/if}
-
-		{#each ['lightColors', 'darkColors', 'values', 'typography'] as key (key)}
-			{@const dk = key as DropZoneKey}
-			{@const slot = slots[dk]}
-			{@const filled = !!slot.file}
-			{@const insight = fileInsights[dk]}
-			<label
-				class="file-row"
-				class:file-row--filled={filled}
-				class:file-row--dragging={slot.dragging}
-				class:file-row--optional={!slot.required}
-				ondragenter={(e) => onDragEnter(dk, e)}
-				ondragover={(e) => onDragOver(dk, e)}
-				ondragleave={() => onDragLeave(dk)}
-				ondrop={(e) => onDrop(dk, e)}
-			>
-				<input type="file" accept={slot.accept} class="sr-only" onchange={(e) => onFileInput(dk, e)} />
-				<span class="ext-dot" style="background-color: {extColor(slot.ext)}" title=".{slot.ext}"></span>
-				<div class="file-meta">
-					<span class="file-label">{slot.label}</span>
-					<span class="file-hint">{slot.hint}</span>
-				</div>
-				<div class="file-action">
-					{#if filled}
-						{#if slot.warning}
-							<span class="file-warn" title={slot.warning}>⚠</span>
+		{#if storedTokenVersion !== null && tokensCollapsed}
+			<!-- When tokens are pre-loaded: reference files come FIRST, then the collapsed token bar -->
+			{#if refVisible}
+				<div class="section-label section-label--ref section-label--promoted">
+					<span class="section-brand">
+						{#if activePlatform}
+							<!-- eslint-disable-next-line svelte/no-at-html-tags -->
+							<span class="section-platform-icon" style="color: {activePlatform.color}">{@html activePlatform.icon}</span>
 						{/if}
-						{#if insight}
-							<span class="file-insight">{insight.count} {insight.label}</span>
-						{/if}
-						<span class="file-loaded">
-							<Check size={10} strokeWidth={2} />
-							{slot.file!.name.length > 18 ? slot.file!.name.slice(0, 15) + '…' : slot.file!.name}
-						</span>
-						<button class="file-clear" onclick={(e) => onClearFile(dk, e)} aria-label="Remove">✕</button>
-					{:else}
-						<span class="file-cta" class:file-cta--drag={slot.dragging}>
-							{slot.dragging ? 'Drop it' : slot.required ? 'Click or drag' : 'Optional'}
-						</span>
-					{/if}
+						Your files
+					</span>
+					<span class="section-sub">Match your conventions</span>
 				</div>
-			</label>
-		{/each}
-
-		{#if visibleKeys.some((k) => refKeys.includes(k))}
-			{@const activePlatform = platforms.find((p) => selectedPlatforms.includes(p.id))}
-			<div class="section-label section-label--ref">
-				<span class="section-brand">
-					{#if activePlatform}
-						<!-- eslint-disable-next-line svelte/no-at-html-tags -->
-						<span class="section-platform-icon" style="color: {activePlatform.color}">{@html activePlatform.icon}</span>
-					{/if}
-					Reference files
-				</span>
-				<span class="section-sub">Optional</span>
-			</div>
+				{#if !hasRefFiles}
+					<div class="ref-callout ref-callout--prominent" style="--callout-accent: {activePlatform?.color ?? 'var(--fgColor-accent)'}">
+						Drop your current code files to match naming and formatting conventions
+					</div>
+				{/if}
 			{#each visibleKeys.filter((k) => refKeys.includes(k)) as key (key)}
 				{@const slot = slots[key]}
 				{@const filled = !!slot.file}
@@ -294,13 +184,18 @@
 					class:file-row--filled={filled}
 					class:file-row--restored={slot.restored}
 					class:file-row--dragging={slot.dragging}
+					class:file-row--dropzone={!filled}
 					ondragenter={(e) => onDragEnter(key, e)}
 					ondragover={(e) => onDragOver(key, e)}
 					ondragleave={() => onDragLeave(key)}
 					ondrop={(e) => onDrop(key, e)}
 				>
 					<input type="file" accept={slot.accept} class="sr-only" onchange={(e) => onFileInput(key, e)} />
-					<span class="ext-dot" style="background-color: {extColor(slot.ext)}" title=".{slot.ext}"></span>
+					{#if filled}
+						<span class="ext-dot" style="background-color: {extColor(slot.ext)}" title=".{slot.ext}"></span>
+					{:else}
+						<span class="dropzone-icon"><Upload size={12} strokeWidth={1.5} /></span>
+					{/if}
 					<div class="file-meta">
 						<span class="file-label">{slot.label}</span>
 						<span class="file-hint">{slot.hint}</span>
@@ -312,58 +207,216 @@
 							{/if}
 							<span class="file-loaded" class:file-loaded--restored={slot.restored}>
 								{#if slot.restored}
-									<span class="restored-icon">↺</span>
+									<span class="restored-icon"><RotateCcw size={10} strokeWidth={2} /></span>
 								{:else}
 									<Check size={10} strokeWidth={2} />
 								{/if}
 								{slot.file!.name.length > 18 ? slot.file!.name.slice(0, 15) + '…' : slot.file!.name}
 							</span>
-							<button class="file-clear" onclick={(e) => onClearFile(key, e)} aria-label="Remove">✕</button>
+							<button class="file-clear" onclick={(e) => onClearFile(key, e)} aria-label="Remove"><X size={10} strokeWidth={2} /></button>
 						{:else}
-							<span class="file-cta">Optional</span>
+							<span class="file-cta file-cta--upload">{slot.dragging ? 'Drop it' : 'Click or drag'}</span>
 						{/if}
 					</div>
 				</label>
 			{/each}
 		{/if}
 
-		{#if figmaConnected}
+		<button class="tokens-collapsed-bar" onclick={() => setTokensCollapsed(false)}>
+				<span class="tokens-collapsed-left">
+					<!-- eslint-disable-next-line svelte/no-at-html-tags -->
+					{@html iconFigma}
+					<span class="tokens-collapsed-summary">
+						{requiredFilled + (slots.typography?.file ? 1 : 0)} files loaded from v{storedTokenVersion}
+					</span>
+					{#if storedTokenVersions.length > 0 && storedTokenVersions[0]?.version === storedTokenVersion}
+						<span class="stored-latest-tag">Latest</span>
+					{/if}
+					{#if storedTokenPushedAt}
+						<span class="stored-date">{formatTokenDate(storedTokenPushedAt)}</span>
+					{/if}
+				</span>
+				<span class="tokens-collapsed-chevron"><ChevronRight size={10} strokeWidth={2} /></span>
+			</button>
+		{:else}
+			<!-- Normal expanded view: Figma export first, then reference files -->
 			<div class="section-label">
 				<span class="section-brand">
 					<!-- eslint-disable-next-line svelte/no-at-html-tags -->
-					{@html iconFigma} Figma API
+					{@html iconFigma}
+					Figma export
 				</span>
-				<button class="figma-fetch-btn" onclick={onFigmaFetch} disabled={figmaFetching}>
-					{figmaFetching ? 'Fetching…' : 'Fetch tokens'}
-				</button>
+				{#if storedTokenVersion !== null}
+					<button class="section-collapse-btn" onclick={() => setTokensCollapsed(true)} title="Collapse"><ChevronDown size={12} strokeWidth={2} /></button>
+				{/if}
+				<span class="section-sub">Required: Light · Dark · Value</span>
 			</div>
+
+			{#if storedTokenVersion !== null}
+				<div class="stored-tokens-bar">
+					<div class="stored-tokens-info">
+						<span class="stored-version-badge">v{storedTokenVersion}</span>
+						{#if storedTokenPushedAt}
+							<span class="stored-date">{formatTokenDate(storedTokenPushedAt)}</span>
+						{/if}
+						{#if storedTokenVersions.length > 0 && storedTokenVersions[0]?.version === storedTokenVersion}
+							<span class="stored-latest-tag">Latest</span>
+						{/if}
+						{#if tokenChangeSummary}
+							<span class="token-change-summary">{tokenChangeSummary}</span>
+						{/if}
+					</div>
+					<div class="stored-tokens-actions">
+						{#if storedTokenVersions.length > 1}
+							<div class="version-picker-wrap">
+								<button
+									class="stored-action-btn"
+									onclick={() => (showVersionPicker = !showVersionPicker)}
+									disabled={storedTokensLoading}
+								>
+									{showVersionPicker ? 'Close' : 'Versions'}
+								</button>
+								{#if showVersionPicker}
+									<div class="version-picker-dropdown">
+										{#each storedTokenVersions as ver (ver.sha)}
+											<button
+												class="version-picker-item"
+												class:version-picker-item--active={ver.version === storedTokenVersion}
+												onclick={() => { onLoadTokenVersion(ver.sha); showVersionPicker = false; }}
+												disabled={storedTokensLoading}
+											>
+												<span class="version-picker-v">v{ver.version}</span>
+												<span class="version-picker-date">{formatTokenDate(ver.pushedAt)}</span>
+											</button>
+										{/each}
+									</div>
+								{/if}
+							</div>
+						{/if}
+						<button
+							class="stored-action-btn"
+							onclick={onRefreshStoredTokens}
+							disabled={storedTokensLoading}
+							title="Fetch latest from GitHub"
+						>
+							{#if storedTokensLoading}…{:else}<RefreshCw size={10} strokeWidth={2} />{/if}
+						</button>
+					</div>
+				</div>
+			{/if}
+
+			{#each ['lightColors', 'darkColors', 'values', 'typography'] as key (key)}
+				{@const dk = key as DropZoneKey}
+				{@const slot = slots[dk]}
+				{@const filled = !!slot.file}
+				{@const insight = fileInsights[dk]}
+				<label
+					class="file-row"
+					class:file-row--filled={filled}
+					class:file-row--dragging={slot.dragging}
+					class:file-row--optional={!slot.required}
+					ondragenter={(e) => onDragEnter(dk, e)}
+					ondragover={(e) => onDragOver(dk, e)}
+					ondragleave={() => onDragLeave(dk)}
+					ondrop={(e) => onDrop(dk, e)}
+				>
+					<input type="file" accept={slot.accept} class="sr-only" onchange={(e) => onFileInput(dk, e)} />
+					<span class="ext-dot" style="background-color: {extColor(slot.ext)}" title=".{slot.ext}"></span>
+					<div class="file-meta">
+						<span class="file-label">{slot.label}</span>
+						<span class="file-hint">{slot.hint}</span>
+					</div>
+					<div class="file-action">
+						{#if filled}
+							{#if slot.warning}
+								<span class="file-warn" title={slot.warning}><AlertTriangle size={14} strokeWidth={2} /></span>
+							{/if}
+							{#if insight}
+								<span class="file-insight">{insight.count} {insight.label}</span>
+							{/if}
+							<span class="file-loaded">
+								<Check size={10} strokeWidth={2} />
+								{slot.file!.name.length > 18 ? slot.file!.name.slice(0, 15) + '…' : slot.file!.name}
+							</span>
+							<button class="file-clear" onclick={(e) => onClearFile(dk, e)} aria-label="Remove"><X size={10} strokeWidth={2} /></button>
+						{:else}
+							<span class="file-cta" class:file-cta--drag={slot.dragging}>
+								{slot.dragging ? 'Drop it' : slot.required ? 'Click or drag' : 'Optional'}
+							</span>
+						{/if}
+					</div>
+				</label>
+			{/each}
+
+			{#if refVisible}
+			<div class="section-label section-label--ref">
+				<span class="section-brand">
+					{#if activePlatform}
+						<!-- eslint-disable-next-line svelte/no-at-html-tags -->
+						<span class="section-platform-icon" style="color: {activePlatform.color}">{@html activePlatform.icon}</span>
+					{/if}
+					Reference files
+				</span>
+				<span class="section-sub">Optional — naming convention detection</span>
+			</div>
+			{#each visibleKeys.filter((k) => refKeys.includes(k)) as key (key)}
+				{@const slot = slots[key]}
+				{@const filled = !!slot.file}
+				{@const insight = fileInsights[key]}
+				<label
+					class="file-row file-row--ref"
+					class:file-row--filled={filled}
+					class:file-row--restored={slot.restored}
+					class:file-row--dragging={slot.dragging}
+					class:file-row--dropzone={!filled}
+					ondragenter={(e) => onDragEnter(key, e)}
+					ondragover={(e) => onDragOver(key, e)}
+					ondragleave={() => onDragLeave(key)}
+					ondrop={(e) => onDrop(key, e)}
+				>
+					<input type="file" accept={slot.accept} class="sr-only" onchange={(e) => onFileInput(key, e)} />
+					{#if filled}
+						<span class="ext-dot" style="background-color: {extColor(slot.ext)}" title=".{slot.ext}"></span>
+					{:else}
+						<span class="dropzone-icon"><Upload size={12} strokeWidth={1.5} /></span>
+					{/if}
+					<div class="file-meta">
+						<span class="file-label">{slot.label}</span>
+						<span class="file-hint">{slot.hint}</span>
+					</div>
+					<div class="file-action">
+						{#if filled}
+							{#if insight}
+								<span class="file-insight">{insight.count} {insight.label}</span>
+							{/if}
+							<span class="file-loaded" class:file-loaded--restored={slot.restored}>
+								{#if slot.restored}
+									<span class="restored-icon"><RotateCcw size={10} strokeWidth={2} /></span>
+								{:else}
+									<Check size={10} strokeWidth={2} />
+								{/if}
+								{slot.file!.name.length > 18 ? slot.file!.name.slice(0, 15) + '…' : slot.file!.name}
+							</span>
+							<button class="file-clear" onclick={(e) => onClearFile(key, e)} aria-label="Remove"><X size={10} strokeWidth={2} /></button>
+						{:else}
+							<span class="file-cta file-cta--upload">{slot.dragging ? 'Drop it' : 'Click or drag'}</span>
+						{/if}
+					</div>
+				</label>
+			{/each}
 		{/if}
+	{/if}
+
 	</div>
 
-	<div class="generate-area">
-		{#if errorMsg}
+	{#if errorMsg}
+		<div class="error-area">
 			<div class="error-row">
 				<span class="error-prefix">Error</span>
 				{errorMsg}
 			</div>
-		{/if}
-
-		<div class="generate-footer">
-			<span class="gen-hint">{visibleFilled} of {visibleKeys.length} files loaded</span>
-			{#if !selectedPlatforms.includes('web') && selectedPlatforms.length > 0}
-				<span class="platform-note">Spacing tokens are generated for Web only.</span>
-			{/if}
-			{#if canGenerate}
-				{@const preview = outputPreview(selectedPlatforms)}
-				{#if preview.length > 0}
-					<span class="output-preview">Will generate: {preview.join(', ')}</span>
-				{/if}
-				<button class="import-generate-btn" onclick={onGenerate} disabled={loading}>
-					{loading ? 'Generating…' : 'Generate →'}
-				</button>
-			{/if}
 		</div>
-	</div>
+	{/if}
 </div>
 
 <style>
@@ -374,38 +427,45 @@
 		overflow: hidden;
 	}
 
-	.panel-eyebrow {
+	.panel-header {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		padding: 12px 14px 8px;
-		font-family: 'JetBrains Mono', var(--fontStack-monospace);
-		font-size: 10px;
+		padding: 10px 14px;
+		border-bottom: 1px solid var(--borderColor-muted);
+	}
+
+	.panel-title {
+		font-family: var(--fontStack-sansSerif);
+		font-size: var(--base-text-size-xs);
 		font-weight: 600;
-		letter-spacing: 0.06em;
-		color: var(--fgColor-disabled);
-		text-transform: uppercase;
+		color: var(--fgColor-muted);
 	}
 
 	.panel-actions {
 		display: flex;
 		align-items: center;
-		gap: 6px;
+		gap: 4px;
 	}
 
-	.action-link {
-		font-family: var(--fontStack-monospace);
-		font-size: 10px;
-		color: var(--fgColor-disabled);
+	.panel-icon-btn {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 24px;
+		height: 24px;
 		background: none;
-		border: none;
+		border: 1px solid transparent;
+		border-radius: var(--borderRadius-small);
+		color: var(--fgColor-disabled);
 		cursor: pointer;
-		padding: 0;
-		transition: color var(--base-duration-100) var(--base-easing-ease);
+		transition: color 100ms ease, border-color 100ms ease, background 100ms ease;
 	}
 
-	.action-link:hover {
+	.panel-icon-btn:hover {
 		color: var(--fgColor-muted);
+		border-color: var(--borderColor-muted);
+		background: var(--bgColor-muted);
 	}
 
 	.sr-only {
@@ -416,61 +476,48 @@
 		overflow: hidden;
 	}
 
-	/* ─── Best Practices Toggle ──────────────────── */
-	.best-practices-toggle {
+	/* ─── Best Practices Segmented ───────────────── */
+	.best-practices-area {
 		display: flex;
 		align-items: center;
 		gap: 8px;
 		padding: 6px 12px;
 		margin: 0 10px 6px;
-		background: var(--bgColor-muted);
+	}
+
+	.bp-segmented {
+		display: inline-flex;
+		background: var(--bgColor-inset);
 		border: 1px solid var(--borderColor-muted);
-		border-radius: 6px;
+		border-radius: var(--borderRadius-medium);
+		padding: 2px;
+		gap: 1px;
 	}
 
-	.bp-label {
-		display: flex;
-		align-items: center;
-		gap: 6px;
-		cursor: pointer;
-		user-select: none;
-		white-space: nowrap;
-	}
-
-	.bp-track {
-		position: relative;
-		display: inline-block;
-		width: 28px;
-		height: 16px;
-		background: var(--borderColor-muted);
-		border-radius: 8px;
-		transition: background 0.2s ease;
-		flex-shrink: 0;
-	}
-
-	.bp-track--active {
-		background: var(--brand-color);
-	}
-
-	.bp-thumb {
-		position: absolute;
-		top: 2px;
-		left: 2px;
-		width: 12px;
-		height: 12px;
-		background: white;
-		border-radius: 50%;
-		transition: transform 0.2s ease;
-	}
-
-	.bp-track--active .bp-thumb {
-		transform: translateX(12px);
-	}
-
-	.bp-text {
+	.bp-option {
+		padding: 4px 10px;
+		border: none;
+		background: transparent;
+		border-radius: calc(var(--borderRadius-medium) - 2px);
+		font-family: var(--fontStack-sansSerif);
 		font-size: 11px;
-		font-weight: 600;
+		font-weight: 500;
+		color: var(--fgColor-muted);
+		cursor: pointer;
+		white-space: nowrap;
+		transition: background 150ms ease, color 150ms ease, box-shadow 150ms ease;
+	}
+
+	.bp-option:hover {
 		color: var(--fgColor-default);
+		background: var(--control-bgColor-hover);
+	}
+
+	.bp-option--active {
+		background: var(--control-bgColor-rest);
+		color: var(--fgColor-default);
+		box-shadow: var(--shadow-floating-small);
+		font-weight: 600;
 	}
 
 	.bp-hint {
@@ -507,6 +554,62 @@
 	}
 
 	/* ─── Section Labels ─────────────────────────── */
+	/* ─── Collapsed Tokens Bar ──────────────────── */
+	.tokens-collapsed-bar {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 8px;
+		padding: 10px 14px;
+		background: color-mix(in srgb, var(--bgColor-accent-muted) 30%, var(--bgColor-inset));
+		border-bottom: 1px solid var(--borderColor-muted);
+		cursor: pointer;
+		border: none;
+		width: 100%;
+		text-align: left;
+		font-family: var(--fontStack-sansSerif);
+		font-size: var(--base-text-size-xs);
+		color: var(--fgColor-muted);
+		transition: background var(--base-duration-100) var(--base-easing-ease);
+	}
+
+	.tokens-collapsed-bar:hover {
+		background: color-mix(in srgb, var(--bgColor-accent-muted) 50%, var(--bgColor-inset));
+	}
+
+	.tokens-collapsed-left {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		flex-wrap: wrap;
+	}
+
+	.tokens-collapsed-summary {
+		font-weight: 600;
+		color: var(--fgColor-default);
+	}
+
+	.tokens-collapsed-chevron {
+		font-size: 10px;
+		color: var(--fgColor-disabled);
+		transition: transform var(--base-duration-100) var(--base-easing-ease);
+	}
+
+	.section-collapse-btn {
+		background: none;
+		border: none;
+		font-size: 10px;
+		color: var(--fgColor-disabled);
+		cursor: pointer;
+		padding: 0 2px;
+		line-height: 1;
+		transition: color var(--base-duration-100) var(--base-easing-ease);
+	}
+
+	.section-collapse-btn:hover {
+		color: var(--fgColor-muted);
+	}
+
 	.section-label {
 		display: flex;
 		align-items: center;
@@ -521,6 +624,26 @@
 
 	.section-label--ref {
 		border-top: 1px solid var(--borderColor-muted);
+	}
+
+	.section-label--promoted {
+		background: color-mix(in srgb, var(--bgColor-accent-muted) 30%, var(--bgColor-inset));
+		color: var(--fgColor-default);
+	}
+
+	.ref-callout {
+		padding: 8px 14px;
+		font-size: 11px;
+		color: var(--callout-accent, var(--fgColor-accent));
+		background: color-mix(in srgb, var(--callout-accent, var(--fgColor-accent)) 8%, transparent);
+		border-left: 2px solid var(--callout-accent, var(--fgColor-accent));
+	}
+
+	.ref-callout--prominent {
+		padding: 10px 14px;
+		font-size: 12px;
+		font-weight: 500;
+		border-left-width: 3px;
 	}
 
 	.section-brand {
@@ -540,23 +663,6 @@
 		font-size: var(--base-text-size-xs);
 		color: var(--fgColor-disabled);
 		opacity: 0.6;
-	}
-
-	.figma-fetch-btn {
-		margin-left: auto;
-		font-size: 11px;
-		font-weight: 600;
-		padding: 2px 8px;
-		background: var(--button-primary-bgColor-rest);
-		color: var(--button-primary-fgColor-rest);
-		border: 1px solid var(--button-primary-borderColor-rest);
-		border-radius: var(--borderRadius-medium);
-		cursor: pointer;
-	}
-
-	.figma-fetch-btn:disabled {
-		opacity: 0.5;
-		cursor: not-allowed;
 	}
 
 	/* ─── File Rows ──────────────────────────────── */
@@ -583,10 +689,40 @@
 		background: var(--bgColor-inset);
 	}
 
+	.file-row--dropzone {
+		border: 1px dashed var(--borderColor-default);
+		border-bottom: 1px dashed var(--borderColor-default);
+		border-radius: var(--borderRadius-small);
+		margin: 4px 10px;
+		padding: 10px 12px;
+		background: color-mix(in srgb, var(--bgColor-inset) 50%, transparent);
+		transition: background var(--base-duration-100) var(--base-easing-ease), border-color var(--base-duration-100) var(--base-easing-ease);
+	}
+
+	.file-row--dropzone:hover {
+		background: color-mix(in srgb, var(--bgColor-accent-muted) 20%, var(--bgColor-inset));
+		border-color: var(--fgColor-accent);
+	}
+
+	.file-row--dropzone:hover .dropzone-icon {
+		color: var(--fgColor-accent);
+	}
+
+	.file-row--dropzone:hover .file-cta--upload {
+		color: var(--fgColor-accent);
+	}
+
 	.file-row--dragging {
 		background: var(--control-bgColor-hover);
 		outline: 1px dashed var(--borderColor-default);
 		outline-offset: -2px;
+	}
+
+	.file-row--dropzone.file-row--dragging {
+		background: color-mix(in srgb, var(--bgColor-accent-muted) 40%, var(--bgColor-inset));
+		border-color: var(--fgColor-accent);
+		border-style: solid;
+		outline: none;
 	}
 
 	.file-row--filled {
@@ -615,6 +751,16 @@
 	@keyframes row-fill {
 		from { transform: scaleY(0); }
 		to { transform: scaleY(1); }
+	}
+
+	.dropzone-icon {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		flex-shrink: 0;
+		color: var(--fgColor-disabled);
+		margin-top: 1px;
+		transition: color var(--base-duration-100) var(--base-easing-ease);
 	}
 
 	.ext-dot {
@@ -678,6 +824,13 @@
 		color: var(--fgColor-muted);
 	}
 
+	.file-cta--upload {
+		font-size: 11px;
+		font-weight: 500;
+		color: var(--fgColor-muted);
+		transition: color var(--base-duration-100) var(--base-easing-ease);
+	}
+
 	.file-loaded {
 		display: flex;
 		align-items: center;
@@ -739,8 +892,8 @@
 		opacity: 0.6;
 	}
 
-	/* ─── Generate Area ──────────────────────────── */
-	.generate-area {
+	/* ─── Error Area ─────────────────────────────── */
+	.error-area {
 		padding: 10px 14px;
 		border-top: 1px solid var(--borderColor-muted);
 	}
@@ -754,7 +907,6 @@
 		border-radius: var(--borderRadius-small);
 		font-size: var(--base-text-size-xs);
 		color: var(--fgColor-danger);
-		margin-bottom: 8px;
 	}
 
 	.error-prefix {
@@ -762,72 +914,10 @@
 		flex-shrink: 0;
 	}
 
-	.generate-footer {
-		text-align: center;
-	}
-
-	.gen-hint {
-		font-size: 10px;
-		color: var(--fgColor-disabled);
-	}
-
-	.platform-note {
-		display: block;
-		font-size: 10px;
-		color: var(--fgColor-attention);
-		margin-top: 4px;
-	}
-
-	.output-preview {
-		display: block;
-		font-family: var(--fontStack-monospace);
-		font-size: 10px;
-		color: var(--fgColor-disabled);
-		margin-top: 4px;
-		line-height: 1.5;
-		word-break: break-word;
-	}
-
-	.import-generate-btn {
-		display: inline-flex;
-		align-items: center;
-		gap: 4px;
-		margin-top: 8px;
-		padding: 6px 16px;
-		font-family: 'JetBrains Mono', var(--fontStack-monospace);
-		font-size: 11px;
-		font-weight: 600;
-		background: var(--brand-color);
-		color: #fff;
-		border: none;
-		border-radius: 6px;
-		cursor: pointer;
-		transition: opacity 0.15s;
-		width: 100%;
-		justify-content: center;
-	}
-
-	.import-generate-btn:hover {
-		opacity: 0.9;
-	}
-
-	.import-generate-btn:disabled {
-		opacity: 0.5;
-		cursor: not-allowed;
-	}
-
 	/* ─── Responsive: small ──────────────────────── */
 	@media (max-width: 767px) {
 		.import-panel {
 			padding-bottom: env(safe-area-inset-bottom, 0px);
-		}
-
-		.generate-area {
-			position: sticky;
-			bottom: 0;
-			background: var(--bgColor-inset);
-			border-top: 1px solid var(--borderColor-muted);
-			z-index: 5;
 		}
 	}
 
@@ -876,6 +966,13 @@
 		background: color-mix(in srgb, var(--bgColor-success-muted) 50%, transparent);
 		padding: 1px 5px;
 		border-radius: 3px;
+		white-space: nowrap;
+	}
+
+	.token-change-summary {
+		font-size: 10px;
+		font-weight: 500;
+		color: var(--fgColor-attention);
 		white-space: nowrap;
 	}
 
