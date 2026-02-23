@@ -59,6 +59,12 @@
 		onFigmaFileKeyChange: (e: Event) => void;
 		onFigmaPatChange: (e: Event) => void;
 		onFigmaPasscodeChange: (e: Event) => void;
+		storedTokenVersion: number | null;
+		storedTokenPushedAt: string | null;
+		storedTokenVersions: Array<{ sha: string; version: number; pushedAt: string; message: string }>;
+		storedTokensLoading: boolean;
+		onRefreshStoredTokens: () => void;
+		onLoadTokenVersion: (sha: string) => void;
 	}
 
 	let {
@@ -72,8 +78,26 @@
 		onBestPracticesChange, onExportConfig, onImportConfig, onClearAll, onGenerate,
 		onFigmaFetch, onSettingsToggle,
 		onChatWebhookChange, onGithubPatChange, onGithubRepoChange,
-		onFigmaFileKeyChange, onFigmaPatChange, onFigmaPasscodeChange
+		onFigmaFileKeyChange, onFigmaPatChange, onFigmaPasscodeChange,
+		storedTokenVersion, storedTokenPushedAt, storedTokenVersions, storedTokensLoading,
+		onRefreshStoredTokens, onLoadTokenVersion
 	}: Props = $props();
+
+	let showVersionPicker = $state(false);
+
+	function formatTokenDate(iso: string): string {
+		const d = new Date(iso);
+		const now = new Date();
+		const diffMs = now.getTime() - d.getTime();
+		const diffMins = Math.floor(diffMs / 60_000);
+		if (diffMins < 1) return 'just now';
+		if (diffMins < 60) return `${diffMins}m ago`;
+		const diffHrs = Math.floor(diffMins / 60);
+		if (diffHrs < 24) return `${diffHrs}h ago`;
+		const diffDays = Math.floor(diffHrs / 24);
+		if (diffDays < 7) return `${diffDays}d ago`;
+		return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+	}
 
 	function extColor(ext: string): string {
 		if (ext === 'scss') return '#F06090';
@@ -155,6 +179,56 @@
 			</span>
 			<span class="section-sub">Required: Light · Dark · Value</span>
 		</div>
+
+		{#if storedTokenVersion !== null}
+			<div class="stored-tokens-bar">
+				<div class="stored-tokens-info">
+					<span class="stored-version-badge">v{storedTokenVersion}</span>
+					{#if storedTokenPushedAt}
+						<span class="stored-date">{formatTokenDate(storedTokenPushedAt)}</span>
+					{/if}
+					{#if storedTokenVersions.length > 0 && storedTokenVersions[0]?.version === storedTokenVersion}
+						<span class="stored-latest-tag">Latest</span>
+					{/if}
+				</div>
+				<div class="stored-tokens-actions">
+					{#if storedTokenVersions.length > 1}
+						<div class="version-picker-wrap">
+							<button
+								class="stored-action-btn"
+								onclick={() => (showVersionPicker = !showVersionPicker)}
+								disabled={storedTokensLoading}
+							>
+								{showVersionPicker ? 'Close' : 'Versions'}
+							</button>
+							{#if showVersionPicker}
+								<div class="version-picker-dropdown">
+									{#each storedTokenVersions as ver (ver.sha)}
+										<button
+											class="version-picker-item"
+											class:version-picker-item--active={ver.version === storedTokenVersion}
+											onclick={() => { onLoadTokenVersion(ver.sha); showVersionPicker = false; }}
+											disabled={storedTokensLoading}
+										>
+											<span class="version-picker-v">v{ver.version}</span>
+											<span class="version-picker-date">{formatTokenDate(ver.pushedAt)}</span>
+										</button>
+									{/each}
+								</div>
+							{/if}
+						</div>
+					{/if}
+					<button
+						class="stored-action-btn"
+						onclick={onRefreshStoredTokens}
+						disabled={storedTokensLoading}
+						title="Fetch latest from GitHub"
+					>
+						{storedTokensLoading ? '…' : '↻'}
+					</button>
+				</div>
+			</div>
+		{/if}
 
 		{#each ['lightColors', 'darkColors', 'values', 'typography'] as key (key)}
 			{@const dk = key as DropZoneKey}
@@ -755,5 +829,135 @@
 			border-top: 1px solid var(--borderColor-muted);
 			z-index: 5;
 		}
+	}
+
+	/* ─── Stored Tokens Bar ─────────────────────── */
+	.stored-tokens-bar {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 6px 12px;
+		margin: 0 0 2px;
+		background: color-mix(in srgb, var(--bgColor-accent-muted) 40%, transparent);
+		border-radius: 6px;
+		gap: 8px;
+	}
+
+	.stored-tokens-info {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		min-width: 0;
+	}
+
+	.stored-version-badge {
+		font-family: var(--fontStack-monospace);
+		font-size: 11px;
+		font-weight: 600;
+		color: var(--fgColor-accent);
+		background: color-mix(in srgb, var(--bgColor-accent-muted) 60%, transparent);
+		padding: 1px 6px;
+		border-radius: 4px;
+		white-space: nowrap;
+	}
+
+	.stored-date {
+		font-size: 10px;
+		color: var(--fgColor-muted);
+		white-space: nowrap;
+	}
+
+	.stored-latest-tag {
+		font-size: 9px;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.04em;
+		color: var(--fgColor-success);
+		background: color-mix(in srgb, var(--bgColor-success-muted) 50%, transparent);
+		padding: 1px 5px;
+		border-radius: 3px;
+		white-space: nowrap;
+	}
+
+	.stored-tokens-actions {
+		display: flex;
+		align-items: center;
+		gap: 4px;
+	}
+
+	.stored-action-btn {
+		font-family: var(--fontStack-monospace);
+		font-size: 10px;
+		color: var(--fgColor-muted);
+		background: none;
+		border: 1px solid var(--borderColor-muted);
+		border-radius: 4px;
+		padding: 2px 8px;
+		cursor: pointer;
+		transition: all 0.15s ease;
+		white-space: nowrap;
+	}
+
+	.stored-action-btn:hover:not(:disabled) {
+		color: var(--fgColor-default);
+		border-color: var(--borderColor-default);
+		background: var(--bgColor-muted);
+	}
+
+	.stored-action-btn:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+
+	.version-picker-wrap {
+		position: relative;
+	}
+
+	.version-picker-dropdown {
+		position: absolute;
+		top: calc(100% + 4px);
+		right: 0;
+		min-width: 180px;
+		background: var(--overlay-bgColor);
+		border: 1px solid var(--borderColor-muted);
+		border-radius: 8px;
+		box-shadow: var(--shadow-floating-large);
+		z-index: 20;
+		overflow: hidden;
+		max-height: 200px;
+		overflow-y: auto;
+	}
+
+	.version-picker-item {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		width: 100%;
+		padding: 8px 12px;
+		font-size: 11px;
+		background: none;
+		border: none;
+		cursor: pointer;
+		color: var(--fgColor-default);
+		transition: background 0.1s ease;
+	}
+
+	.version-picker-item:hover {
+		background: var(--bgColor-muted);
+	}
+
+	.version-picker-item--active {
+		background: color-mix(in srgb, var(--bgColor-accent-muted) 30%, transparent);
+	}
+
+	.version-picker-v {
+		font-family: var(--fontStack-monospace);
+		font-weight: 600;
+		color: var(--fgColor-accent);
+	}
+
+	.version-picker-date {
+		color: var(--fgColor-muted);
+		font-size: 10px;
 	}
 </style>

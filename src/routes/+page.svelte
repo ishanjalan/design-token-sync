@@ -207,6 +207,8 @@
 
 		const storedWidth = localStorage.getItem('tokensmith:panel-width');
 		if (storedWidth) panelWidth = Math.max(120, Math.min(480, parseInt(storedWidth, 10)));
+
+		loadStoredTokens().then(() => loadStoredVersions());
 	});
 
 	// ─── State ───────────────────────────────────────────────────────────────────
@@ -317,6 +319,10 @@
 	let figmaWebhookPasscode = $state('');
 	let figmaWebhookEvent = $state<{ file_name: string; timestamp: string; receivedAt: string } | null>(null);
 	let figmaWebhookSeen = $state(true);
+	let storedTokenVersion = $state<number | null>(null);
+	let storedTokenPushedAt = $state<string | null>(null);
+	let storedTokenVersions = $state<Array<{ sha: string; version: number; pushedAt: string; message: string }>>([]);
+	let storedTokensLoading = $state(false);
 	let showChangeSummary = $state<Record<string, boolean>>({});
 	let highlightedLines = $state<{ start: number; end: number } | null>(null);
 	let wrapLines = $state(false);
@@ -997,6 +1003,82 @@
 
 	$effect(() => { if (!browser) return; const interval = setInterval(checkPluginSync, 3_000); checkPluginSync(); return () => clearInterval(interval); });
 
+	// ─── Stored tokens (GitHub repo) ─────────────────────────────────────────────
+
+	async function loadStoredTokens() {
+		try {
+			const res = await fetch('/api/tokens');
+			if (!res.ok) return;
+			const data = await res.json();
+			if (!data.available) return;
+			const requiredEmpty = !slots.lightColors.file && !slots.darkColors.file && !slots.values.file;
+			if (!requiredEmpty) return;
+			storedTokenVersion = data.manifest?.version ?? null;
+			storedTokenPushedAt = data.manifest?.pushedAt ?? null;
+			await applyStoredTokenData(data);
+			toast.success(`Loaded design tokens v${storedTokenVersion}`);
+		} catch { /* silent — fallback to manual upload */ }
+	}
+
+	async function applyStoredTokenData(data: Record<string, unknown>) {
+		const slotEntries: { key: DropZoneKey; content: string; name: string }[] = [
+			{ key: 'lightColors', content: JSON.stringify(data.lightColors, null, 2), name: 'Light.tokens.json' },
+			{ key: 'darkColors', content: JSON.stringify(data.darkColors, null, 2), name: 'Dark.tokens.json' },
+			{ key: 'values', content: JSON.stringify(data.values, null, 2), name: 'Value.tokens.json' }
+		];
+		if (data.typography && typeof data.typography === 'object' && Object.keys(data.typography as object).length > 0) {
+			slotEntries.push({ key: 'typography', content: JSON.stringify({ typography: data.typography }, null, 2), name: 'typography.tokens.json' });
+		}
+		for (const entry of slotEntries) {
+			const file = new File([entry.content], entry.name, { type: 'application/json' });
+			slots[entry.key].file = file; slots[entry.key].restored = false;
+			slots[entry.key].warning = validateFigmaJson(entry.key, entry.content);
+			fileInsights[entry.key] = computeInsight(entry.key, entry.content);
+		}
+		try { const parsed = JSON.parse(slotEntries[0].content); swatches = parseSwatches(parsed); dependencyMap = buildDependencyMap(parsed); }
+		catch { swatches = []; dependencyMap = []; }
+	}
+
+	async function loadStoredVersions() {
+		try {
+			const res = await fetch('/api/tokens?mode=versions&limit=10');
+			if (!res.ok) return;
+			const data = await res.json();
+			storedTokenVersions = data.versions ?? [];
+		} catch { /* silent */ }
+	}
+
+	async function loadTokenVersion(sha: string) {
+		storedTokensLoading = true;
+		try {
+			const res = await fetch(`/api/tokens?mode=at&sha=${sha}`);
+			if (!res.ok) throw new Error('Failed to fetch version');
+			const data = await res.json();
+			if (!data.available) { toast.error('Version not found'); return; }
+			storedTokenVersion = data.manifest?.version ?? null;
+			storedTokenPushedAt = data.manifest?.pushedAt ?? null;
+			await applyStoredTokenData(data);
+			toast.success(`Loaded design tokens v${storedTokenVersion}`);
+		} catch (err) { toast.error(err instanceof Error ? err.message : 'Failed to load version'); }
+		finally { storedTokensLoading = false; }
+	}
+
+	async function refreshStoredTokens() {
+		storedTokensLoading = true;
+		try {
+			const res = await fetch('/api/tokens');
+			if (!res.ok) return;
+			const data = await res.json();
+			if (!data.available) { toast.error('No stored tokens available'); return; }
+			storedTokenVersion = data.manifest?.version ?? null;
+			storedTokenPushedAt = data.manifest?.pushedAt ?? null;
+			await applyStoredTokenData(data);
+			await loadStoredVersions();
+			toast.success(`Refreshed to v${storedTokenVersion}`);
+		} catch { toast.error('Failed to refresh tokens'); }
+		finally { storedTokensLoading = false; }
+	}
+
 	// ─── Figma Webhook polling ───────────────────────────────────────────────────
 
 	async function pollFigmaWebhook() {
@@ -1125,6 +1207,12 @@
 				onFigmaFileKeyChange={onFigmaFileKeyChange}
 				onFigmaPatChange={onFigmaPatChange}
 				onFigmaPasscodeChange={onFigmaPasscodeChange}
+				{storedTokenVersion}
+				{storedTokenPushedAt}
+				{storedTokenVersions}
+				{storedTokensLoading}
+				onRefreshStoredTokens={refreshStoredTokens}
+				onLoadTokenVersion={loadTokenVersion}
 			/>
 		{:else if activePanel === 'files'}
 			<ExplorerPanel

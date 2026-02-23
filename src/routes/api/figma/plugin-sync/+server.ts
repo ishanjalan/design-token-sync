@@ -1,6 +1,7 @@
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { z } from 'zod';
+import { commitTokens, isConfigured } from '$lib/server/token-store.js';
 
 const TokenMapSchema = z.record(z.string(), z.any());
 
@@ -44,10 +45,26 @@ export const POST: RequestHandler = async ({ request }) => {
 		receivedAt: new Date().toISOString()
 	};
 
+	let persisted = false;
+	let version: number | null = null;
+	if (isConfigured()) {
+		try {
+			const manifest = await commitTokens(parsed.data);
+			if (manifest) {
+				persisted = true;
+				version = manifest.version;
+			}
+		} catch {
+			// GitHub storage failed — tokens still usable in-memory
+		}
+	}
+
 	return json(
 		{
 			success: true,
-			receivedAt: latestSync.receivedAt
+			receivedAt: latestSync.receivedAt,
+			persisted,
+			version
 		},
 		{
 			headers: { 'Access-Control-Allow-Origin': '*' }
