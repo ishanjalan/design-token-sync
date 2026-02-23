@@ -58,7 +58,8 @@ export const POST: RequestHandler = async ({ request }) => {
 		const parts: string[] = [];
 		if (tokenChanges.added > 0) parts.push(`+${tokenChanges.added} added`);
 		if (tokenChanges.removed > 0) parts.push(`-${tokenChanges.removed} removed`);
-		widgets.push({ keyValue: { topLabel: 'Token changes', content: parts.join(', ') || 'Updated' } });
+		const changeText = parts.length > 0 ? parts.join(', ') : (tokenChanges.summary || 'Token values updated');
+		widgets.push({ keyValue: { topLabel: 'Token changes', content: changeText } });
 	}
 
 	if (stats) {

@@ -249,13 +249,14 @@ class TokenStoreClientClass {
 				this.tokenChangeSummary = summary;
 				this.tokensUpdatedBanner = { version: this.storedTokenVersion ?? 0, summary };
 			}
+			if (added === 0 && removed === 0) {
+				summary = 'Token values updated';
+			}
 			this.previousTokenKeys = newKeys;
 			fileStore.applyTokenData(this.buildSlotEntries(fullData));
 			await this.loadStoredVersions();
 			toast.success(`New tokens detected — v${this.storedTokenVersion}`);
-			if (added > 0 || removed > 0) {
-				onNewVersion?.({ version: this.storedTokenVersion ?? 0, added, removed, summary });
-			}
+			onNewVersion?.({ version: this.storedTokenVersion ?? 0, added, removed, summary });
 		} catch { /* silent */ }
 		finally { this.storedTokensLoading = false; }
 	}
