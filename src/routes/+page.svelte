@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { browser } from '$app/environment';
+	import { updated } from '$app/stores';
 	import { onMount } from 'svelte';
 	import { Toaster, toast } from 'svelte-sonner';
 	import type {
@@ -82,6 +83,14 @@
 				setTimeout(generate, 100);
 			}
 		});
+	});
+
+	// ─── Auto-reload on new deployment ──────────────────────────────────────────
+
+	$effect(() => {
+		if ($updated && browser) {
+			location.reload();
+		}
 	});
 
 	// ─── Platform change effect ──────────────────────────────────────────────────

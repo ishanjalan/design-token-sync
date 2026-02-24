@@ -14,6 +14,36 @@
 import type { Platform, HistoryEntry, GithubConfigs } from '$lib/types.js';
 
 const PREFIX = 'tokenSync';
+const STORAGE_VERSION = 2;
+
+/**
+ * Check if stored data is from a previous app version. If so, clear stale
+ * state that may conflict with new code. Preserves settings (PATs, webhook URLs)
+ * but clears cached results and ref files that may have incompatible shapes.
+ */
+export function migrateStorageIfNeeded(): void {
+	try {
+		const raw = localStorage.getItem(`${PREFIX}:version`);
+		const stored = raw ? parseInt(raw, 10) : 0;
+		if (stored >= STORAGE_VERSION) return;
+
+		localStorage.removeItem(`${PREFIX}:result`);
+		localStorage.removeItem(`${PREFIX}:platforms`);
+		localStorage.removeItem(`${PREFIX}:history`);
+		localStorage.removeItem(`${PREFIX}:bestPractices`);
+
+		const keysToRemove: string[] = [];
+		for (let i = 0; i < localStorage.length; i++) {
+			const key = localStorage.key(i);
+			if (key?.startsWith(`${PREFIX}:ref:`)) keysToRemove.push(key);
+		}
+		keysToRemove.forEach((k) => localStorage.removeItem(k));
+
+		localStorage.setItem(`${PREFIX}:version`, String(STORAGE_VERSION));
+	} catch {
+		// private browsing or quota — fail silently
+	}
+}
 
 interface StoredRefFile {
 	name: string;

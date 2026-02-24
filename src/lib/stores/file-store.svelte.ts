@@ -12,7 +12,8 @@ import {
 	loadPlatforms,
 	saveBestPractices,
 	loadBestPractices,
-	clearAllStorage
+	clearAllStorage,
+	migrateStorageIfNeeded
 } from '$lib/storage.js';
 import { validateFigmaJson, computeInsight } from '$lib/file-validation.js';
 import { parseSwatches } from '$lib/swatch-utils.js';
@@ -276,6 +277,7 @@ class FileStoreClass {
 	}
 
 	init() {
+		migrateStorageIfNeeded();
 		const storedPlatforms = loadPlatforms();
 		if (storedPlatforms?.length) this.selectedPlatforms = storedPlatforms;
 		this.bestPractices = loadBestPractices();

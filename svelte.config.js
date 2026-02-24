@@ -5,7 +5,11 @@ const config = {
 	kit: {
 		adapter: adapter({
 			runtime: 'nodejs22.x'
-		})
+		}),
+		version: {
+			name: new Date().toISOString(),
+			pollInterval: 60_000
+		}
 	}
 };
 

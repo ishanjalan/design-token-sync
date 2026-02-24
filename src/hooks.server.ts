@@ -22,5 +22,11 @@ export const handle: Handle = async ({ event, resolve }) => {
 		response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 	}
 
+	const contentType = response.headers.get('content-type') ?? '';
+	if (!isApi && contentType.includes('text/html')) {
+		response.headers.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+		response.headers.set('Pragma', 'no-cache');
+	}
+
 	return response;
 };
