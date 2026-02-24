@@ -89,7 +89,8 @@
 
 	$effect(() => {
 		if ($updated && browser) {
-			location.reload();
+			const dest = location.pathname + '?_cb=' + Date.now();
+			location.replace(dest);
 		}
 	});
 
@@ -361,6 +362,7 @@
 			fd.append('darkColors', fileStore.slots.darkColors.file!);
 			fd.append('values', fileStore.slots.values.file!);
 			fd.append('platforms', JSON.stringify(fileStore.selectedPlatforms));
+			fd.append('outputs', JSON.stringify(fileStore.selectedOutputs));
 			fd.append('bestPractices', String(fileStore.bestPractices));
 			const optionalKeys: DropZoneKey[] = ['typography', 'referencePrimitivesScss', 'referenceColorsScss', 'referencePrimitivesTs', 'referenceColorsTs', 'referenceColorsSwift', 'referenceColorsKotlin', 'referenceTypographyScss', 'referenceTypographyTs', 'referenceTypographySwift', 'referenceTypographyKotlin'];
 			for (const key of optionalKeys) { if (fileStore.slots[key].file) fd.append(key, fileStore.slots[key].file!); }
@@ -478,7 +480,7 @@
 
 	async function sendPRs() {
 		if (!genStore.result?.files.length) return;
-		if (!settingsStore.githubPat) { toast.error('Add your GitHub PAT in Settings first'); uiStore.activePanel = 'settings'; return; }
+		if (!settingsStore.githubPat) { toast.warning('Add your GitHub PAT in Settings first', { duration: 8000 }); uiStore.activePanel = 'settings'; return; }
 		settingsStore.sendingPrs = true; settingsStore.prResults = [];
 		try {
 			// eslint-disable-next-line svelte/prefer-svelte-reactivity
@@ -622,6 +624,8 @@
 		<HeaderBar
 			platforms={PLATFORMS}
 			selectedPlatforms={fileStore.selectedPlatforms}
+			selectedOutputs={fileStore.selectedOutputs}
+			onToggleOutput={(cat) => fileStore.toggleOutput(cat)}
 			canGenerate={fileStore.canGenerate}
 			loading={fileStore.loading}
 			needsRegeneration={fileStore.needsRegeneration}
@@ -678,6 +682,8 @@
 				onBulkDragLeave={(e) => { if (e.currentTarget === e.target || !(e.currentTarget as HTMLElement).contains(e.relatedTarget as Node)) fileStore.bulkDropActive = false; }}
 				onBulkDrop={(e) => fileStore.handleBulkDrop(e)}
 				onBestPracticesChange={(val) => fileStore.setBestPractices(val)}
+				selectedOutputs={fileStore.selectedOutputs}
+				onToggleOutput={(cat) => fileStore.toggleOutput(cat)}
 				onExportConfig={exportConfig}
 				onImportConfig={importConfigFile}
 				onClearAll={clearAll}
@@ -790,10 +796,14 @@
 			hasRefFiles={fileStore.hasRefFiles}
 			bestPractices={fileStore.bestPractices}
 			onBestPracticesChange={(val) => (fileStore.bestPractices = val)}
+			selectedOutputs={fileStore.selectedOutputs}
+			onToggleOutput={(cat) => fileStore.toggleOutput(cat)}
+			tokensInitialLoading={tokenStore.tokensInitialLoading}
 			canGenerate={fileStore.canGenerate}
 			loading={fileStore.loading}
 			onGenerate={generate}
 			onOpenImportPanel={() => (uiStore.activePanel = 'import')}
+			onOpenSettings={() => (uiStore.activePanel = 'settings')}
 			onWelcomeDragEnter={(k, e) => fileStore.handleDragEnter(k, e)}
 			onWelcomeDragOver={(k, e) => fileStore.handleDragOver(k, e)}
 			onWelcomeDragLeave={(k) => fileStore.handleDragLeave(k)}

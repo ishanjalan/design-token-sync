@@ -11,6 +11,21 @@
 
 	let { history, platformColor, onRestore, onClose }: Props = $props();
 
+	let confirmingId = $state<string | null>(null);
+	let confirmTimer: ReturnType<typeof setTimeout> | null = null;
+
+	function handleRestore(entry: HistoryEntry) {
+		if (confirmingId === entry.id) {
+			if (confirmTimer) clearTimeout(confirmTimer);
+			confirmingId = null;
+			onRestore(entry);
+			return;
+		}
+		if (confirmTimer) clearTimeout(confirmTimer);
+		confirmingId = entry.id;
+		confirmTimer = setTimeout(() => { confirmingId = null; }, 3000);
+	}
+
 	function formatHistoryDate(iso: string): string {
 		const d = new Date(iso);
 		return d.toLocaleString([], {
@@ -63,7 +78,11 @@
 						{/each}
 					</div>
 				{/if}
-				<button class="ctrl-btn history-restore" onclick={() => onRestore(entry)}>restore</button>
+				<button
+				class="ctrl-btn history-restore"
+				class:history-restore--confirming={confirmingId === entry.id}
+				onclick={() => handleRestore(entry)}
+			>{confirmingId === entry.id ? 'Confirm?' : 'restore'}</button>
 			</div>
 		{/each}
 	{/if}
@@ -164,6 +183,12 @@
 
 	.history-restore {
 		flex-shrink: 0;
+	}
+
+	.history-restore--confirming {
+		color: var(--fgColor-attention);
+		border-color: var(--borderColor-attention-muted, #d29922);
+		background: color-mix(in srgb, var(--fgColor-attention) 8%, transparent);
 	}
 
 	.ctrl-btn {

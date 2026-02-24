@@ -1,6 +1,6 @@
 import { browser } from '$app/environment';
 import { toast } from 'svelte-sonner';
-import type { Platform, DropZoneKey, FileSlot } from '$lib/types.js';
+import type { Platform, DropZoneKey, FileSlot, OutputCategory } from '$lib/types.js';
 import type { FileInsight } from '$lib/file-validation.js';
 import type { Swatch } from '$lib/swatch-utils.js';
 import type { DependencyEntry } from '$lib/token-analysis.js';
@@ -51,6 +51,7 @@ export const REF_KEYS: DropZoneKey[] = [
 
 class FileStoreClass {
 	selectedPlatforms = $state<Platform[]>(['web']);
+	selectedOutputs = $state<OutputCategory[]>(['colors', 'typography']);
 	bestPractices = $state(true);
 	loading = $state(false);
 	bulkDropActive = $state(false);
@@ -234,27 +235,35 @@ class FileStoreClass {
 	dragCounters: Partial<Record<DropZoneKey, number>> = {};
 
 	get visibleKeys(): DropZoneKey[] {
+		const wantColors = this.selectedOutputs.includes('colors');
+		const wantTypo = this.selectedOutputs.includes('typography');
+
+		const webKeys: DropZoneKey[] = this.selectedPlatforms.includes('web')
+			? [
+					...(wantColors ? (['referencePrimitivesScss', 'referenceColorsScss', 'referencePrimitivesTs', 'referenceColorsTs'] as DropZoneKey[]) : []),
+					...(wantTypo ? (['referenceTypographyScss', 'referenceTypographyTs'] as DropZoneKey[]) : [])
+				]
+			: [];
+		const iosKeys: DropZoneKey[] = this.selectedPlatforms.includes('ios')
+			? [
+					...(wantColors ? (['referenceColorsSwift'] as DropZoneKey[]) : []),
+					...(wantTypo ? (['referenceTypographySwift'] as DropZoneKey[]) : [])
+				]
+			: [];
+		const androidKeys: DropZoneKey[] = this.selectedPlatforms.includes('android')
+			? [
+					...(wantColors ? (['referenceColorsKotlin'] as DropZoneKey[]) : []),
+					...(wantTypo ? (['referenceTypographyKotlin'] as DropZoneKey[]) : [])
+				]
+			: [];
 		return [
 			'lightColors',
 			'darkColors',
 			'values',
-			'typography',
-			...(this.selectedPlatforms.includes('web')
-				? ([
-						'referencePrimitivesScss',
-						'referenceColorsScss',
-						'referencePrimitivesTs',
-						'referenceColorsTs',
-						'referenceTypographyScss',
-						'referenceTypographyTs'
-					] as DropZoneKey[])
-				: []),
-			...(this.selectedPlatforms.includes('ios')
-				? (['referenceColorsSwift', 'referenceTypographySwift'] as DropZoneKey[])
-				: []),
-			...(this.selectedPlatforms.includes('android')
-				? (['referenceColorsKotlin', 'referenceTypographyKotlin'] as DropZoneKey[])
-				: [])
+			...(wantTypo ? (['typography'] as DropZoneKey[]) : []),
+			...webKeys,
+			...iosKeys,
+			...androidKeys
 		];
 	}
 
@@ -265,7 +274,7 @@ class FileStoreClass {
 	}
 
 	get canGenerate() {
-		return this.requiredFilled === 3 && !this.loading;
+		return this.requiredFilled === 3 && !this.loading && this.selectedOutputs.length > 0;
 	}
 
 	get visibleFilled() {
@@ -299,6 +308,14 @@ class FileStoreClass {
 	setBestPractices(val: boolean) {
 		this.bestPractices = val;
 		saveBestPractices(val);
+	}
+
+	toggleOutput(cat: OutputCategory) {
+		if (this.selectedOutputs.includes(cat)) {
+			this.selectedOutputs = this.selectedOutputs.filter((c) => c !== cat);
+		} else {
+			this.selectedOutputs = [...this.selectedOutputs, cat];
+		}
 	}
 
 	async assignFile(key: DropZoneKey, file: File) {

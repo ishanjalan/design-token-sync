@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { Moon, Sun, Diamond, RefreshCw, ArrowRight } from 'lucide-svelte';
-	import type { Platform } from '$lib/types.js';
+	import type { Platform, OutputCategory } from '$lib/types.js';
 
 	interface PlatformOption {
 		id: Platform;
@@ -14,6 +14,8 @@
 	interface Props {
 		platforms: PlatformOption[];
 		selectedPlatforms: Platform[];
+		selectedOutputs: OutputCategory[];
+		onToggleOutput: (cat: OutputCategory) => void;
 		canGenerate: boolean;
 		loading: boolean;
 		needsRegeneration?: boolean;
@@ -28,6 +30,8 @@
 	let {
 		platforms,
 		selectedPlatforms,
+		selectedOutputs,
+		onToggleOutput,
 		canGenerate,
 		loading,
 		needsRegeneration = false,
@@ -65,6 +69,27 @@
 						<span class="seg-label">{p.label}</span>
 					</button>
 				{/each}
+			</div>
+
+			<div class="output-chips">
+				<button
+					class="out-chip"
+					class:out-chip--active={selectedOutputs.includes('colors')}
+					title="Toggle color output"
+					onclick={() => onToggleOutput('colors')}
+				>
+					<span class="out-dot" style="background: var(--fgColor-accent)"></span>
+					C
+				</button>
+				<button
+					class="out-chip"
+					class:out-chip--active={selectedOutputs.includes('typography')}
+					title="Toggle typography output"
+					onclick={() => onToggleOutput('typography')}
+				>
+					<span class="out-dot" style="background: #F5A623"></span>
+					T
+				</button>
 			</div>
 
 			<button
@@ -200,6 +225,52 @@
 
 	.seg-label {
 		white-space: nowrap;
+	}
+
+	/* ─── Output Chips ─────────────────────────────── */
+	.output-chips {
+		display: flex;
+		gap: 2px;
+		margin-left: 4px;
+	}
+
+	.out-chip {
+		display: inline-flex;
+		align-items: center;
+		gap: 3px;
+		font-family: var(--fontStack-monospace);
+		font-size: 10px;
+		font-weight: 600;
+		letter-spacing: 0.03em;
+		color: var(--fgColor-disabled);
+		background: none;
+		border: 1px solid transparent;
+		border-radius: var(--borderRadius-small);
+		padding: 2px 6px;
+		cursor: pointer;
+		transition: all 120ms ease;
+	}
+
+	.out-chip:hover {
+		background: var(--control-bgColor-hover);
+	}
+
+	.out-chip--active {
+		color: var(--fgColor-default);
+		border-color: var(--borderColor-default);
+		background: var(--control-bgColor-rest);
+	}
+
+	.out-dot {
+		width: 6px;
+		height: 6px;
+		border-radius: 50%;
+		opacity: 0.35;
+		transition: opacity 120ms ease;
+	}
+
+	.out-chip--active .out-dot {
+		opacity: 1;
 	}
 
 	/* ─── Generate Button ──────────────────────────── */

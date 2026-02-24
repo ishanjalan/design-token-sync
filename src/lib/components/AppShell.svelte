@@ -55,12 +55,13 @@
 			</div>
 		{/if}
 
-		{#if activePanel && !welcomeMode}
+		{#if activePanel && (!welcomeMode || activePanel === 'import' || activePanel === 'settings' || activePanel === 'help')}
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
 			<!-- svelte-ignore a11y_click_events_have_key_events -->
 			<div class="shell-overlay" onclick={onClosePanel}></div>
 			<div
 				class="shell-side"
+				class:shell-side--no-rail={welcomeMode}
 				style="width: {panelWidth}px"
 			>
 				{@render sidePanel()}
@@ -243,6 +244,10 @@
 			backdrop-filter: blur(8px);
 			-webkit-backdrop-filter: blur(8px);
 			box-shadow: 4px 0 16px color-mix(in srgb, black 12%, transparent);
+		}
+
+		.shell-side--no-rail {
+			left: 0;
 		}
 
 		.shell-resize-handle {

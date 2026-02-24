@@ -49,7 +49,7 @@ class UiStoreClass {
 	currentBreadcrumb = $state('');
 	diffNavIndex = $state<Record<string, number>>({});
 	showChangeSummary = $state<Record<string, boolean>>({});
-	activePanel = $state<SidePanelId>('import');
+	activePanel = $state<SidePanelId>(null);
 	panelWidth = $state(280);
 
 	readonly isMac = browser && /Mac|iPhone|iPad/.test(navigator.userAgent);

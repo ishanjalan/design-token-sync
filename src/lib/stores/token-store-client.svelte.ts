@@ -10,6 +10,7 @@ class TokenStoreClientClass {
 		Array<{ sha: string; version: number; pushedAt: string; message: string }>
 	>([]);
 	storedTokensLoading = $state(false);
+	tokensInitialLoading = $state(false);
 	tokensAutoLoaded = $state(false);
 	tokenChangeSummary = $state<string | null>(null);
 	tokensUpdatedBanner = $state<{ version: number; summary: string } | null>(null);
@@ -124,6 +125,7 @@ class TokenStoreClientClass {
 	}
 
 	async loadStoredTokens(): Promise<boolean> {
+		this.tokensInitialLoading = true;
 		try {
 			const res = await fetch('/api/tokens');
 			if (!res.ok) return false;
@@ -148,6 +150,8 @@ class TokenStoreClientClass {
 			return true;
 		} catch {
 			return false;
+		} finally {
+			this.tokensInitialLoading = false;
 		}
 	}
 

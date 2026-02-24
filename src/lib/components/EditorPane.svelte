@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { Download, ClipboardCopy, GitPullRequest, List, WrapText, Check, X, ChevronRight, ChevronUp, ChevronDown, AlertTriangle, ArrowLeftRight, Target, Pencil, ArrowRight } from 'lucide-svelte';
-	import type { GeneratedFile, Platform, DropZoneKey, FileSlot } from '$lib/types.js';
+	import type { GeneratedFile, Platform, DropZoneKey, FileSlot, OutputCategory } from '$lib/types.js';
 	import type { FileInsight } from '$lib/file-validation.js';
 	import WelcomeView from './WelcomeView.svelte';
 	import {
@@ -97,10 +97,14 @@
 		hasRefFiles: boolean;
 		bestPractices: boolean;
 		onBestPracticesChange: (val: boolean) => void;
+		selectedOutputs: OutputCategory[];
+		onToggleOutput: (cat: OutputCategory) => void;
+		tokensInitialLoading: boolean;
 		canGenerate: boolean;
 		loading: boolean;
 		onGenerate: () => void;
 		onOpenImportPanel: () => void;
+		onOpenSettings: () => void;
 		onWelcomeDragEnter: (key: DropZoneKey, e: DragEvent) => void;
 		onWelcomeDragOver: (key: DropZoneKey, e: DragEvent) => void;
 		onWelcomeDragLeave: (key: DropZoneKey) => void;
@@ -158,8 +162,9 @@
 		storedTokenVersion = null, storedTokenPushedAt = null,
 		tokensUpdatedBanner = null, onRegenerate,
 		platforms, onSelectPlatform, swatchCount,
-		refKeys, visibleKeysAll, slots, fileInsights, hasRefFiles, bestPractices,
-		onBestPracticesChange, canGenerate, loading, onGenerate, onOpenImportPanel,
+		refKeys, visibleKeysAll, slots, fileInsights, hasRefFiles, bestPractices, onBestPracticesChange,
+		selectedOutputs, onToggleOutput,
+		tokensInitialLoading, canGenerate, loading, onGenerate, onOpenImportPanel, onOpenSettings,
 		onWelcomeDragEnter, onWelcomeDragOver, onWelcomeDragLeave, onWelcomeDrop,
 		onWelcomeFileInput, onWelcomeClearFile, requiredFilled,
 		formatTime, timeAgo, platformColor,
@@ -206,10 +211,14 @@
 			{hasRefFiles}
 			{bestPractices}
 			{onBestPracticesChange}
+			{selectedOutputs}
+			{onToggleOutput}
+			{tokensInitialLoading}
 			{canGenerate}
 			{loading}
 			{onGenerate}
 			{onOpenImportPanel}
+			{onOpenSettings}
 			onDragEnter={onWelcomeDragEnter}
 			onDragOver={onWelcomeDragOver}
 			onDragLeave={onWelcomeDragLeave}

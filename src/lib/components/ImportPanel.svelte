@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { Check, X, RotateCcw, ChevronRight, ChevronDown, AlertTriangle, RefreshCw, Trash2, Save, FolderOpen, Upload } from 'lucide-svelte';
-	import type { Platform, DropZoneKey, FileSlot } from '$lib/types.js';
+	import type { Platform, DropZoneKey, FileSlot, OutputCategory } from '$lib/types.js';
 	import type { FileInsight } from '$lib/file-validation.js';
 
 	interface PlatformOption {
@@ -37,6 +37,8 @@
 		onBulkDragLeave: (e: DragEvent) => void;
 		onBulkDrop: (e: DragEvent) => void;
 		onBestPracticesChange: (val: boolean) => void;
+		selectedOutputs: OutputCategory[];
+		onToggleOutput: (cat: OutputCategory) => void;
 		onExportConfig: () => void;
 		onImportConfig: (e: Event) => void;
 		onClearAll: () => void;
@@ -56,7 +58,8 @@
 		requiredFilled, iconFigma,
 		onDragEnter, onDragOver, onDragLeave, onDrop, onFileInput, onClearFile,
 		onBulkDragEnter, onBulkDragOver, onBulkDragLeave, onBulkDrop,
-		onBestPracticesChange, onExportConfig, onImportConfig, onClearAll, onGenerate,
+		onBestPracticesChange, selectedOutputs, onToggleOutput,
+		onExportConfig, onImportConfig, onClearAll, onGenerate,
 		storedTokenVersion, storedTokenPushedAt, storedTokenVersions, storedTokensLoading,
 		tokenChangeSummary,
 		onRefreshStoredTokens, onLoadTokenVersion
@@ -142,6 +145,28 @@
 			</span>
 		</div>
 	{/if}
+
+	<div class="output-area">
+		<span class="output-label">Generate</span>
+		<div class="output-toggles">
+			<button
+				class="output-chip"
+				class:output-chip--active={selectedOutputs.includes('colors')}
+				onclick={() => onToggleOutput('colors')}
+			>
+				<span class="output-chip-dot" style="background: var(--fgColor-accent)"></span>
+				Colors
+			</button>
+			<button
+				class="output-chip"
+				class:output-chip--active={selectedOutputs.includes('typography')}
+				onclick={() => onToggleOutput('typography')}
+			>
+				<span class="output-chip-dot" style="background: #F5A623"></span>
+				Typography
+			</button>
+		</div>
+	</div>
 
 	<div
 		class="file-list"
@@ -523,6 +548,69 @@
 	.bp-hint {
 		font-size: 10px;
 		color: var(--fgColor-disabled);
+	}
+
+	/* ─── Output Toggles ────────────────────────── */
+	.output-area {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 4px 12px;
+		margin: 0 10px 6px;
+	}
+
+	.output-label {
+		font-size: 10px;
+		font-weight: 600;
+		color: var(--fgColor-muted);
+		text-transform: uppercase;
+		letter-spacing: 0.04em;
+	}
+
+	.output-toggles {
+		display: flex;
+		gap: 4px;
+	}
+
+	.output-chip {
+		display: flex;
+		align-items: center;
+		gap: 5px;
+		padding: 3px 10px;
+		background: var(--bgColor-inset);
+		border: 1px solid var(--borderColor-muted);
+		border-radius: var(--borderRadius-medium);
+		font-family: var(--fontStack-sansSerif);
+		font-size: 11px;
+		font-weight: 500;
+		color: var(--fgColor-muted);
+		cursor: pointer;
+		transition: background 150ms ease, border-color 150ms ease, color 150ms ease;
+	}
+
+	.output-chip:hover {
+		background: var(--control-bgColor-hover);
+		border-color: var(--borderColor-default);
+	}
+
+	.output-chip--active {
+		background: var(--control-bgColor-rest);
+		border-color: var(--borderColor-default);
+		color: var(--fgColor-default);
+		font-weight: 600;
+		box-shadow: var(--shadow-floating-small);
+	}
+
+	.output-chip-dot {
+		width: 6px;
+		height: 6px;
+		border-radius: 50%;
+		opacity: 0.4;
+		transition: opacity 150ms ease;
+	}
+
+	.output-chip--active .output-chip-dot {
+		opacity: 1;
 	}
 
 	/* ─── File List ──────────────────────────────── */

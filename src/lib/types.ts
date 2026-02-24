@@ -269,6 +269,10 @@ export interface PrResult {
 	error?: string;
 }
 
+// ─── Output Categories ────────────────────────────────────────────────────────
+
+export type OutputCategory = 'colors' | 'typography';
+
 // ─── Generate Request ─────────────────────────────────────────────────────────
 
 export const GenerateRequestSchema = z.object({
@@ -276,6 +280,7 @@ export const GenerateRequestSchema = z.object({
 	darkColors: z.record(z.string(), z.unknown()),
 	values: z.record(z.string(), z.unknown()),
 	platforms: z.array(z.enum(['web', 'android', 'ios'])),
+	outputs: z.array(z.enum(['colors', 'typography'])).optional().default(['colors', 'typography']),
 	typography: z.record(z.string(), z.unknown()).optional(),
 	bestPractices: z.boolean().optional().default(true),
 	// Web reference files (optional — used for convention detection)

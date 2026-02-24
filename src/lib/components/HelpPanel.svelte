@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { ExternalLink, Upload, Cpu, FileCode, ArrowRightLeft } from 'lucide-svelte';
+	import { ExternalLink, Upload, Cpu, FileCode, ArrowRightLeft, ToggleLeft } from 'lucide-svelte';
 
 	interface Props {
 		onClose: () => void;
@@ -29,9 +29,9 @@
 		<section class="help-section">
 			<h3 class="help-section-title">
 				<Cpu size={14} strokeWidth={2} />
-				2. Select platform &amp; generate
+				2. Choose what to generate
 			</h3>
-			<p class="help-text">Choose your target platform (Web, Android, or iOS) and click <strong>Generate</strong>. Output files are created instantly.</p>
+			<p class="help-text">Pick your target platform (Web, Android, or iOS), then use the <strong>output toggles</strong> to generate Colors, Typography, or both. Click <strong>Generate</strong> to create production-ready code files instantly.</p>
 		</section>
 
 		<section class="help-section">
@@ -40,6 +40,14 @@
 				3. Review &amp; export
 			</h3>
 			<p class="help-text">Browse generated files in the code viewer. Copy individual files, download as ZIP, or send a PR directly to GitHub.</p>
+		</section>
+
+		<section class="help-section">
+			<h3 class="help-section-title">
+				<ToggleLeft size={14} strokeWidth={2} />
+				Output toggles
+			</h3>
+			<p class="help-text">Use the <strong>Colors</strong> and <strong>Typography</strong> toggles to control which file categories are generated. Both are on by default. Deselect one to skip it entirely.</p>
 		</section>
 
 		<section class="help-section">
@@ -54,14 +62,20 @@
 		<section class="help-section">
 			<h3 class="help-section-title">Generated files per platform</h3>
 			<dl class="help-files">
-				<dt class="help-platform">Web</dt>
-				<dd><code>Primitives.scss</code>, <code>Colors.scss</code>, <code>Primitives.ts</code>, <code>Colors.ts</code>, <code>Colors.css</code></dd>
-				<dt class="help-platform">Android</dt>
+				<dt class="help-platform">Web — Colors</dt>
+				<dd><code>Primitives.scss</code>, <code>Colors.scss</code>, <code>Primitives.ts</code>, <code>Colors.ts</code>, <code>Colors.css</code>, <code>Spacing.scss</code>, <code>Spacing.ts</code></dd>
+				<dt class="help-platform">Web — Typography</dt>
+				<dd><code>Typography.scss</code>, <code>Typography.ts</code></dd>
+				<dt class="help-platform">Android — Colors</dt>
 				<dd><code>Colors.kt</code></dd>
-				<dt class="help-platform">iOS</dt>
+				<dt class="help-platform">Android — Typography</dt>
+				<dd><code>Typography.kt</code></dd>
+				<dt class="help-platform">iOS — Colors</dt>
 				<dd><code>Colors.swift</code></dd>
+				<dt class="help-platform">iOS — Typography</dt>
+				<dd><code>Typography.swift</code></dd>
 			</dl>
-			<p class="help-text help-text--muted">Typography files are generated when typography tokens are uploaded.</p>
+			<p class="help-text help-text--muted">Shadow, border, and opacity files are auto-generated when those tokens are present in the values export.</p>
 		</section>
 
 		<div class="help-links">

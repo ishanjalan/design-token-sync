@@ -21,6 +21,7 @@ const RequestSchema = z.object({
 	darkColors: z.record(z.string(), z.unknown()),
 	values: z.record(z.string(), z.unknown()),
 	platforms: z.array(z.enum(['web', 'android', 'ios'])),
+	outputs: z.array(z.enum(['colors', 'typography'])).optional().default(['colors', 'typography']),
 	typography: z.record(z.string(), z.unknown()).optional(),
 	bestPractices: z.boolean().optional().default(true),
 	// Optional reference files for convention detection / diff
@@ -126,6 +127,11 @@ export const POST: RequestHandler = async ({ request }) => {
 		const bestPracticesRaw = formData.get('bestPractices');
 		const bestPractices = bestPracticesRaw === 'false' ? false : true;
 
+		const outputsRaw = formData.get('outputs');
+		const outputs: string[] = outputsRaw
+			? (JSON.parse(outputsRaw as string) as string[])
+			: ['colors', 'typography'];
+
 		const lightColors = parseJsonFile(await lightColorsFile.text(), 'lightColors');
 		const darkColors = parseJsonFile(await darkColorsFile.text(), 'darkColors');
 		const values = parseJsonFile(await valuesFile.text(), 'values');
@@ -135,6 +141,7 @@ export const POST: RequestHandler = async ({ request }) => {
 			darkColors,
 			values,
 			platforms,
+			outputs,
 			bestPractices,
 			typography: await optionalFileJson(formData, 'typography'),
 			referencePrimitivesScss: await optionalFileText(formData, 'referencePrimitivesScss'),
@@ -163,6 +170,7 @@ export const POST: RequestHandler = async ({ request }) => {
 		darkColors,
 		values,
 		platforms,
+		outputs,
 		bestPractices,
 		typography,
 		referencePrimitivesScss,
@@ -177,6 +185,9 @@ export const POST: RequestHandler = async ({ request }) => {
 		referenceTypographyKotlin
 	} = parsed.data;
 
+	const wantColors = outputs.includes('colors');
+	const wantTypography = outputs.includes('typography');
+
 	const results = [];
 	const conventions = detectConventions(
 		referencePrimitivesScss,
@@ -186,7 +197,7 @@ export const POST: RequestHandler = async ({ request }) => {
 		bestPractices
 	);
 
-	if (platforms.includes('web')) {
+	if (wantColors && platforms.includes('web')) {
 		results.push(
 			...transformToSCSS(
 				lightColors as FigmaColorExport,
@@ -208,7 +219,7 @@ export const POST: RequestHandler = async ({ request }) => {
 		);
 	}
 
-	if (platforms.includes('ios')) {
+	if (wantColors && platforms.includes('ios')) {
 		results.push(
 			transformToSwift(
 				lightColors as FigmaColorExport,
@@ -219,7 +230,7 @@ export const POST: RequestHandler = async ({ request }) => {
 		);
 	}
 
-	if (platforms.includes('android')) {
+	if (wantColors && platforms.includes('android')) {
 		results.push(
 			transformToKotlin(
 				lightColors as FigmaColorExport,
@@ -230,7 +241,7 @@ export const POST: RequestHandler = async ({ request }) => {
 		);
 	}
 
-	if (typography) {
+	if (wantTypography && typography) {
 		const typoConventions = detectTypographyConventions(
 			referenceTypographyScss,
 			referenceTypographyTs,
@@ -247,10 +258,11 @@ export const POST: RequestHandler = async ({ request }) => {
 		);
 	}
 
-	// Shadow, border, opacity transformers (auto-detect from values export)
-	results.push(...transformToShadows(values, platforms));
-	results.push(...transformToBorders(values, platforms));
-	results.push(...transformToOpacity(values, platforms));
+	if (wantColors) {
+		results.push(...transformToShadows(values, platforms));
+		results.push(...transformToBorders(values, platforms));
+		results.push(...transformToOpacity(values, platforms));
+	}
 
 	const referenceMap: Record<string, string> = {};
 	if (referencePrimitivesScss) referenceMap['Primitives.scss'] = referencePrimitivesScss;
