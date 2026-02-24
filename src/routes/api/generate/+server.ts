@@ -12,9 +12,12 @@ import { transformToBorders, countBorderTokens } from '$lib/transformers/border.
 import { transformToOpacity, countOpacityTokens } from '$lib/transformers/opacity.js';
 import { detectConventions } from '$lib/transformers/naming.js';
 import { buildTokenGraph, detectCycles, formatCycleWarnings, walkAllTokens } from '$lib/resolve-tokens.js';
+import { detectRenamesInReference, createNewDetector } from '$lib/transformers/shared.js';
 import { appendRemovedTokenComments } from '$lib/diff-utils.js';
 import type { RequestHandler } from './$types';
 import type { FigmaColorExport, Platform, GenerateWarning } from '$lib/types.js';
+
+const RefFileEntry = z.object({ filename: z.string(), content: z.string() });
 
 const RequestSchema = z.object({
 	lightColors: z.record(z.string(), z.unknown()),
@@ -23,18 +26,12 @@ const RequestSchema = z.object({
 	platforms: z.array(z.enum(['web', 'android', 'ios'])),
 	outputs: z.array(z.enum(['colors', 'typography'])).optional().default(['colors', 'typography']),
 	typography: z.record(z.string(), z.unknown()).optional(),
-	bestPractices: z.boolean().optional().default(true),
-	// Optional reference files for convention detection / diff
-	referencePrimitivesScss: z.string().optional(),
-	referenceColorsScss: z.string().optional(),
-	referencePrimitivesTs: z.string().optional(),
-	referenceColorsTs: z.string().optional(),
-	referenceColorsSwift: z.string().optional(),
-	referenceColorsKotlin: z.string().optional(),
-	referenceTypographyScss: z.string().optional(),
-	referenceTypographyTs: z.string().optional(),
-	referenceTypographySwift: z.string().optional(),
-	referenceTypographyKotlin: z.string().optional()
+	referenceColorsWeb: z.array(RefFileEntry).optional(),
+	referenceTypographyWeb: z.array(RefFileEntry).optional(),
+	referenceColorsSwift: z.array(RefFileEntry).optional(),
+	referenceColorsKotlin: z.array(RefFileEntry).optional(),
+	referenceTypographySwift: z.array(RefFileEntry).optional(),
+	referenceTypographyKotlin: z.array(RefFileEntry).optional()
 });
 
 const MAX_FILE_BYTES = 10 * 1024 * 1024; // 10 MB
@@ -53,6 +50,62 @@ async function optionalFileText(formData: FormData, key: string): Promise<string
 	if (!(entry instanceof File) || entry.size === 0) return undefined;
 	checkFileSize(entry, key);
 	return entry.text();
+}
+
+async function multiFileEntries(
+	formData: FormData,
+	key: string
+): Promise<{ filename: string; content: string }[] | undefined> {
+	const entries = formData.getAll(key);
+	const result: { filename: string; content: string }[] = [];
+	for (const entry of entries) {
+		if (!(entry instanceof File) || entry.size === 0) continue;
+		checkFileSize(entry, key);
+		result.push({ filename: entry.name, content: await entry.text() });
+	}
+	return result.length > 0 ? result : undefined;
+}
+
+type RefEntry = { filename: string; content: string };
+
+function classifyWebColorFiles(entries: RefEntry[] | undefined): {
+	primitivesScss?: string;
+	colorsScss?: string;
+	primitivesTs?: string;
+	colorsTs?: string;
+} {
+	if (!entries?.length) return {};
+	const result: Record<string, string | undefined> = {};
+	for (const { filename, content } of entries) {
+		const ext = filename.split('.').pop()?.toLowerCase();
+		const isScss = ext === 'scss' || ext === 'css';
+		const isTs = ext === 'ts';
+		const isPrimitive = /\$[\w-]+-\d+:|--[\w-]+-\d+:|_[A-Z]+_\d+\s*=/.test(content)
+			|| /export\s+const\s+[A-Z]+_\d+/.test(content)
+			|| filename.toLowerCase().includes('primitive');
+		if (isScss) {
+			if (isPrimitive) result.primitivesScss = content;
+			else result.colorsScss = content;
+		} else if (isTs) {
+			if (isPrimitive) result.primitivesTs = content;
+			else result.colorsTs = content;
+		}
+	}
+	return result;
+}
+
+function classifyWebTypographyFiles(entries: RefEntry[] | undefined): {
+	typoScss?: string;
+	typoTs?: string;
+} {
+	if (!entries?.length) return {};
+	const result: Record<string, string | undefined> = {};
+	for (const { filename, content } of entries) {
+		const ext = filename.split('.').pop()?.toLowerCase();
+		if (ext === 'scss' || ext === 'css') result.typoScss = content;
+		else if (ext === 'ts') result.typoTs = content;
+	}
+	return result;
 }
 
 function parseJsonFile(text: string, label: string): Record<string, unknown> {
@@ -124,9 +177,6 @@ export const POST: RequestHandler = async ({ request }) => {
 			? (JSON.parse(platformsRaw as string) as Platform[])
 			: ['web'];
 
-		const bestPracticesRaw = formData.get('bestPractices');
-		const bestPractices = bestPracticesRaw === 'false' ? false : true;
-
 		const outputsRaw = formData.get('outputs');
 		const outputs: string[] = outputsRaw
 			? (JSON.parse(outputsRaw as string) as string[])
@@ -142,18 +192,13 @@ export const POST: RequestHandler = async ({ request }) => {
 			values,
 			platforms,
 			outputs,
-			bestPractices,
 			typography: await optionalFileJson(formData, 'typography'),
-			referencePrimitivesScss: await optionalFileText(formData, 'referencePrimitivesScss'),
-			referenceColorsScss: await optionalFileText(formData, 'referenceColorsScss'),
-			referencePrimitivesTs: await optionalFileText(formData, 'referencePrimitivesTs'),
-			referenceColorsTs: await optionalFileText(formData, 'referenceColorsTs'),
-			referenceColorsSwift: await optionalFileText(formData, 'referenceColorsSwift'),
-			referenceColorsKotlin: await optionalFileText(formData, 'referenceColorsKotlin'),
-			referenceTypographyScss: await optionalFileText(formData, 'referenceTypographyScss'),
-			referenceTypographyTs: await optionalFileText(formData, 'referenceTypographyTs'),
-			referenceTypographySwift: await optionalFileText(formData, 'referenceTypographySwift'),
-			referenceTypographyKotlin: await optionalFileText(formData, 'referenceTypographyKotlin')
+			referenceColorsWeb: await multiFileEntries(formData, 'referenceColorsWeb'),
+			referenceTypographyWeb: await multiFileEntries(formData, 'referenceTypographyWeb'),
+			referenceColorsSwift: await multiFileEntries(formData, 'referenceColorsSwift'),
+			referenceColorsKotlin: await multiFileEntries(formData, 'referenceColorsKotlin'),
+			referenceTypographySwift: await multiFileEntries(formData, 'referenceTypographySwift'),
+			referenceTypographyKotlin: await multiFileEntries(formData, 'referenceTypographyKotlin')
 		};
 	} catch (e) {
 		if (e && typeof e === 'object' && 'status' in e) throw e;
@@ -171,42 +216,62 @@ export const POST: RequestHandler = async ({ request }) => {
 		values,
 		platforms,
 		outputs,
-		bestPractices,
 		typography,
-		referencePrimitivesScss,
-		referenceColorsScss,
-		referencePrimitivesTs,
-		referenceColorsTs,
-		referenceColorsSwift,
-		referenceColorsKotlin,
-		referenceTypographyScss,
-		referenceTypographyTs,
-		referenceTypographySwift,
-		referenceTypographyKotlin
+		referenceColorsWeb,
+		referenceTypographyWeb,
+		referenceColorsSwift: refColorsSwiftEntries,
+		referenceColorsKotlin: refColorsKotlinEntries,
+		referenceTypographySwift: refTypoSwiftEntries,
+		referenceTypographyKotlin: refTypoKotlinEntries
 	} = parsed.data;
+
+	// Classify web multi-file references
+	const webColors = classifyWebColorFiles(referenceColorsWeb);
+	const webTypo = classifyWebTypographyFiles(referenceTypographyWeb);
+
+	// Extract single-content strings for native platforms (concatenate multi-file)
+	const referenceColorsSwift = refColorsSwiftEntries?.map((e) => e.content).join('\n');
+	const referenceColorsKotlin = refColorsKotlinEntries?.map((e) => e.content).join('\n');
+	const referenceTypographySwift = refTypoSwiftEntries?.map((e) => e.content).join('\n');
+	const referenceTypographyKotlin = refTypoKotlinEntries?.map((e) => e.content).join('\n');
+
+	const hasAnyRefFile = !!(
+		referenceColorsWeb?.length || referenceTypographyWeb?.length ||
+		referenceColorsSwift || referenceColorsKotlin ||
+		referenceTypographySwift || referenceTypographyKotlin
+	);
+	const bestPractices = !hasAnyRefFile;
 
 	const wantColors = outputs.includes('colors');
 	const wantTypography = outputs.includes('typography');
 
 	const results = [];
 	const conventions = detectConventions(
-		referencePrimitivesScss,
-		referenceColorsScss,
-		referencePrimitivesTs,
-		referenceColorsTs,
+		webColors.primitivesScss,
+		webColors.colorsScss,
+		webColors.primitivesTs,
+		webColors.colorsTs,
 		bestPractices
 	);
 
 	if (wantColors && platforms.includes('web')) {
+		const webRefContent = [webColors.primitivesScss, webColors.colorsScss, webColors.primitivesTs, webColors.colorsTs]
+			.filter(Boolean).join('\n');
+		const webRenames = bestPractices ? new Map<string, string>() : detectRenamesInReference(webRefContent || undefined);
+		const webIsNew = bestPractices ? (() => false) : createNewDetector(webRefContent || undefined);
+
 		results.push(
 			...transformToSCSS(
 				lightColors as FigmaColorExport,
 				darkColors as FigmaColorExport,
-				conventions
+				conventions,
+				undefined,
+				webRenames,
+				webIsNew
 			)
 		);
 		results.push(
-			...transformToTS(lightColors as FigmaColorExport, darkColors as FigmaColorExport, conventions)
+			...transformToTS(lightColors as FigmaColorExport, darkColors as FigmaColorExport, conventions, undefined, webRenames, webIsNew)
 		);
 		results.push(...transformToSpacing(values, conventions));
 		results.push(
@@ -214,7 +279,9 @@ export const POST: RequestHandler = async ({ request }) => {
 				lightColors as FigmaColorExport,
 				darkColors as FigmaColorExport,
 				conventions,
-				values
+				values,
+				webRenames,
+				webIsNew
 			)
 		);
 	}
@@ -232,7 +299,7 @@ export const POST: RequestHandler = async ({ request }) => {
 
 	if (wantColors && platforms.includes('android')) {
 		results.push(
-			transformToKotlin(
+			...transformToKotlin(
 				lightColors as FigmaColorExport,
 				darkColors as FigmaColorExport,
 				referenceColorsKotlin,
@@ -243,19 +310,13 @@ export const POST: RequestHandler = async ({ request }) => {
 
 	if (wantTypography && typography) {
 		const typoConventions = detectTypographyConventions(
-			referenceTypographyScss,
-			referenceTypographyTs,
-			bestPractices
+			webTypo.typoScss,
+			webTypo.typoTs,
+			bestPractices,
+			referenceTypographySwift,
+			referenceTypographyKotlin
 		);
-		results.push(
-			...transformToTypography(
-				typography,
-				platforms,
-				typoConventions,
-				referenceTypographySwift,
-				referenceTypographyKotlin
-			)
-		);
+		results.push(...transformToTypography(typography, platforms, typoConventions));
 	}
 
 	if (wantColors) {
@@ -265,14 +326,22 @@ export const POST: RequestHandler = async ({ request }) => {
 	}
 
 	const referenceMap: Record<string, string> = {};
-	if (referencePrimitivesScss) referenceMap['Primitives.scss'] = referencePrimitivesScss;
-	if (referenceColorsScss) referenceMap['Colors.scss'] = referenceColorsScss;
-	if (referencePrimitivesTs) referenceMap['Primitives.ts'] = referencePrimitivesTs;
-	if (referenceColorsTs) referenceMap['Colors.ts'] = referenceColorsTs;
+	if (webColors.primitivesScss) referenceMap['Primitives.scss'] = webColors.primitivesScss;
+	if (webColors.colorsScss) referenceMap['Colors.scss'] = webColors.colorsScss;
+	if (webColors.primitivesTs) referenceMap['Primitives.ts'] = webColors.primitivesTs;
+	if (webColors.colorsTs) referenceMap['Colors.ts'] = webColors.colorsTs;
 	if (referenceColorsSwift) referenceMap['Colors.swift'] = referenceColorsSwift;
-	if (referenceColorsKotlin) referenceMap['Colors.kt'] = referenceColorsKotlin;
-	if (referenceTypographyScss) referenceMap['Typography.scss'] = referenceTypographyScss;
-	if (referenceTypographyTs) referenceMap['Typography.ts'] = referenceTypographyTs;
+	if (refColorsKotlinEntries?.length) {
+		if (refColorsKotlinEntries.length === 1) {
+			referenceMap['Colors.kt'] = refColorsKotlinEntries[0].content;
+		} else {
+			for (const entry of refColorsKotlinEntries) {
+				referenceMap[entry.filename] = entry.content;
+			}
+		}
+	}
+	if (webTypo.typoScss) referenceMap['Typography.scss'] = webTypo.typoScss;
+	if (webTypo.typoTs) referenceMap['Typography.ts'] = webTypo.typoTs;
 	if (referenceTypographySwift) referenceMap['Typography.swift'] = referenceTypographySwift;
 	if (referenceTypographyKotlin) referenceMap['Typography.kt'] = referenceTypographyKotlin;
 

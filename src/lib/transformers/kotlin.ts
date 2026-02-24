@@ -23,7 +23,13 @@ import {
 	getColorTokenAtPath,
 	pathToTokenName,
 	extractSortKey,
-	capitalize
+	capitalize,
+	detectRenamesInReference,
+	renameComment,
+	createNewDetector,
+	newTokenComment,
+	detectKotlinColorBugs,
+	bugWarningBlock
 } from './shared.js';
 
 interface PrimitiveEntry {
@@ -38,10 +44,11 @@ interface PrimitiveEntry {
 }
 
 interface SemanticEntry {
-	kotlinName: string; // e.g. "textPrimary" or "TextPrimary"
-	lightPrimName: string; // e.g. "Grey750"
+	kotlinName: string;
+	lightPrimName: string;
 	darkPrimName: string;
 	isStatic: boolean;
+	category: string;
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
@@ -51,12 +58,20 @@ export function transformToKotlin(
 	darkColors: FigmaColorExport,
 	referenceKotlin?: string,
 	bestPractices: boolean = true
-): TransformResult {
+): TransformResult[] {
 	const conventions = detectKotlinConventions(referenceKotlin, bestPractices);
+	const renames = bestPractices ? new Map<string, string>() : detectRenamesInReference(referenceKotlin);
+	const isNew = bestPractices ? (() => false) : createNewDetector(referenceKotlin);
+	const bugWarnings = referenceKotlin && !bestPractices ? detectKotlinColorBugs(referenceKotlin) : [];
 	const primitiveMap = buildPrimitiveMap(lightColors, darkColors, conventions);
 	const semanticEntries = buildSemanticEntries(lightColors, darkColors, primitiveMap, conventions);
-	const content = generateKotlin(primitiveMap, semanticEntries, conventions);
-	return { filename: 'Colors.kt', content, format: 'kotlin', platform: 'android' };
+
+	if (conventions.architecture === 'multi-file') {
+		return generateMultiFileKotlin(primitiveMap, semanticEntries, conventions, renames, isNew, bugWarnings);
+	}
+
+	const content = generateKotlin(primitiveMap, semanticEntries, conventions, renames, isNew, bugWarnings);
+	return [{ filename: 'Colors.kt', content, format: 'kotlin', platform: 'android' }];
 }
 
 // ─── Convention Detection ─────────────────────────────────────────────────────
@@ -66,20 +81,48 @@ export function detectKotlinConventions(reference?: string, bestPractices: boole
 		return { ...BEST_PRACTICE_KOTLIN_CONVENTIONS };
 	}
 
-	// Detect val naming — PascalCase if starts with uppercase after "val "
-	const pascalMatches = (reference.match(/\bval\s+[A-Z][a-zA-Z0-9]+\s*=/g) ?? []).length;
-	const camelMatches = (reference.match(/\bval\s+[a-z][a-zA-Z0-9]+\s*=/g) ?? []).length;
+	const pascalMatches = (reference.match(/\b(?:val|var)\s+[A-Z][a-zA-Z0-9]+\s*(?:=|by\s)/g) ?? []).length;
+	const camelMatches = (reference.match(/\b(?:val|var)\s+[a-z][a-zA-Z0-9]+\s*(?:=|by\s)/g) ?? []).length;
 	const namingCase = pascalMatches > camelMatches ? 'pascal' : 'camel';
 
-	// Detect object name from "object Foo {" pattern
 	const objectMatch = reference.match(/\bobject\s+(\w+)\s*\{/);
 	const objectName = objectMatch ? objectMatch[1] : 'AppColors';
 
-	// Detect package name from "package com.foo.bar" declaration
 	const packageMatch = reference.match(/^package\s+([\w.]+)/m);
 	const kotlinPackage = packageMatch ? packageMatch[1] : 'com.example.design';
 
-	return { namingCase, objectName, kotlinPackage };
+	const hasPaletteObjects = /\bobject\s+\w+Palette\s*\{/.test(reference);
+	const primitiveStyle = hasPaletteObjects ? 'palette-objects' as const : 'object' as const;
+
+	const categoryMatches = [...reference.matchAll(/\bclass\s+R(\w+)Colors\b/g)];
+	const semanticCategories = categoryMatches.map((m) => m[1].toLowerCase());
+	const hasMultipleSemanticFiles = semanticCategories.length > 0;
+
+	const prefixMatch = reference.match(/\bclass\s+(R)\w+Colors\b/);
+	const classPrefix = prefixMatch ? prefixMatch[1] : '';
+
+	const usesCompositionLocal = /compositionLocalOf/.test(reference);
+	const usesEnum = /\benum\s+class\s+R\w+Color\b/.test(reference);
+	const usesMutableState = /mutableStateOf/.test(reference);
+	const usesInternalSet = /\binternal\s+set\b/.test(reference);
+	const usesCopyMethod = /\bfun\s+copy\(/.test(reference);
+	const usesParameterizedFactories = /\bfun\s+\w+(?:Dark|Light)Colors\s*\(\s*\n\s*\w+\s*:\s*Color/.test(reference);
+
+	return {
+		namingCase,
+		objectName,
+		kotlinPackage,
+		architecture: hasMultipleSemanticFiles ? 'multi-file' : 'single',
+		primitiveStyle,
+		semanticCategories,
+		classPrefix,
+		usesCompositionLocal,
+		usesEnum,
+		usesMutableState,
+		usesInternalSet,
+		usesCopyMethod,
+		usesParameterizedFactories
+	};
 }
 
 // ─── Build Primitive Map ──────────────────────────────────────────────────────
@@ -148,6 +191,7 @@ function buildSemanticEntries(
 		const darkPrim = darkFigmaName ? (primitiveMap.get(darkFigmaName) ?? lightPrim) : lightPrim;
 
 		const isStatic = path.some((p) => p.toLowerCase() === 'static');
+		const category = path[0]?.toLowerCase() ?? 'other';
 		const tokenName = pathToTokenName(path);
 		const kotlinName = tokenNameToKotlinName(tokenName, conventions.namingCase);
 
@@ -155,7 +199,8 @@ function buildSemanticEntries(
 			kotlinName,
 			lightPrimName: lightPrim.kotlinName,
 			darkPrimName: darkPrim.kotlinName,
-			isStatic
+			isStatic,
+			category
 		});
 	});
 
@@ -167,7 +212,10 @@ function buildSemanticEntries(
 function generateKotlin(
 	primitiveMap: Map<string, PrimitiveEntry>,
 	semanticEntries: SemanticEntry[],
-	conventions: DetectedKotlinConventions
+	conventions: DetectedKotlinConventions,
+	renames: Map<string, string> = new Map(),
+	isNew: (name: string) => boolean = () => false,
+	bugWarnings: string[] = []
 ): string {
 	const lines: string[] = [];
 
@@ -175,6 +223,8 @@ function generateKotlin(
 	lines.push('// Auto-generated from Figma Variables — DO NOT EDIT');
 	lines.push(`// Generated: ${new Date().toISOString()}`);
 	lines.push('');
+
+	lines.push(...bugWarningBlock(bugWarnings, '//'));
 	lines.push(`package ${conventions.kotlinPackage}`);
 	lines.push('');
 	lines.push('import androidx.compose.material3.ColorScheme');
@@ -200,6 +250,18 @@ function generateKotlin(
 
 	const sortedFamilies = [...byFamily.entries()].sort(([a], [b]) => a.localeCompare(b));
 	for (const [family, entries] of sortedFamilies) {
+		const oldName = renames.get(family);
+		const familyIsNew = !oldName && isNew(family);
+		if (oldName) {
+			for (const cl of renameComment(oldName, capitalize(family), '//')) {
+				lines.push(`    ${cl}`);
+			}
+		}
+		if (familyIsNew) {
+			for (const cl of newTokenComment('//')) {
+				lines.push(`    ${cl}`);
+			}
+		}
 		lines.push(`    // ${capitalize(family)}`);
 		const sorted = [...entries].sort(
 			(a, b) => a.sortKey - b.sortKey || a.kotlinName.localeCompare(b.kotlinName)
@@ -216,6 +278,9 @@ function generateKotlin(
 		lines.push('// Light theme semantic tokens');
 		lines.push(`object ${lightObj} {`);
 		for (const entry of semanticEntries) {
+			if (isNew(entry.kotlinName)) {
+				for (const cl of newTokenComment('//')) lines.push(`    ${cl}`);
+			}
 			lines.push(`    val ${entry.kotlinName} = ${primitivesObj}.${entry.lightPrimName}`);
 		}
 		lines.push('}');
@@ -225,6 +290,9 @@ function generateKotlin(
 		lines.push('// Dark theme semantic tokens');
 		lines.push(`object ${darkObj} {`);
 		for (const entry of semanticEntries) {
+			if (isNew(entry.kotlinName)) {
+				for (const cl of newTokenComment('//')) lines.push(`    ${cl}`);
+			}
 			const darkRef = entry.isStatic ? entry.lightPrimName : entry.darkPrimName;
 			lines.push(`    val ${entry.kotlinName} = ${primitivesObj}.${darkRef}`);
 		}
@@ -267,6 +335,253 @@ function generateKotlin(
 	}
 
 	return lines.join('\n') + '\n';
+}
+
+// ─── Multi-File Generation ────────────────────────────────────────────────────
+
+function generateMultiFileKotlin(
+	primitiveMap: Map<string, PrimitiveEntry>,
+	semanticEntries: SemanticEntry[],
+	conventions: DetectedKotlinConventions,
+	renames: Map<string, string>,
+	isNew: (name: string) => boolean,
+	bugWarnings: string[]
+): TransformResult[] {
+	const results: TransformResult[] = [];
+	const prefix = conventions.classPrefix;
+	const pkg = conventions.kotlinPackage;
+	const ts = new Date().toISOString();
+
+	// ── Color.kt (Primitives) ────────────────────────────────────────────
+	const primLines: string[] = [];
+	primLines.push('// Color.kt');
+	primLines.push('// Auto-generated from Figma Variables — DO NOT EDIT');
+	primLines.push(`// Generated: ${ts}`);
+	primLines.push('');
+	primLines.push(...bugWarningBlock(bugWarnings, '//'));
+	primLines.push(`package ${pkg}`);
+	primLines.push('');
+	primLines.push('import androidx.compose.ui.graphics.Color');
+	primLines.push('');
+
+	if (conventions.primitiveStyle === 'palette-objects') {
+		const byFamily = groupByFamily(primitiveMap, renames, isNew);
+		for (const [family, entries] of byFamily) {
+			const objName = `${capitalize(family)}Palette`;
+			const oldName = renames.get(family);
+			const familyIsNew = !oldName && isNew(family);
+			if (oldName) for (const cl of renameComment(oldName, capitalize(family), '//')) primLines.push(cl);
+			if (familyIsNew) for (const cl of newTokenComment('//')) primLines.push(cl);
+			primLines.push(`object ${objName} {`);
+			const sorted = [...entries].sort((a, b) => a.sortKey - b.sortKey || a.kotlinName.localeCompare(b.kotlinName));
+			for (const entry of sorted) {
+				primLines.push(`    val color${entry.kotlinName} = Color(${figmaToKotlinHex(entry.r, entry.g, entry.b, entry.alpha)})`);
+			}
+			primLines.push('}');
+			primLines.push('');
+		}
+	} else {
+		primLines.push(`object ${conventions.objectName === 'AppColors' ? 'Primitives' : conventions.objectName + 'Primitives'} {`);
+		const byFamily = groupByFamily(primitiveMap, renames, isNew);
+		for (const [family, entries] of byFamily) {
+			const oldName = renames.get(family);
+			const familyIsNew = !oldName && isNew(family);
+			if (oldName) for (const cl of renameComment(oldName, capitalize(family), '//')) primLines.push(`    ${cl}`);
+			if (familyIsNew) for (const cl of newTokenComment('//')) primLines.push(`    ${cl}`);
+			primLines.push(`    // ${capitalize(family)}`);
+			const sorted = [...entries].sort((a, b) => a.sortKey - b.sortKey || a.kotlinName.localeCompare(b.kotlinName));
+			for (const entry of sorted) primLines.push(formatPrimitiveDecl(entry));
+		}
+		primLines.push('}');
+		primLines.push('');
+	}
+
+	results.push({ filename: 'Color.kt', content: primLines.join('\n') + '\n', format: 'kotlin', platform: 'android' });
+
+	// ── Group semantic entries by category ──────────────────────────────
+	const byCategory = new Map<string, SemanticEntry[]>();
+	for (const entry of semanticEntries) {
+		const cat = entry.category;
+		const list = byCategory.get(cat) ?? [];
+		list.push(entry);
+		byCategory.set(cat, list);
+	}
+
+	const primRef = conventions.primitiveStyle === 'palette-objects' ? null : (conventions.objectName === 'AppColors' ? 'Primitives' : `${conventions.objectName}Primitives`);
+
+	for (const [category, entries] of byCategory) {
+		const catPascal = capitalize(category);
+		const className = `${prefix}${catPascal}Colors`;
+		const enumName = `${prefix}${catPascal}Color`;
+		const filename = `${prefix}${catPascal}Colors.kt`;
+
+		const lines: string[] = [];
+		lines.push(`// ${filename}`);
+		lines.push('// Auto-generated from Figma Variables — DO NOT EDIT');
+		lines.push(`// Generated: ${ts}`);
+		lines.push('');
+		lines.push(`package ${pkg}`);
+		lines.push('');
+
+		if (conventions.usesCompositionLocal || conventions.usesMutableState) {
+			lines.push('import androidx.compose.material3.MaterialTheme');
+			lines.push('import androidx.compose.runtime.Composable');
+			lines.push('import androidx.compose.runtime.compositionLocalOf');
+			lines.push('import androidx.compose.runtime.getValue');
+			lines.push('import androidx.compose.runtime.mutableStateOf');
+			lines.push('import androidx.compose.runtime.setValue');
+			lines.push('import androidx.compose.runtime.structuralEqualityPolicy');
+		}
+		lines.push('import androidx.compose.ui.graphics.Color');
+		lines.push('');
+
+		if (conventions.usesEnum) {
+			lines.push(`enum class ${enumName} {`);
+			for (const entry of entries) {
+				lines.push(`    ${entry.kotlinName.toUpperCase()},`);
+			}
+			lines.push('    ;');
+			lines.push('    val color: Color');
+			lines.push('        @Composable');
+			lines.push('        get() = when (this) {');
+			for (const entry of entries) {
+				lines.push(`            ${entry.kotlinName.toUpperCase()} -> MaterialTheme.Local${catPascal}Colors.${entry.kotlinName}`);
+			}
+			lines.push('        }');
+			lines.push('}');
+			lines.push('');
+		}
+
+		if (conventions.usesMutableState) {
+			lines.push(`class ${className}(`);
+			for (const entry of entries) {
+				lines.push(`    ${entry.kotlinName}: Color,`);
+			}
+			lines.push(') {');
+			for (const entry of entries) {
+				lines.push(`    var ${entry.kotlinName} by mutableStateOf(${entry.kotlinName}, structuralEqualityPolicy())`);
+				if (conventions.usesInternalSet) {
+					lines.push('        internal set');
+				}
+			}
+			lines.push('');
+			if (conventions.usesCopyMethod) {
+				lines.push('');
+				lines.push(`    fun copy(`);
+				for (const entry of entries) {
+					lines.push(`        ${entry.kotlinName}: Color = this.${entry.kotlinName},`);
+				}
+				lines.push(`    ): ${className} = ${className}(`);
+				for (const entry of entries) {
+					lines.push(`        ${entry.kotlinName} = ${entry.kotlinName},`);
+				}
+				lines.push('    )');
+			} else {
+				lines.push(`    fun updateFrom(other: ${className}) {`);
+				for (const entry of entries) {
+					lines.push(`        ${entry.kotlinName} = other.${entry.kotlinName}`);
+				}
+				lines.push('    }');
+			}
+			lines.push('}');
+			lines.push('');
+		}
+
+		const resolvePrim = (primName: string) => {
+			if (primRef) return `${primRef}.${primName}`;
+			const primEntry = [...primitiveMap.values()].find((p) => p.kotlinName === primName);
+			if (primEntry) return `${capitalize(primEntry.family)}Palette.color${primName}`;
+			return primName;
+		};
+
+		if (conventions.usesParameterizedFactories) {
+			// Parameterized factory + concrete val (matching reference pattern)
+			lines.push(`fun ${category}DarkColors(`);
+			for (const entry of entries) {
+				lines.push(`    ${entry.kotlinName}: Color,`);
+			}
+			lines.push(`    ): ${className} = ${className}(`);
+			for (const entry of entries) {
+				lines.push(`    ${entry.kotlinName} = ${entry.kotlinName},`);
+			}
+			lines.push(')');
+
+			lines.push(`val ${catPascal}DarkColorScheme = ${category}DarkColors(`);
+			for (const entry of entries) {
+				const darkRef = entry.isStatic ? entry.lightPrimName : entry.darkPrimName;
+				if (isNew(entry.kotlinName)) for (const cl of newTokenComment('//')) lines.push(`    ${cl}`);
+				lines.push(`    ${entry.kotlinName} = ${resolvePrim(darkRef)},`);
+			}
+			lines.push(')');
+			lines.push('');
+
+			lines.push(`fun ${category}LightColors(`);
+			for (const entry of entries) {
+				lines.push(`    ${entry.kotlinName}: Color,`);
+			}
+			lines.push(`    ): ${className} = ${className}(`);
+			for (const entry of entries) {
+				lines.push(`    ${entry.kotlinName} = ${entry.kotlinName},`);
+			}
+			lines.push(')');
+
+			lines.push(`val ${catPascal}LightColorScheme = ${category}LightColors(`);
+			for (const entry of entries) {
+				if (isNew(entry.kotlinName)) for (const cl of newTokenComment('//')) lines.push(`    ${cl}`);
+				lines.push(`    ${entry.kotlinName} = ${resolvePrim(entry.lightPrimName)},`);
+			}
+			lines.push(')');
+			lines.push('');
+		} else {
+			lines.push(`fun ${category}DarkColors() = ${className}(`);
+			for (const entry of entries) {
+				const darkRef = entry.isStatic ? entry.lightPrimName : entry.darkPrimName;
+				if (isNew(entry.kotlinName)) for (const cl of newTokenComment('//')) lines.push(`    ${cl}`);
+				lines.push(`    ${entry.kotlinName} = ${resolvePrim(darkRef)},`);
+			}
+			lines.push(')');
+			lines.push('');
+
+			lines.push(`fun ${category}LightColors() = ${className}(`);
+			for (const entry of entries) {
+				if (isNew(entry.kotlinName)) for (const cl of newTokenComment('//')) lines.push(`    ${cl}`);
+				lines.push(`    ${entry.kotlinName} = ${resolvePrim(entry.lightPrimName)},`);
+			}
+			lines.push(')');
+			lines.push('');
+
+			lines.push(`val ${catPascal}DarkColorScheme = ${category}DarkColors()`);
+			lines.push(`val ${catPascal}LightColorScheme = ${category}LightColors()`);
+			lines.push('');
+		}
+
+		if (conventions.usesCompositionLocal) {
+			lines.push(`val Local${catPascal}Color = compositionLocalOf { ${catPascal}LightColorScheme }`);
+			lines.push('');
+			lines.push(`val MaterialTheme.Local${catPascal}Colors`);
+			lines.push('    @Composable');
+			lines.push(`    get() = Local${catPascal}Color.current`);
+			lines.push('');
+		}
+
+		results.push({ filename, content: lines.join('\n') + '\n', format: 'kotlin', platform: 'android' });
+	}
+
+	return results;
+}
+
+function groupByFamily(
+	primitiveMap: Map<string, PrimitiveEntry>,
+	renames: Map<string, string>,
+	_isNew: (name: string) => boolean
+): [string, PrimitiveEntry[]][] {
+	const byFamily = new Map<string, PrimitiveEntry[]>();
+	for (const entry of primitiveMap.values()) {
+		const list = byFamily.get(entry.family) ?? [];
+		list.push(entry);
+		byFamily.set(entry.family, list);
+	}
+	return [...byFamily.entries()].sort(([a], [b]) => a.localeCompare(b));
 }
 
 function formatPrimitiveDecl(entry: PrimitiveEntry): string {

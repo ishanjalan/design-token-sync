@@ -116,6 +116,8 @@ export interface DetectedConventions {
 	importSuffix: '.scss' | ''; // whether @import/@use includes .scss extension
 	scssColorStructure: ScssColorStructure;
 	hasTypeAnnotations: boolean;
+	tsHexCasing: 'upper' | 'lower';
+	tsUsesAsConst: boolean;
 }
 
 export const BEST_PRACTICE_WEB_CONVENTIONS: DetectedConventions = {
@@ -126,7 +128,9 @@ export const BEST_PRACTICE_WEB_CONVENTIONS: DetectedConventions = {
 	importStyle: 'use',
 	importSuffix: '',
 	scssColorStructure: 'modern',
-	hasTypeAnnotations: true
+	hasTypeAnnotations: true,
+	tsHexCasing: 'lower',
+	tsUsesAsConst: true
 };
 
 export interface DetectedSwiftConventions {
@@ -141,6 +145,7 @@ export interface DetectedSwiftConventions {
 	semanticEnumName: string;
 	apiEnumName: string;
 	imports: string[];
+	hasUIColorTier: boolean;
 }
 
 export const BEST_PRACTICE_SWIFT_CONVENTIONS: DetectedSwiftConventions = {
@@ -154,19 +159,40 @@ export const BEST_PRACTICE_SWIFT_CONVENTIONS: DetectedSwiftConventions = {
 	semanticFormat: 'dynamic',
 	semanticEnumName: '',
 	apiEnumName: 'ColorStyle',
-	imports: ['SwiftUI']
+	imports: ['SwiftUI'],
+	hasUIColorTier: false
 };
 
 export interface DetectedKotlinConventions {
-	namingCase: 'camel' | 'pascal'; // camelCase vs PascalCase for property names
-	objectName: string; // e.g. "AppColors", "Colors" — detected from reference
-	kotlinPackage: string; // e.g. "com.example.design" — detected from reference
+	namingCase: 'camel' | 'pascal';
+	objectName: string;
+	kotlinPackage: string;
+	architecture: 'single' | 'multi-file';
+	primitiveStyle: 'object' | 'palette-objects';
+	semanticCategories: string[];
+	classPrefix: string;
+	usesCompositionLocal: boolean;
+	usesEnum: boolean;
+	usesMutableState: boolean;
+	usesInternalSet: boolean;
+	usesCopyMethod: boolean;
+	usesParameterizedFactories: boolean;
 }
 
 export const BEST_PRACTICE_KOTLIN_CONVENTIONS: DetectedKotlinConventions = {
 	namingCase: 'camel',
 	objectName: 'AppColors',
-	kotlinPackage: 'com.example.design'
+	kotlinPackage: 'com.example.design',
+	architecture: 'single',
+	primitiveStyle: 'object',
+	semanticCategories: [],
+	classPrefix: '',
+	usesCompositionLocal: false,
+	usesEnum: false,
+	usesMutableState: false,
+	usesInternalSet: false,
+	usesCopyMethod: false,
+	usesParameterizedFactories: false
 };
 
 // ─── Generation Stats ─────────────────────────────────────────────────────────
@@ -236,14 +262,10 @@ export type DropZoneKey =
 	| 'darkColors'
 	| 'values'
 	| 'typography'
-	| 'referencePrimitivesScss'
-	| 'referenceColorsScss'
-	| 'referencePrimitivesTs'
-	| 'referenceColorsTs'
+	| 'referenceColorsWeb'
+	| 'referenceTypographyWeb'
 	| 'referenceColorsSwift'
 	| 'referenceColorsKotlin'
-	| 'referenceTypographyScss'
-	| 'referenceTypographyTs'
 	| 'referenceTypographySwift'
 	| 'referenceTypographyKotlin';
 
@@ -255,6 +277,8 @@ export interface FileSlot {
 	platforms: Platform[];
 	required: boolean;
 	file: File | null;
+	files: File[];
+	multiFile: boolean;
 	dragging: boolean;
 	restored: boolean;
 	warning: string | null;
@@ -275,6 +299,8 @@ export type OutputCategory = 'colors' | 'typography';
 
 // ─── Generate Request ─────────────────────────────────────────────────────────
 
+const RefFileEntry = z.object({ filename: z.string(), content: z.string() });
+
 export const GenerateRequestSchema = z.object({
 	lightColors: z.record(z.string(), z.unknown()),
 	darkColors: z.record(z.string(), z.unknown()),
@@ -282,16 +308,12 @@ export const GenerateRequestSchema = z.object({
 	platforms: z.array(z.enum(['web', 'android', 'ios'])),
 	outputs: z.array(z.enum(['colors', 'typography'])).optional().default(['colors', 'typography']),
 	typography: z.record(z.string(), z.unknown()).optional(),
-	bestPractices: z.boolean().optional().default(true),
-	// Web reference files (optional — used for convention detection)
-	referencePrimitivesScss: z.string().optional(),
-	referenceColorsScss: z.string().optional(),
-	referencePrimitivesTs: z.string().optional(),
-	referenceColorsTs: z.string().optional(),
-	// iOS reference file (optional)
-	referenceColorsSwift: z.string().optional(),
-	// Android reference file (optional)
-	referenceColorsKotlin: z.string().optional()
+	referenceColorsWeb: z.array(RefFileEntry).optional(),
+	referenceTypographyWeb: z.array(RefFileEntry).optional(),
+	referenceColorsSwift: z.array(RefFileEntry).optional(),
+	referenceColorsKotlin: z.array(RefFileEntry).optional(),
+	referenceTypographySwift: z.array(RefFileEntry).optional(),
+	referenceTypographyKotlin: z.array(RefFileEntry).optional()
 });
 
 export type GenerateRequest = z.infer<typeof GenerateRequestSchema>;

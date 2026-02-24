@@ -9,6 +9,156 @@
 import type { FigmaColorToken } from '$lib/types.js';
 import { figmaToHex } from '$lib/color-utils.js';
 
+// ─── Figma-to-Platform Name Reconciliation ──────────────────────────────────
+
+/**
+ * Maps old platform names to their Figma (source of truth) counterparts.
+ * When a reference file uses a name from the left column, the generated output
+ * will use the Figma name from the right column with a migration comment.
+ */
+export const FIGMA_NAME_MAP: Record<string, string> = {
+	Fuchsia: 'Pink',
+	fuchsia: 'pink',
+	Purple: 'Violet',
+	purple: 'violet'
+};
+
+/** Reverse map: Figma name -> old platform name (for detecting renames in reference files). */
+export const PLATFORM_NAME_MAP: Record<string, string> = {
+	Pink: 'Fuchsia',
+	pink: 'fuchsia',
+	Violet: 'Purple',
+	violet: 'purple'
+};
+
+/** Generate migration comment lines for a renamed family. */
+export function renameComment(
+	oldName: string,
+	figmaName: string,
+	commentStyle: '//' | '/*' | '#'
+): string[] {
+	const line1 = `RENAMED: "${oldName}" in your reference file has been updated to "${figmaName}" in Figma design tokens.`;
+	const line2 = `Please update your codebase to use "${figmaName}" to stay in sync with the design system.`;
+	if (commentStyle === '/*') return [`/* ${line1} */`, `/* ${line2} */`];
+	return [`${commentStyle} ${line1}`, `${commentStyle} ${line2}`];
+}
+
+/**
+ * Check if a family name in Figma tokens has a known rename from a platform reference.
+ * Returns the old platform name if a rename exists, null otherwise.
+ */
+export function detectRename(figmaFamilyName: string): string | null {
+	return PLATFORM_NAME_MAP[figmaFamilyName] ?? null;
+}
+
+/**
+ * Scan reference content for old platform names and return a map of
+ * figmaFamily (lowercase) -> oldPlatformName for families that were renamed.
+ */
+export function detectRenamesInReference(referenceContent: string | undefined): Map<string, string> {
+	const renames = new Map<string, string>();
+	if (!referenceContent) return renames;
+	for (const [oldName, figmaName] of Object.entries(FIGMA_NAME_MAP)) {
+		const re = new RegExp(oldName, 'i');
+		if (re.test(referenceContent)) {
+			renames.set(figmaName.toLowerCase(), oldName);
+		}
+	}
+	return renames;
+}
+
+// ─── NEW Token Marker ─────────────────────────────────────────────────────────
+
+/** Generate "NEW" comment lines for tokens not present in the reference file. */
+export function newTokenComment(commentStyle: '//' | '/*' | '#'): string[] {
+	const msg = 'NEW: This token was added in Figma design tokens but does not exist in your reference file.';
+	if (commentStyle === '/*') return [`/* ${msg} */`];
+	return [`${commentStyle} ${msg}`];
+}
+
+/**
+ * Create a function that checks whether a name is absent from reference content.
+ * Returns `true` if the name is NOT found in the reference (i.e. it's new).
+ * When no reference is provided, always returns false (nothing is "new" in best-practices mode).
+ *
+ * Normalizes both the reference and search names by stripping hyphens and underscores,
+ * so it works across camelCase, snake_case, kebab-case, and SCREAMING_SNAKE naming.
+ */
+export function createNewDetector(referenceContent?: string): (name: string) => boolean {
+	if (!referenceContent) return () => false;
+	const refNormalized = referenceContent.toLowerCase().replace(/[-_]/g, '');
+	return (name: string) => {
+		const normalized = name.toLowerCase().replace(/[-_]/g, '');
+		return !refNormalized.includes(normalized);
+	};
+}
+
+// ─── Reference File Bug Detection ─────────────────────────────────────────────
+
+/** Format a bug-warning comment block for the top of generated output. */
+export function bugWarningBlock(warnings: string[], commentStyle: '//' | '/*'): string[] {
+	if (warnings.length === 0) return [];
+	const lines: string[] = [];
+	if (commentStyle === '/*') {
+		lines.push('/* ⚠️  REFERENCE FILE ISSUES DETECTED');
+		lines.push(' *');
+		for (const w of warnings) {
+			lines.push(` *  • ${w}`);
+		}
+		lines.push(' *');
+		lines.push(' *  Generated output uses correct values from Figma design tokens.');
+		lines.push(' *  Please review and fix the issues in your reference file.');
+		lines.push(' */');
+	} else {
+		lines.push('// ⚠️  REFERENCE FILE ISSUES DETECTED');
+		lines.push('//');
+		for (const w of warnings) {
+			lines.push(`//  • ${w}`);
+		}
+		lines.push('//');
+		lines.push('//  Generated output uses correct values from Figma design tokens.');
+		lines.push('//  Please review and fix the issues in your reference file.');
+	}
+	lines.push('');
+	return lines;
+}
+
+/** Detect known bugs in Swift reference files. */
+export function detectSwiftBugs(reference: string): string[] {
+	const warnings: string[] = [];
+	const hexWithoutHash = reference.match(/=\s*"([0-9A-Fa-f]{6})"/g);
+	if (hexWithoutHash && hexWithoutHash.length > 0) {
+		warnings.push(`${hexWithoutHash.length} hex value(s) missing "#" prefix (e.g., greenElectric = "008001"). Generated output always includes "#".`);
+	}
+	return warnings;
+}
+
+/** Detect known bugs in Kotlin color reference files. */
+export function detectKotlinColorBugs(reference: string): string[] {
+	const warnings: string[] = [];
+	const staticEnumMappings = [...reference.matchAll(/ICONSTATIC\w+\s*->\s*(\w+)/g)];
+	if (staticEnumMappings.length > 1) {
+		const targets = new Set(staticEnumMappings.map((m) => m[1]));
+		if (targets.size === 1) {
+			const badTarget = [...targets][0];
+			warnings.push(`Static icon/text enum cases all map to "${badTarget}" — likely a copy-paste bug. Generated output uses correct Figma mappings.`);
+		}
+	}
+	return warnings;
+}
+
+/** Detect known bugs in Kotlin typography reference files. */
+export function detectKotlinTypoBugs(reference: string): string[] {
+	const warnings: string[] = [];
+	if (/footnote.*this\.subhead/i.test(reference)) {
+		warnings.push('footnote copy() defaults reference "this.subhead_*" instead of "this.footnote_*" — copy-paste bug.');
+	}
+	if (/RLocalTypography|LocalTypography/i.test(reference) && !/slprice/i.test(reference)) {
+		warnings.push('RLocalTypography is missing "slprice" entries. Generated output includes all tokens.');
+	}
+	return warnings;
+}
+
 // ─── Tree Walkers (color-specific) ───────────────────────────────────────────
 
 /** Walk all color tokens in a tree (flat, no path). */

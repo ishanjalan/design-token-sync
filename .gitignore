@@ -37,3 +37,9 @@ test-results/
 
 # Logs
 *.log
+
+# Reference developer files (local assets, not source code)
+Reference files/
+
+# Transformer evaluation output
+eval-output/

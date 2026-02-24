@@ -25,7 +25,13 @@ import {
 	pathToTokenName,
 	extractSortKey,
 	capitalize,
-	orderCategories
+	orderCategories,
+	detectRenamesInReference,
+	renameComment,
+	createNewDetector,
+	newTokenComment,
+	detectSwiftBugs,
+	bugWarningBlock
 } from './shared.js';
 
 interface PrimitiveEntry {
@@ -62,9 +68,12 @@ export function transformToSwift(
 	bestPractices: boolean = true
 ): TransformResult {
 	const conventions = detectSwiftConventions(referenceSwift, bestPractices);
+	const renames = bestPractices ? new Map<string, string>() : detectRenamesInReference(referenceSwift);
+	const isNew = bestPractices ? (() => false) : createNewDetector(referenceSwift);
+	const bugWarnings = referenceSwift && !bestPractices ? detectSwiftBugs(referenceSwift) : [];
 	const primitiveMap = buildPrimitiveMap(lightColors, darkColors, conventions);
 	const semanticEntries = buildSemanticEntries(lightColors, darkColors, primitiveMap, conventions);
-	const content = generateSwift(primitiveMap, semanticEntries, conventions);
+	const content = generateSwift(primitiveMap, semanticEntries, conventions, renames, isNew, bugWarnings);
 	return { filename: 'Colors.swift', content, format: 'swift', platform: 'ios' };
 }
 
@@ -145,6 +154,8 @@ export function detectSwiftConventions(reference?: string, bestPractices: boolea
 	const imports =
 		importMatches.length > 0 ? importMatches.map((m) => m[1]) : ['SwiftUI'];
 
+	const hasUIColorTier = /:\s*UIColor\s*=/.test(reference) || /func\s+color\(/.test(reference);
+
 	return {
 		namingCase,
 		useComputedVar,
@@ -156,7 +167,8 @@ export function detectSwiftConventions(reference?: string, bestPractices: boolea
 		semanticFormat,
 		semanticEnumName,
 		apiEnumName,
-		imports
+		imports,
+		hasUIColorTier
 	};
 }
 
@@ -251,7 +263,10 @@ function buildSemanticEntries(
 function generateSwift(
 	primitiveMap: Map<string, PrimitiveEntry>,
 	semanticEntries: SemanticEntry[],
-	conventions: DetectedSwiftConventions
+	conventions: DetectedSwiftConventions,
+	renames: Map<string, string> = new Map(),
+	isNew: (name: string) => boolean = () => false,
+	bugWarnings: string[] = []
 ): string {
 	const ind = conventions.indent;
 	const isEnumMode = conventions.containerStyle === 'enum';
@@ -265,10 +280,25 @@ function generateSwift(
 	lines.push(`// Generated: ${new Date().toISOString()}`);
 	lines.push('');
 
+	lines.push(...bugWarningBlock(bugWarnings, '//'));
+
 	for (const imp of conventions.imports) {
 		lines.push(`import ${imp}`);
 	}
 	lines.push('');
+
+	if (isEnumMode && conventions.hasUIColorTier) {
+		lines.push('// MARK: - UIColor Light/Dark Operator');
+		lines.push('infix operator |: AdditionPrecedence');
+		lines.push('extension UIColor {');
+		lines.push(`${ind}static func | (light: UIColor, dark: UIColor) -> UIColor {`);
+		lines.push(`${ind}${ind}UIColor { trait in`);
+		lines.push(`${ind}${ind}${ind}trait.userInterfaceStyle == .dark ? dark : light`);
+		lines.push(`${ind}${ind}}`);
+		lines.push(`${ind}}`);
+		lines.push('}');
+		lines.push('');
+	}
 
 	// Helper extensions only needed in best-practices mode
 	if (!isEnumMode && !isStringHex) {
@@ -338,6 +368,18 @@ function generateSwift(
 
 	const sortedFamilies = [...byFamily.entries()].sort(([a], [b]) => a.localeCompare(b));
 	for (const [family, entries] of sortedFamilies) {
+		const oldName = renames.get(family);
+		const familyIsNew = !oldName && isNew(family);
+		if (oldName) {
+			for (const cl of renameComment(oldName, family, '//')) {
+				lines.push(`${ind}${cl}`);
+			}
+		}
+		if (familyIsNew) {
+			for (const cl of newTokenComment('//')) {
+				lines.push(`${ind}${cl}`);
+			}
+		}
 		lines.push(`${ind}// ${family}`);
 		const sorted = [...entries].sort(
 			(a, b) => a.sortKey - b.sortKey || a.swiftName.localeCompare(b.swiftName)
@@ -377,6 +419,9 @@ function generateSwift(
 			const tokens = byCategory.get(category)!;
 			lines.push(`${ind}// ${capitalize(category)}`);
 			for (const token of tokens) {
+				if (isNew(token.swiftName)) {
+					for (const cl of newTokenComment('//')) lines.push(`${ind}${cl}`);
+				}
 				const declLines = formatSemanticColorDecl(token, conventions);
 				for (const dl of declLines) {
 					lines.push(dl);
@@ -387,43 +432,92 @@ function generateSwift(
 		lines.push('');
 	}
 
+	// ── Tier 3: UIColor API (match-existing enum mode with UIColor tier) ──
+	if (isEnumMode && isFlatLD && conventions.hasUIColorTier && byCategory.size > 0) {
+		const apiName = conventions.apiEnumName || 'ColorStyle';
+		const semName = conventions.semanticEnumName || 'ColorCodes';
+
+		lines.push('// MARK: - UIColor API');
+		lines.push(`public enum ${apiName} {`);
+
+		const orderedCats3 = orderCategories(byCategory.keys());
+		for (const cat of orderedCats3) {
+			const tokens = byCategory.get(cat)!;
+			lines.push(`${ind}// MARK: - ${capitalize(cat)}`);
+			for (const tok of tokens) {
+				if (isNew(tok.swiftName)) {
+					for (const cl of newTokenComment('//')) lines.push(`${ind}${cl}`);
+				}
+				if (tok.isStatic || tok.lightName === tok.darkName) {
+					lines.push(`${ind}public static var ${tok.swiftName}: UIColor = color(${semName}.${tok.swiftName})`);
+				} else {
+					lines.push(`${ind}public static var ${tok.swiftName}: UIColor = color(${semName}.${tok.swiftName}Light) | color(${semName}.${tok.swiftName}Dark)`);
+				}
+			}
+		}
+		lines.push('}');
+		lines.push('');
+
+		lines.push(`public extension ${apiName} {`);
+		lines.push(`${ind}static func color(_ hex: String) -> UIColor {`);
+		lines.push(`${ind}${ind}let h = hex.hasPrefix("#") ? String(hex.dropFirst()) : hex`);
+		lines.push(`${ind}${ind}let scanner = Scanner(string: h)`);
+		lines.push(`${ind}${ind}var rgb: UInt64 = 0`);
+		lines.push(`${ind}${ind}scanner.scanHexInt64(&rgb)`);
+		lines.push(`${ind}${ind}let r = CGFloat((rgb >> 16) & 0xFF) / 255`);
+		lines.push(`${ind}${ind}let g = CGFloat((rgb >> 8) & 0xFF) / 255`);
+		lines.push(`${ind}${ind}let b = CGFloat(rgb & 0xFF) / 255`);
+		lines.push(`${ind}${ind}return UIColor(red: r, green: g, blue: b, alpha: 1)`);
+		lines.push(`${ind}}`);
+		lines.push('');
+		lines.push(`${ind}static func suiColor(_ lightHex: String, _ darkHex: String, _ lightAlpha: Double = 1.0, _ darkAlpha: Double = 1.0) -> Color {`);
+		lines.push(`${ind}${ind}let uic: UIColor = color(lightHex).withAlphaComponent(lightAlpha) | color(darkHex).withAlphaComponent(darkAlpha)`);
+		lines.push(`${ind}${ind}return Color(uic)`);
+		lines.push(`${ind}}`);
+		lines.push('}');
+		lines.push('');
+	}
+
 	// ── Tier 4: SwiftUI Color API (match-existing enum mode only) ────────
 	if (isEnumMode && isFlatLD && byCategory.size > 0) {
 		const apiName = conventions.apiEnumName || 'ColorStyle';
 		const primName = conventions.primitiveEnumName || 'PrimitiveColors';
 
-		lines.push('// MARK: - Color API');
-		lines.push(`public enum ${apiName} {`);
-		lines.push(`${ind}private static func colorFromHex(_ hex: String) -> Color {`);
-		lines.push(`${ind}${ind}let h = hex.hasPrefix("#") ? String(hex.dropFirst()) : hex`);
-		lines.push(`${ind}${ind}let scanner = Scanner(string: h)`);
-		lines.push(`${ind}${ind}var rgb: UInt64 = 0`);
-		lines.push(`${ind}${ind}scanner.scanHexInt64(&rgb)`);
-		lines.push(`${ind}${ind}let r = Double((rgb >> 16) & 0xFF) / 255`);
-		lines.push(`${ind}${ind}let g = Double((rgb >> 8) & 0xFF) / 255`);
-		lines.push(`${ind}${ind}let b = Double(rgb & 0xFF) / 255`);
-		lines.push(`${ind}${ind}return Color(.sRGB, red: r, green: g, blue: b, opacity: 1)`);
-		lines.push(`${ind}}`);
-		lines.push('');
-		lines.push(`${ind}static func suiColor(_ lightHex: String, _ darkHex: String) -> Color {`);
-		lines.push(`${ind}${ind}let light = colorFromHex(lightHex)`);
-		lines.push(`${ind}${ind}let dark = colorFromHex(darkHex)`);
-		lines.push(`${ind}${ind}#if canImport(UIKit)`);
-		lines.push(`${ind}${ind}return Color(uiColor: UIColor { trait in`);
-		lines.push(`${ind}${ind}${ind}trait.userInterfaceStyle == .dark ? UIColor(dark) : UIColor(light)`);
-		lines.push(`${ind}${ind}})`);
-		lines.push(`${ind}${ind}#elseif canImport(AppKit)`);
-		lines.push(`${ind}${ind}return Color(nsColor: NSColor(name: nil) { appearance in`);
-		lines.push(`${ind}${ind}${ind}appearance.bestMatch(from: [.darkAqua, .vibrantDark]) != nil`);
-		lines.push(`${ind}${ind}${ind}${ind}? NSColor(dark) : NSColor(light)`);
-		lines.push(`${ind}${ind}})`);
-		lines.push(`${ind}${ind}#else`);
-		lines.push(`${ind}${ind}return light`);
-		lines.push(`${ind}${ind}#endif`);
-		lines.push(`${ind}}`);
-		lines.push('}');
-		lines.push('');
+		if (!conventions.hasUIColorTier) {
+			lines.push('// MARK: - Color API');
+			lines.push(`public enum ${apiName} {`);
+			lines.push(`${ind}private static func colorFromHex(_ hex: String) -> Color {`);
+			lines.push(`${ind}${ind}let h = hex.hasPrefix("#") ? String(hex.dropFirst()) : hex`);
+			lines.push(`${ind}${ind}let scanner = Scanner(string: h)`);
+			lines.push(`${ind}${ind}var rgb: UInt64 = 0`);
+			lines.push(`${ind}${ind}scanner.scanHexInt64(&rgb)`);
+			lines.push(`${ind}${ind}let r = Double((rgb >> 16) & 0xFF) / 255`);
+			lines.push(`${ind}${ind}let g = Double((rgb >> 8) & 0xFF) / 255`);
+			lines.push(`${ind}${ind}let b = Double(rgb & 0xFF) / 255`);
+			lines.push(`${ind}${ind}return Color(.sRGB, red: r, green: g, blue: b, opacity: 1)`);
+			lines.push(`${ind}}`);
+			lines.push('');
+			lines.push(`${ind}static func suiColor(_ lightHex: String, _ darkHex: String) -> Color {`);
+			lines.push(`${ind}${ind}let light = colorFromHex(lightHex)`);
+			lines.push(`${ind}${ind}let dark = colorFromHex(darkHex)`);
+			lines.push(`${ind}${ind}#if canImport(UIKit)`);
+			lines.push(`${ind}${ind}return Color(uiColor: UIColor { trait in`);
+			lines.push(`${ind}${ind}${ind}trait.userInterfaceStyle == .dark ? UIColor(dark) : UIColor(light)`);
+			lines.push(`${ind}${ind}})`);
+			lines.push(`${ind}${ind}#elseif canImport(AppKit)`);
+			lines.push(`${ind}${ind}return Color(nsColor: NSColor(name: nil) { appearance in`);
+			lines.push(`${ind}${ind}${ind}appearance.bestMatch(from: [.darkAqua, .vibrantDark]) != nil`);
+			lines.push(`${ind}${ind}${ind}${ind}? NSColor(dark) : NSColor(light)`);
+			lines.push(`${ind}${ind}})`);
+			lines.push(`${ind}${ind}#else`);
+			lines.push(`${ind}${ind}return light`);
+			lines.push(`${ind}${ind}#endif`);
+			lines.push(`${ind}}`);
+			lines.push('}');
+			lines.push('');
+		}
 
+		lines.push('// MARK: - SwiftUI Color API');
 		lines.push(`public extension ${apiName} {`);
 
 		const orderedCategories = orderCategories(byCategory.keys());
@@ -432,10 +526,21 @@ function generateSwift(
 			const tokens = byCategory.get(category)!;
 			lines.push(`${ind}// ${capitalize(category)}`);
 			for (const token of tokens) {
-				if (token.isStatic || token.lightName === token.darkName) {
-					lines.push(`${ind}static var ${token.swiftName}: Color = suiColor(${primName}.${token.lightName}, ${primName}.${token.lightName})`);
+				if (isNew(token.swiftName)) {
+					for (const cl of newTokenComment('//')) lines.push(`${ind}${cl}`);
+				}
+				const lightRef = `${primName}.${token.lightName}`;
+				const darkRef = token.isStatic || token.lightName === token.darkName
+					? lightRef
+					: `${primName}.${token.darkName}`;
+				const needsAlpha = (token.lightAlpha != null && token.lightAlpha < 1) ||
+					(token.darkAlpha != null && token.darkAlpha < 1);
+				if (needsAlpha) {
+					const la = roundAlpha(token.lightAlpha ?? 1);
+					const da = roundAlpha(token.darkAlpha ?? 1);
+					lines.push(`${ind}static var ${token.swiftName}: Color = suiColor(${lightRef}, ${darkRef}, ${la}, ${da})`);
 				} else {
-					lines.push(`${ind}static var ${token.swiftName}: Color = suiColor(${primName}.${token.lightName}, ${primName}.${token.darkName})`);
+					lines.push(`${ind}static var ${token.swiftName}: Color = suiColor(${lightRef}, ${darkRef})`);
 				}
 			}
 		}
@@ -519,6 +624,11 @@ function tokenNameToSwiftName(tokenName: string, namingCase: 'camel' | 'snake'):
 
 function toCamelCase(parts: string[]): string {
 	return parts.map((p, i) => (i === 0 ? p : capitalize(p))).join('');
+}
+
+function roundAlpha(a: number): string {
+	const rounded = parseFloat(a.toFixed(2));
+	return rounded === Math.floor(rounded) ? `${rounded}.0` : `${rounded}`;
 }
 
 function extractFamily(figmaName: string): string {

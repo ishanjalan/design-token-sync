@@ -199,7 +199,7 @@ async function cmdBuild(): Promise<void> {
 		}
 		if (group === 'kotlin') {
 			sdPlatforms.push('android');
-			results.push(transformToKotlin(lightColors, darkColors));
+			results.push(...transformToKotlin(lightColors, darkColors));
 		}
 	}
 

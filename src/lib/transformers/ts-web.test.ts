@@ -31,7 +31,9 @@ const screamingSnake: DetectedConventions = {
 	importStyle: 'use',
 	importSuffix: '',
 	scssColorStructure: 'modern',
-	hasTypeAnnotations: false
+	hasTypeAnnotations: false,
+	tsHexCasing: 'lower',
+	tsUsesAsConst: true
 };
 
 const camelCase: DetectedConventions = { ...screamingSnake, tsNamingCase: 'camel' };

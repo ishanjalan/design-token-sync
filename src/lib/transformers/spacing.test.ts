@@ -10,7 +10,9 @@ const defaultConventions: DetectedConventions = {
 	importStyle: 'use',
 	importSuffix: '',
 	scssColorStructure: 'modern',
-	hasTypeAnnotations: false
+	hasTypeAnnotations: false,
+	tsHexCasing: 'lower',
+	tsUsesAsConst: true
 };
 
 function makeValuesExport(entries: Record<string, number>): Record<string, unknown> {

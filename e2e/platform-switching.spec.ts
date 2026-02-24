@@ -31,16 +31,15 @@ test.describe('Platform switching', () => {
 	});
 
 	test('reference file slots change with platform', async ({ page }) => {
-		const refSlots = page.locator('.ref-slot, .ref-slot--empty');
 		const cards = page.locator('.platform-card');
 
-		// Web shows SCSS/TS reference slots
-		await expect(page.locator('text=Primitives.scss')).toBeVisible();
+		// Web shows consolidated color/typography file slots
+		await expect(page.locator('text=Color files')).toBeVisible();
 
 		// Switch to iOS
 		await cards.nth(2).click();
 		await expect(page.locator('text=Colors.swift')).toBeVisible();
-		await expect(page.locator('text=Primitives.scss')).not.toBeVisible();
+		await expect(page.locator('text=Color files')).not.toBeVisible();
 
 		// Switch to Android
 		await cards.nth(1).click();

@@ -21,7 +21,9 @@ const conventions: DetectedConventions = {
 	importStyle: 'use',
 	importSuffix: '',
 	scssColorStructure: 'modern',
-	hasTypeAnnotations: false
+	hasTypeAnnotations: false,
+	tsHexCasing: 'lower',
+	tsUsesAsConst: true
 };
 
 function countPattern(content: string, pattern: RegExp): number {

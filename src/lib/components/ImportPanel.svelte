@@ -19,7 +19,6 @@
 		platforms: PlatformOption[];
 		selectedPlatforms: Platform[];
 		hasRefFiles: boolean;
-		bestPractices: boolean;
 		bulkDropActive: boolean;
 		canGenerate: boolean;
 		loading: boolean;
@@ -36,7 +35,6 @@
 		onBulkDragOver: (e: DragEvent) => void;
 		onBulkDragLeave: (e: DragEvent) => void;
 		onBulkDrop: (e: DragEvent) => void;
-		onBestPracticesChange: (val: boolean) => void;
 		selectedOutputs: OutputCategory[];
 		onToggleOutput: (cat: OutputCategory) => void;
 		onExportConfig: () => void;
@@ -54,11 +52,11 @@
 
 	let {
 		slots, visibleKeys, refKeys, fileInsights, platforms, selectedPlatforms,
-		hasRefFiles, bestPractices, bulkDropActive, canGenerate, loading, errorMsg,
+		hasRefFiles, bulkDropActive, canGenerate, loading, errorMsg,
 		requiredFilled, iconFigma,
 		onDragEnter, onDragOver, onDragLeave, onDrop, onFileInput, onClearFile,
 		onBulkDragEnter, onBulkDragOver, onBulkDragLeave, onBulkDrop,
-		onBestPracticesChange, selectedOutputs, onToggleOutput,
+		selectedOutputs, onToggleOutput,
 		onExportConfig, onImportConfig, onClearAll, onGenerate,
 		storedTokenVersion, storedTokenPushedAt, storedTokenVersions, storedTokensLoading,
 		tokenChangeSummary,
@@ -98,14 +96,6 @@
 		return '#F5A623';
 	}
 
-	function bestPracticeHint(on: boolean, plats: Platform[]): string {
-		if (!on) return 'Matches your reference file conventions';
-		const parts: string[] = [];
-		if (plats.includes('web')) parts.push('@use, light-dark(), type annotations');
-		if (plats.includes('ios')) parts.push('static let, SwiftUI Color(hex:)');
-		if (plats.includes('android')) parts.push('camelCase, Compose Color()');
-		return parts.length ? `Modern patterns: ${parts.join(' · ')}` : 'Modern patterns';
-	}
 
 </script>
 
@@ -121,30 +111,6 @@
 			<button class="panel-icon-btn" onclick={onClearAll} title="Clear all" aria-label="Clear all"><Trash2 size={12} strokeWidth={2} /></button>
 		</div>
 	</div>
-
-	{#if hasRefFiles}
-		<div class="best-practices-area">
-			<div class="bp-segmented" role="radiogroup" aria-label="Output convention">
-				<button
-					class="bp-option"
-					class:bp-option--active={!bestPractices}
-					role="radio"
-					aria-checked={!bestPractices}
-					onclick={() => onBestPracticesChange(false)}
-				>Match existing</button>
-				<button
-					class="bp-option"
-					class:bp-option--active={bestPractices}
-					role="radio"
-					aria-checked={bestPractices}
-					onclick={() => onBestPracticesChange(true)}
-				>Best practices</button>
-			</div>
-			<span class="bp-hint">
-				{bestPracticeHint(bestPractices, selectedPlatforms)}
-			</span>
-		</div>
-	{/if}
 
 	<div class="output-area">
 		<span class="output-label">Generate</span>
@@ -499,55 +465,6 @@
 		height: 1px;
 		clip: rect(0 0 0 0);
 		overflow: hidden;
-	}
-
-	/* ─── Best Practices Segmented ───────────────── */
-	.best-practices-area {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		padding: 6px 12px;
-		margin: 0 10px 6px;
-	}
-
-	.bp-segmented {
-		display: inline-flex;
-		background: var(--bgColor-inset);
-		border: 1px solid var(--borderColor-muted);
-		border-radius: var(--borderRadius-medium);
-		padding: 2px;
-		gap: 1px;
-	}
-
-	.bp-option {
-		padding: 4px 10px;
-		border: none;
-		background: transparent;
-		border-radius: calc(var(--borderRadius-medium) - 2px);
-		font-family: var(--fontStack-sansSerif);
-		font-size: 11px;
-		font-weight: 500;
-		color: var(--fgColor-muted);
-		cursor: pointer;
-		white-space: nowrap;
-		transition: background 150ms ease, color 150ms ease, box-shadow 150ms ease;
-	}
-
-	.bp-option:hover {
-		color: var(--fgColor-default);
-		background: var(--control-bgColor-hover);
-	}
-
-	.bp-option--active {
-		background: var(--control-bgColor-rest);
-		color: var(--fgColor-default);
-		box-shadow: var(--shadow-floating-small);
-		font-weight: 600;
-	}
-
-	.bp-hint {
-		font-size: 10px;
-		color: var(--fgColor-disabled);
 	}
 
 	/* ─── Output Toggles ────────────────────────── */

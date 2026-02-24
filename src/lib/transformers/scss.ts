@@ -12,7 +12,9 @@ import {
 	extractSortKey,
 	resolveColorValue,
 	capitalize,
-	orderCategories
+	orderCategories,
+	renameComment,
+	newTokenComment
 } from './shared.js';
 
 interface PrimitiveEntry {
@@ -51,7 +53,9 @@ export function transformToSCSS(
 	lightColors: FigmaColorExport,
 	darkColors: FigmaColorExport,
 	conventions: DetectedConventions = BEST_PRACTICE_WEB_CONVENTIONS,
-	primitives?: Record<string, unknown>
+	primitives?: Record<string, unknown>,
+	renames: Map<string, string> = new Map(),
+	isNew: (name: string) => boolean = () => false
 ): TransformResult[] {
 	const sep = conventions.scssSeparator === 'underscore' ? '_' : '-';
 	const primitiveMap = primitives
@@ -60,7 +64,7 @@ export function transformToSCSS(
 
 	const semanticTokens = buildSemanticEntries(lightColors, darkColors, primitiveMap, sep);
 
-	return [generatePrimitivesScss(primitiveMap, sep), generateColorsScss(semanticTokens, conventions)];
+	return [generatePrimitivesScss(primitiveMap, sep, renames, isNew), generateColorsScss(semanticTokens, conventions, isNew)];
 }
 
 // ─── Step 1a: Build Primitive Map from a dedicated primitives export ──────────
@@ -159,7 +163,12 @@ function buildSemanticEntries(
 
 // ─── Step 3: Generate Primitives.scss ────────────────────────────────────────
 
-function generatePrimitivesScss(primitiveMap: PrimitiveMap, _sep: string): TransformResult {
+function generatePrimitivesScss(
+	primitiveMap: PrimitiveMap,
+	_sep: string,
+	renames: Map<string, string> = new Map(),
+	isNew: (name: string) => boolean = () => false
+): TransformResult {
 	const lines: string[] = [];
 	lines.push('// Primitives.scss');
 	lines.push('// Auto-generated from Figma Variables — DO NOT EDIT');
@@ -176,6 +185,18 @@ function generatePrimitivesScss(primitiveMap: PrimitiveMap, _sep: string): Trans
 
 	const sortedFamilies = [...byFamily.entries()].sort(([a], [b]) => a.localeCompare(b));
 	for (const [family, entries] of sortedFamilies) {
+		const oldName = renames.get(family);
+		const familyIsNew = !oldName && isNew(family);
+		if (oldName) {
+			for (const cl of renameComment(oldName, family, '//')) {
+				lines.push(cl);
+			}
+		}
+		if (familyIsNew) {
+			for (const cl of newTokenComment('//')) {
+				lines.push(cl);
+			}
+		}
 		lines.push(`// ${family}`);
 		const sorted = [...entries].sort(
 			(a, b) => a.sortKey - b.sortKey || a.scssVar.localeCompare(b.scssVar)
@@ -207,7 +228,11 @@ function generatePrimitivesScss(primitiveMap: PrimitiveMap, _sep: string): Trans
 //   - SCSS aliases remain for use inside .scss files — they compile to var(--token-name)
 //   - light-dark() (Baseline 2024) is cleaner than prefers-color-scheme media queries
 
-function generateColorsScss(semanticTokens: SemanticToken[], conventions: DetectedConventions): TransformResult {
+function generateColorsScss(
+	semanticTokens: SemanticToken[],
+	conventions: DetectedConventions,
+	isNew: (name: string) => boolean = () => false
+): TransformResult {
 	const lines: string[] = [];
 	const suffix = conventions.importSuffix ?? '';
 	const structure = conventions.scssColorStructure ?? 'modern';
@@ -268,6 +293,10 @@ function generateColorsScss(semanticTokens: SemanticToken[], conventions: Detect
 		for (const category of orderedCategories) {
 			lines.push(`// ${capitalize(category)} colors`);
 			for (const token of byCategory.get(category)!) {
+				const varName = token.scssVar.replace('$', '');
+				if (isNew(varName)) {
+					for (const cl of newTokenComment('//')) lines.push(cl);
+				}
 				lines.push(`${token.scssVar}: var(${token.cssVar});`);
 			}
 			lines.push('');
@@ -277,6 +306,10 @@ function generateColorsScss(semanticTokens: SemanticToken[], conventions: Detect
 		for (const category of orderedCategories) {
 			lines.push(`// ${capitalize(category)} colors`);
 			for (const token of byCategory.get(category)!) {
+				const varName = token.scssVar.replace('$', '');
+				if (isNew(varName)) {
+					for (const cl of newTokenComment('//')) lines.push(cl);
+				}
 				if (token.isStatic) {
 					lines.push(`${token.scssVar}: var(${token.cssVar}, ${token.lightPrimitive});`);
 				} else {
@@ -315,6 +348,10 @@ function generateColorsScss(semanticTokens: SemanticToken[], conventions: Detect
 		for (const category of orderedCategories) {
 			lines.push(`// ${capitalize(category)} colors`);
 			for (const token of byCategory.get(category)!) {
+				const varName = token.scssVar.replace('$', '');
+				if (isNew(varName)) {
+					for (const cl of newTokenComment('//')) lines.push(cl);
+				}
 				lines.push(`${token.scssVar}: var(${token.cssVar});`);
 			}
 			lines.push('');

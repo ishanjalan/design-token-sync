@@ -30,7 +30,9 @@ const conventions: DetectedConventions = {
 	importStyle: 'use',
 	importSuffix: '',
 	scssColorStructure: 'modern',
-	hasTypeAnnotations: false
+	hasTypeAnnotations: false,
+	tsHexCasing: 'lower',
+	tsUsesAsConst: true
 };
 
 const valuesExport: Record<string, unknown> = {
@@ -162,7 +164,7 @@ describe('Swift snapshots', () => {
 
 describe('Kotlin snapshots', () => {
 	it('default conventions', () => {
-		const r = transformToKotlin(lightColors, darkColors);
+		const r = transformToKotlin(lightColors, darkColors)[0];
 		expect(strip(r.content)).toMatchSnapshot(r.filename);
 	});
 });

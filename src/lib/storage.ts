@@ -14,7 +14,7 @@
 import type { Platform, HistoryEntry, GithubConfigs } from '$lib/types.js';
 
 const PREFIX = 'tokenSync';
-const STORAGE_VERSION = 2;
+const STORAGE_VERSION = 4;
 
 /**
  * Check if stored data is from a previous app version. If so, clear stale
@@ -254,26 +254,6 @@ export function loadFigmaWebhookPasscode(): string {
 		return localStorage.getItem(`${PREFIX}:figmaWebhookPasscode`) ?? '';
 	} catch {
 		return '';
-	}
-}
-
-// ─── Best Practices toggle ────────────────────────────────────────────────
-
-export function saveBestPractices(enabled: boolean): void {
-	try {
-		localStorage.setItem(`${PREFIX}:bestPractices`, JSON.stringify(enabled));
-	} catch {
-		// ignore
-	}
-}
-
-export function loadBestPractices(): boolean {
-	try {
-		const raw = localStorage.getItem(`${PREFIX}:bestPractices`);
-		if (raw === null) return true;
-		return JSON.parse(raw) as boolean;
-	} catch {
-		return true;
 	}
 }
 

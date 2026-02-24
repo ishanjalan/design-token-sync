@@ -18,7 +18,9 @@ import {
 	resolveColorValue,
 	capitalize,
 	orderCategories,
-	collectSpacingEntries
+	collectSpacingEntries,
+	renameComment,
+	newTokenComment
 } from './shared.js';
 
 interface PrimitiveEntry {
@@ -41,13 +43,15 @@ export function transformToCSS(
 	lightColors: FigmaColorExport,
 	darkColors: FigmaColorExport,
 	conventions: DetectedConventions,
-	values?: Record<string, unknown>
+	values?: Record<string, unknown>,
+	renames: Map<string, string> = new Map(),
+	isNew: (name: string) => boolean = () => false
 ): TransformResult[] {
 	const primitiveMap = buildPrimitiveMap(lightColors, darkColors);
 	const semanticEntries = buildSemanticEntries(lightColors, darkColors, primitiveMap);
 	const structure = conventions.scssColorStructure ?? 'modern';
 	const results: TransformResult[] = [
-		generatePrimitivesCSS(primitiveMap),
+		generatePrimitivesCSS(primitiveMap, renames, isNew),
 		generateColorsCSS(semanticEntries, structure)
 	];
 
@@ -126,7 +130,11 @@ function buildSemanticEntries(
 
 // ─── Generate primitives.css ──────────────────────────────────────────────────
 
-function generatePrimitivesCSS(primitiveMap: Map<string, PrimitiveEntry>): TransformResult {
+function generatePrimitivesCSS(
+	primitiveMap: Map<string, PrimitiveEntry>,
+	renames: Map<string, string> = new Map(),
+	isNew: (name: string) => boolean = () => false
+): TransformResult {
 	const lines: string[] = [
 		'/* primitives.css */',
 		'/* Auto-generated from Figma Variables — DO NOT EDIT */',
@@ -144,6 +152,18 @@ function generatePrimitivesCSS(primitiveMap: Map<string, PrimitiveEntry>): Trans
 
 	const sortedFamilies = [...byFamily.entries()].sort(([a], [b]) => a.localeCompare(b));
 	for (const [family, entries] of sortedFamilies) {
+		const oldName = renames.get(family);
+		const familyIsNew = !oldName && isNew(family);
+		if (oldName) {
+			for (const cl of renameComment(oldName, family, '/*')) {
+				lines.push(`  ${cl}`);
+			}
+		}
+		if (familyIsNew) {
+			for (const cl of newTokenComment('/*')) {
+				lines.push(`  ${cl}`);
+			}
+		}
 		lines.push(`  /* ${family} */`);
 		const sorted = [...entries].sort(
 			(a, b) => a.sortKey - b.sortKey || a.cssVar.localeCompare(b.cssVar)

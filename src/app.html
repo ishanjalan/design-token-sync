@@ -23,7 +23,7 @@
 				var last = raw ? parseInt(raw, 10) : 0;
 				var cooldown = Date.now() - last < 30000;
 
-				function bustCache() {
+					function bustCache() {
 					if (cooldown) return;
 					localStorage.setItem(KEY, String(Date.now()));
 					var url = location.pathname + '?_cb=' + Date.now();

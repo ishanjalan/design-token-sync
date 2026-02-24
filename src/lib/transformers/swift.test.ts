@@ -527,6 +527,125 @@ public enum MyColors {
 	});
 });
 
+describe('transformToSwift — UIColor tier (four-tier architecture)', () => {
+	const uiColorRef = `import Foundation
+import SwiftUI
+import UIKit
+
+fileprivate enum primitiveColorCode {
+    static let red50 = "#FDE6E5"
+    static let grey0 = "#FFFFFF"
+    static let grey50 = "#FDFDFD"
+    static let grey750 = "#1D1D1D"
+}
+
+enum ColorCodes {
+    static let neutralPrimaryTextLight = "#1D1D1D"
+    static let neutralPrimaryTextDark = "#FCFCFC"
+    static let neutralAlwaysWhite = "#FFFFFF"
+}
+
+public enum ColorStyle {
+    public static var neutralPrimaryText: UIColor = color(ColorCodes.neutralPrimaryTextLight) | color(ColorCodes.neutralPrimaryTextDark)
+    public static var neutralAlwaysWhite: UIColor = color(ColorCodes.neutralAlwaysWhite)
+}
+
+public extension ColorStyle {
+    static func color(_ hex: String) -> UIColor {
+        UIColor.colorWithString(hex)
+    }
+    static func suiColor(_ lightmode: String, _ darkmode: String, _ lightAlpha: Double = 1.0, _ darkAlpha: Double = 1.0) -> Color {
+        let color: UIColor = color(lightmode).withAlphaComponent(lightAlpha) | color(darkmode).withAlphaComponent(darkAlpha)
+        return color.suiColor()
+    }
+}
+
+public extension ColorStyle {
+    static var textPrimary: Color = suiColor(primitiveColorCode.grey750, primitiveColorCode.grey50)
+    static var fillStaticWhite: Color = suiColor(primitiveColorCode.grey0, primitiveColorCode.grey0)
+}
+`;
+
+	it('detects hasUIColorTier from reference', () => {
+		const c = detectSwiftConventions(uiColorRef, false);
+		expect(c.hasUIColorTier).toBe(true);
+	});
+
+	it('does not detect hasUIColorTier in best-practices mode', () => {
+		const c = detectSwiftConventions(uiColorRef, true);
+		expect(c.hasUIColorTier).toBe(false);
+	});
+
+	it('does not detect hasUIColorTier when reference has no UIColor', () => {
+		const noUIColor = `fileprivate enum primitiveColorCode {
+    static let red50 = "#FDE6E5"
+}
+enum ColorCodes {
+    static let textLight = "#1D1D1D"
+    static let textDark = "#FCFCFC"
+}`;
+		const c = detectSwiftConventions(noUIColor, false);
+		expect(c.hasUIColorTier).toBe(false);
+	});
+
+	it('generates infix operator | for UIColor', () => {
+		const { content } = transformToSwift(lightColors, darkColors, uiColorRef, false);
+		expect(content).toContain('infix operator |: AdditionPrecedence');
+		expect(content).toContain('extension UIColor {');
+		expect(content).toContain('static func | (light: UIColor, dark: UIColor) -> UIColor');
+	});
+
+	it('generates UIColor API tier with MARK header', () => {
+		const { content } = transformToSwift(lightColors, darkColors, uiColorRef, false);
+		expect(content).toContain('// MARK: - UIColor API');
+		expect(content).toContain('public enum ColorStyle {');
+	});
+
+	it('generates UIColor entries referencing ColorCodes with Light/Dark suffixes', () => {
+		const { content } = transformToSwift(lightColors, darkColors, uiColorRef, false);
+		expect(content).toMatch(
+			/public static var textPrimary: UIColor = color\(ColorCodes\.textPrimaryLight\) \| color\(ColorCodes\.textPrimaryDark\)/
+		);
+	});
+
+	it('generates single-reference UIColor entry for static tokens', () => {
+		const { content } = transformToSwift(lightColors, darkColors, uiColorRef, false);
+		expect(content).toMatch(
+			/public static var fillStaticWhite: UIColor = color\(ColorCodes\.fillStaticWhite\)/
+		);
+	});
+
+	it('generates color() helper in extension', () => {
+		const { content } = transformToSwift(lightColors, darkColors, uiColorRef, false);
+		expect(content).toMatch(/public extension ColorStyle \{[\s\S]*?static func color\(_ hex: String\) -> UIColor/);
+	});
+
+	it('generates suiColor() helper with alpha params in extension', () => {
+		const { content } = transformToSwift(lightColors, darkColors, uiColorRef, false);
+		expect(content).toMatch(/static func suiColor\(_ lightHex: String, _ darkHex: String, _ lightAlpha: Double = 1\.0, _ darkAlpha: Double = 1\.0\) -> Color/);
+	});
+
+	it('does NOT generate colorFromHex helper when UIColor tier is active', () => {
+		const { content } = transformToSwift(lightColors, darkColors, uiColorRef, false);
+		expect(content).not.toContain('colorFromHex');
+	});
+
+	it('still generates SwiftUI Color API extension', () => {
+		const { content } = transformToSwift(lightColors, darkColors, uiColorRef, false);
+		expect(content).toContain('// MARK: - SwiftUI Color API');
+		expect(content).toMatch(
+			/static var textPrimary: Color = suiColor\(primitiveColorCode\.grey750, primitiveColorCode\.grey50\)/
+		);
+	});
+
+	it('generates SwiftUI static tokens referencing same primitive twice', () => {
+		const { content } = transformToSwift(lightColors, darkColors, uiColorRef, false);
+		expect(content).toMatch(
+			/static var fillStaticWhite: Color = suiColor\(primitiveColorCode\.grey0, primitiveColorCode\.grey0\)/
+		);
+	});
+});
+
 describe('transformToSwift — Standard path stripping', () => {
 	it('strips Standard from token name', () => {
 		const light: FigmaColorExport = {

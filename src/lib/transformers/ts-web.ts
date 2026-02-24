@@ -20,7 +20,9 @@ import {
 	extractSortKey,
 	resolveColorValue,
 	capitalize,
-	orderCategories
+	orderCategories,
+	renameComment,
+	newTokenComment
 } from './shared.js';
 
 // Re-use the same internal helpers by importing from the scss transformer's private types
@@ -48,7 +50,9 @@ export function transformToTS(
 	lightColors: FigmaColorExport,
 	darkColors: FigmaColorExport,
 	conventions: DetectedConventions,
-	primitives?: Record<string, unknown>
+	primitives?: Record<string, unknown>,
+	renames: Map<string, string> = new Map(),
+	isNew: (name: string) => boolean = () => false
 ): TransformResult[] {
 	const primitiveMap = primitives
 		? buildPrimitiveMapFromExport(primitives, conventions)
@@ -56,7 +60,7 @@ export function transformToTS(
 
 	const semanticEntries = buildSemanticEntries(lightColors, darkColors, primitiveMap, conventions);
 
-	return [generatePrimitivesTs(primitiveMap, conventions), generateColorsTs(semanticEntries, conventions)];
+	return [generatePrimitivesTs(primitiveMap, conventions, renames, isNew), generateColorsTs(semanticEntries, conventions, isNew)];
 }
 
 // ─── Step 1a: Primitive Map from dedicated primitives export ──────────────────
@@ -161,7 +165,12 @@ function buildSemanticEntries(
 
 // ─── Step 3: Generate Primitives.ts ──────────────────────────────────────────
 
-function generatePrimitivesTs(primitiveMap: Map<string, PrimitiveEntry>, conventions: DetectedConventions): TransformResult {
+function generatePrimitivesTs(
+	primitiveMap: Map<string, PrimitiveEntry>,
+	conventions: DetectedConventions,
+	renames: Map<string, string> = new Map(),
+	isNew: (name: string) => boolean = () => false
+): TransformResult {
 	const lines: string[] = [];
 	lines.push('// Primitives.ts');
 	lines.push('// Auto-generated from Figma Variables — DO NOT EDIT');
@@ -177,15 +186,29 @@ function generatePrimitivesTs(primitiveMap: Map<string, PrimitiveEntry>, convent
 
 	const sortedFamilies = [...byFamily.entries()].sort(([a], [b]) => a.localeCompare(b));
 	for (const [family, entries] of sortedFamilies) {
+		const oldName = renames.get(family);
+		const familyIsNew = !oldName && isNew(family);
+		if (oldName) {
+			for (const cl of renameComment(oldName, family, '//')) {
+				lines.push(cl);
+			}
+		}
+		if (familyIsNew) {
+			for (const cl of newTokenComment('//')) {
+				lines.push(cl);
+			}
+		}
 		lines.push(`// ${capitalize(family)} color family`);
 		const sorted = [...entries].sort(
 			(a, b) => a.sortKey - b.sortKey || a.tsName.localeCompare(b.tsName)
 		);
 		for (const { tsName, value } of sorted) {
+			const hex = conventions.tsHexCasing === 'upper' ? value.replace(/#([0-9a-f]+)/gi, (_, h) => '#' + h.toUpperCase()) : value;
+			const suffix = conventions.tsUsesAsConst ? ' as const' : '';
 			if (conventions.hasTypeAnnotations) {
-				lines.push(`export const ${tsName}: string = '${value}' as const;`);
+				lines.push(`export const ${tsName}: string = '${hex}'${suffix};`);
 			} else {
-				lines.push(`export const ${tsName} = '${value}' as const;`);
+				lines.push(`export const ${tsName} = '${hex}'${suffix};`);
 			}
 		}
 		lines.push('');
@@ -203,7 +226,8 @@ function generatePrimitivesTs(primitiveMap: Map<string, PrimitiveEntry>, convent
 
 function generateColorsTs(
 	entries: SemanticEntry[],
-	conventions: DetectedConventions
+	conventions: DetectedConventions,
+	isNew: (name: string) => boolean = () => false
 ): TransformResult {
 	const lines: string[] = [];
 
@@ -229,7 +253,10 @@ function generateColorsTs(
 		const tokens = byCategory.get(category)!;
 		lines.push(`// ${capitalize(category)} colors`);
 		for (const token of tokens) {
-			lines.push(formatSemanticTsEntry(token, conventions.hasTypeAnnotations));
+			if (isNew(token.tsName)) {
+				for (const cl of newTokenComment('//')) lines.push(cl);
+			}
+			lines.push(formatSemanticTsEntry(token, conventions));
 		}
 		lines.push('');
 	}
@@ -242,12 +269,13 @@ function generateColorsTs(
 	};
 }
 
-function formatSemanticTsEntry(entry: SemanticEntry, typed: boolean): string {
-	const annotation = typed ? ': string ' : ' ';
+function formatSemanticTsEntry(entry: SemanticEntry, conventions: DetectedConventions): string {
+	const annotation = conventions.hasTypeAnnotations ? ': string ' : ' ';
+	const suffix = conventions.tsUsesAsConst ? ' as const' : '';
 	if (entry.isStatic) {
-		return `export const ${entry.tsName}${annotation}= \`var(${entry.cssVar}, \${${entry.lightTs}})\` as const;`;
+		return `export const ${entry.tsName}${annotation}= \`var(${entry.cssVar}, \${${entry.lightTs}})\`${suffix};`;
 	}
-	return `export const ${entry.tsName}${annotation}= \`var(${entry.cssVar}, light-dark(\${${entry.lightTs}}, \${${entry.darkTs}}))\` as const;`;
+	return `export const ${entry.tsName}${annotation}= \`var(${entry.cssVar}, light-dark(\${${entry.lightTs}}, \${${entry.darkTs}}))\`${suffix};`;
 }
 
 // ─── Naming Helpers (mirrors scss.ts) ────────────────────────────────────────

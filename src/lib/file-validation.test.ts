@@ -5,7 +5,7 @@ import { validateFigmaJson, computeInsight } from './file-validation.js';
 
 describe('validateFigmaJson', () => {
 	it('returns null for non-JSON keys (reference files)', () => {
-		expect(validateFigmaJson('referencePrimitivesScss', 'not json')).toBeNull();
+		expect(validateFigmaJson('referenceColorsWeb', 'not json')).toBeNull();
 		expect(validateFigmaJson('referenceColorsSwift', '')).toBeNull();
 	});
 
@@ -69,7 +69,7 @@ describe('validateFigmaJson', () => {
 
 describe('computeInsight', () => {
 	it('counts lines for reference files', () => {
-		const result = computeInsight('referencePrimitivesScss', '$a: 1;\n$b: 2;\n$c: 3;');
+		const result = computeInsight('referenceColorsWeb', '$a: 1;\n$b: 2;\n$c: 3;');
 		expect(result).toEqual({ count: 3, label: 'lines' });
 	});
 

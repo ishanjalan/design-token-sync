@@ -94,9 +94,9 @@
 		visibleKeysAll: DropZoneKey[];
 		slots: Record<DropZoneKey, FileSlot>;
 		fileInsights: Partial<Record<DropZoneKey, FileInsight>>;
+		conventionHints: Partial<Record<DropZoneKey, string[]>>;
+		validations: Partial<Record<DropZoneKey, import('$lib/pre-validation.js').ValidationSummary>>;
 		hasRefFiles: boolean;
-		bestPractices: boolean;
-		onBestPracticesChange: (val: boolean) => void;
 		selectedOutputs: OutputCategory[];
 		onToggleOutput: (cat: OutputCategory) => void;
 		tokensInitialLoading: boolean;
@@ -162,7 +162,7 @@
 		storedTokenVersion = null, storedTokenPushedAt = null,
 		tokensUpdatedBanner = null, onRegenerate,
 		platforms, onSelectPlatform, swatchCount,
-		refKeys, visibleKeysAll, slots, fileInsights, hasRefFiles, bestPractices, onBestPracticesChange,
+		refKeys, visibleKeysAll, slots, fileInsights, conventionHints, validations, hasRefFiles,
 		selectedOutputs, onToggleOutput,
 		tokensInitialLoading, canGenerate, loading, onGenerate, onOpenImportPanel, onOpenSettings,
 		onWelcomeDragEnter, onWelcomeDragOver, onWelcomeDragLeave, onWelcomeDrop,
@@ -180,12 +180,15 @@
 
 	let showSuccessBanner = $state(false);
 	let prevResultId = $state<number | null>(null);
+	let dismissTimer: ReturnType<typeof setTimeout> | null = null;
 
 	$effect(() => {
 		const id = result?.files?.length ?? 0;
 		if (result && id !== prevResultId) {
 			showSuccessBanner = true;
 			prevResultId = id;
+			if (dismissTimer) clearTimeout(dismissTimer);
+			dismissTimer = setTimeout(() => { showSuccessBanner = false; }, 5000);
 		}
 	});
 
@@ -208,9 +211,9 @@
 			visibleKeys={visibleKeysAll}
 			{slots}
 			{fileInsights}
+			{conventionHints}
+			{validations}
 			{hasRefFiles}
-			{bestPractices}
-			{onBestPracticesChange}
 			{selectedOutputs}
 			{onToggleOutput}
 			{tokensInitialLoading}

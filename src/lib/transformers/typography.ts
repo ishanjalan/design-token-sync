@@ -17,7 +17,7 @@
  */
 
 import type { TransformResult, Platform } from '$lib/types.js';
-import { capitalize } from './shared.js';
+import { capitalize, bugWarningBlock } from './shared.js';
 
 // ─── Internal types ───────────────────────────────────────────────────────────
 
@@ -63,6 +63,32 @@ export interface DetectedTypographyConventions {
 		twoTier: boolean; // private size objects + exported aliases
 		exportWeights: boolean;
 	};
+	swift: {
+		architecture: 'enum' | 'struct';
+		typeName: string; // e.g. "TypographyStyle"
+		dataStructName: string | null; // e.g. "FontData" for enum pattern
+		dataStructProps: string[]; // e.g. ["fontWeight", "size", "lineHeight"]
+		uiFramework: 'uikit' | 'swiftui' | 'both';
+		includesTracking: boolean;
+		usesDynamicTypeScaling: boolean;
+		dynamicTypeMethodName: string | null; // e.g. "calculateFontSize"
+		nameMap: Record<string, string>; // lowercased name → original casing
+	};
+	kotlin: {
+		architecture: 'object' | 'companion' | 'top-level' | 'class';
+		containerName: string; // e.g. "TypographyTokens"
+		className: string | null; // e.g. "RTypography" for class architecture
+		packageName: string; // e.g. "com.example.design"
+		usesTextStyle: boolean;
+		customDataClass: string | null;
+		dataClassProps: string[];
+		includesM3Builder: boolean;
+		includesLineHeightStyle: boolean;
+		namingStyle: 'camelCase' | 'snake_case';
+		isImmutable: boolean;
+		nameMap: Record<string, string>;
+		bugWarnings: string[];
+	};
 }
 
 const BEST_PRACTICE_TYPO_CONVENTIONS: DetectedTypographyConventions = {
@@ -87,19 +113,54 @@ const BEST_PRACTICE_TYPO_CONVENTIONS: DetectedTypographyConventions = {
 		valueFormat: 'number',
 		twoTier: false,
 		exportWeights: false
+	},
+	swift: {
+		architecture: 'struct',
+		typeName: 'TypographyStyle',
+		dataStructName: null,
+		dataStructProps: [],
+		uiFramework: 'swiftui',
+		includesTracking: true,
+		usesDynamicTypeScaling: false,
+		dynamicTypeMethodName: null,
+		nameMap: {}
+	},
+	kotlin: {
+		architecture: 'object',
+		containerName: 'TypographyTokens',
+		className: null,
+		packageName: 'com.example.design',
+		usesTextStyle: true,
+		customDataClass: null,
+		dataClassProps: [],
+		includesM3Builder: true,
+		includesLineHeightStyle: false,
+		namingStyle: 'camelCase',
+		isImmutable: false,
+		nameMap: {},
+		bugWarnings: []
 	}
 };
 
 export function detectTypographyConventions(
 	refScss?: string,
 	refTs?: string,
-	bestPractices?: boolean
+	bestPractices?: boolean,
+	refSwift?: string,
+	refKotlin?: string
 ): DetectedTypographyConventions {
-	if (bestPractices || (!refScss && !refTs)) return BEST_PRACTICE_TYPO_CONVENTIONS;
+	if (bestPractices) return BEST_PRACTICE_TYPO_CONVENTIONS;
+
+	const hasAnyRef = refScss || refTs || refSwift || refKotlin;
+	if (!hasAnyRef) return BEST_PRACTICE_TYPO_CONVENTIONS;
 
 	const scss = refScss ? detectScssConventions(refScss) : BEST_PRACTICE_TYPO_CONVENTIONS.scss;
 	const ts = refTs ? detectTsConventions(refTs) : BEST_PRACTICE_TYPO_CONVENTIONS.ts;
-	return { scss, ts };
+	const swift = refSwift ? detectSwiftConventions(refSwift) : BEST_PRACTICE_TYPO_CONVENTIONS.swift;
+	const kotlin = refKotlin
+		? detectKotlinConventions(refKotlin)
+		: BEST_PRACTICE_TYPO_CONVENTIONS.kotlin;
+	return { scss, ts, swift, kotlin };
 }
 
 function detectScssConventions(content: string): DetectedTypographyConventions['scss'] {
@@ -189,14 +250,227 @@ function detectTsConventions(content: string): DetectedTypographyConventions['ts
 	};
 }
 
+function detectSwiftConventions(content: string): DetectedTypographyConventions['swift'] {
+	const lines = content.split('\n');
+
+	// Architecture: enum (with cases) vs struct (with static lets)
+	const enumMatch = lines
+		.find((l) => /^\s*(?:public\s+)?enum\s+\w+/.test(l))
+		?.match(/enum\s+(\w+)/);
+	const hasEnumCases = lines.some((l) => /^\s*case\s+\w+/.test(l));
+	const isEnum = !!enumMatch && hasEnumCases;
+
+	const structMatch = lines
+		.find((l) => /^\s*(?:public\s+)?struct\s+\w+/.test(l) && !/ViewModifier/.test(l))
+		?.match(/struct\s+(\w+)/);
+
+	const architecture: 'enum' | 'struct' = isEnum ? 'enum' : 'struct';
+	const typeName = (isEnum ? enumMatch?.[1] : structMatch?.[1]) ?? 'TypographyStyle';
+
+	// Data struct (for enum pattern — the struct that fontData returns)
+	let dataStructName: string | null = null;
+	const dataStructProps: string[] = [];
+
+	if (isEnum) {
+		// Prefer the struct referenced as a return type in computed properties
+		const fontDataReturnMatch = content.match(/var\s+fontData\s*:\s*(\w+)/);
+		if (fontDataReturnMatch) {
+			dataStructName = fontDataReturnMatch[1];
+		} else {
+			const allStructs = lines.filter((l) => /^\s*(?:public\s+)?struct\s+\w+/.test(l));
+			for (const sl of allStructs) {
+				const sm = sl.match(/struct\s+(\w+)/);
+				if (sm && sm[1] !== typeName && !/ViewModifier|Constants/.test(sl)) {
+					dataStructName = sm[1];
+					break;
+				}
+			}
+		}
+		if (dataStructName) {
+			let inStruct = false;
+			let braceDepth = 0;
+			for (const line of lines) {
+				if (line.includes(`struct ${dataStructName}`)) {
+					inStruct = true;
+					braceDepth = 0;
+				}
+				if (inStruct) {
+					braceDepth += (line.match(/\{/g) || []).length;
+					braceDepth -= (line.match(/\}/g) || []).length;
+					const propMatch = line.match(/\b(?:let|var)\s+(\w+)\s*:/);
+					if (propMatch) dataStructProps.push(propMatch[1]);
+					if (braceDepth <= 0 && inStruct && line.includes('}')) break;
+				}
+			}
+		}
+	}
+
+	// UI framework
+	const hasUIKit = lines.some((l) => /\bUIFont\b|\bimport\s+UIKit\b/.test(l));
+	const hasSwiftUI = lines.some(
+		(l) => /\bimport\s+SwiftUI\b|\bFont\.system\b|\bFont\.custom\b/.test(l)
+	);
+	const uiFramework: 'uikit' | 'swiftui' | 'both' =
+		hasUIKit && hasSwiftUI ? 'both' : hasUIKit ? 'uikit' : 'swiftui';
+
+	// Tracking / letter-spacing
+	const includesTracking = lines.some(
+		(l) => /\btracking\b|\bletterSpacing\b/i.test(l) && !l.trim().startsWith('//')
+	);
+
+	// Dynamic type scaling (e.g. calculateFontSize)
+	let usesDynamicTypeScaling = false;
+	let dynamicTypeMethodName: string | null = null;
+
+	const dynamicMethodMatch = content.match(
+		/\bstatic\s+func\s+(\w+)\s*\(\s*_\s+\w+\s*:\s*CGFloat/
+	);
+	if (dynamicMethodMatch) {
+		const candidateName = dynamicMethodMatch[1];
+		const hasContentSizeRef =
+			/UIContentSizeCategory|preferredContentSizeCategory/.test(content);
+		const isCalledInReturn = new RegExp(
+			`${typeName}\\.${candidateName}\\(|self\\.${candidateName}\\(`
+		).test(content);
+		if (hasContentSizeRef || isCalledInReturn) {
+			usesDynamicTypeScaling = true;
+			dynamicTypeMethodName = candidateName;
+		}
+	}
+
+	// Name map from case names (enum) or static let names (struct)
+	const nameMap: Record<string, string> = {};
+	for (const line of lines) {
+		const m = isEnum
+			? line.match(/^\s*case\s+(\w+)/)
+			: line.match(/^\s*static\s+let\s+(\w+)/);
+		if (m) nameMap[m[1].toLowerCase()] = m[1];
+	}
+
+	return {
+		architecture,
+		typeName,
+		dataStructName,
+		dataStructProps,
+		uiFramework,
+		includesTracking,
+		usesDynamicTypeScaling,
+		dynamicTypeMethodName,
+		nameMap
+	};
+}
+
+function detectKotlinConventions(content: string): DetectedTypographyConventions['kotlin'] {
+	const lines = content.split('\n');
+
+	// Package
+	const packageMatch = lines
+		.find((l) => /^\s*package\s+/.test(l))
+		?.match(/package\s+([\w.]+)/);
+	const packageName = packageMatch?.[1] ?? 'com.example.design';
+
+	// @Immutable annotation
+	const isImmutable = lines.some((l) => /^\s*@Immutable\b/.test(l));
+
+	// Architecture: class > object > companion > top-level
+	const classMatch = lines
+		.find((l) => /^\s*class\s+\w+.*constructor/.test(l) || /^\s*class\s+\w+\s*\(/.test(l))
+		?.match(/class\s+(\w+)/);
+	const objectMatch = lines
+		.find((l) => /^\s*(?:internal\s+)?object\s+\w+/.test(l))
+		?.match(/object\s+(\w+)/);
+	const hasCompanion = lines.some((l) => /companion\s+object/.test(l));
+	const topLevelVals = lines.filter(
+		(l) => /^\s*val\s+\w+/.test(l.trim()) && !/^\s*(?:internal\s+)?object/.test(l.trim())
+	);
+
+	let architecture: 'object' | 'companion' | 'top-level' | 'class' = 'object';
+	let containerName = 'TypographyTokens';
+	let className: string | null = null;
+
+	if (classMatch && (isImmutable || /internal\s+constructor/.test(content))) {
+		architecture = 'class';
+		className = classMatch[1];
+		containerName = classMatch[1];
+	} else if (objectMatch) {
+		architecture = 'object';
+		containerName = objectMatch[1];
+	} else if (hasCompanion) {
+		architecture = 'companion';
+	} else if (topLevelVals.length > 0) {
+		architecture = 'top-level';
+	}
+
+	// TextStyle usage
+	const usesTextStyle = lines.some((l) => /\bTextStyle\s*\(/.test(l));
+
+	// LineHeightStyle
+	const includesLineHeightStyle = lines.some((l) => /\bLineHeightStyle\s*\(/.test(l));
+
+	// Naming style: count snake_case vs camelCase val declarations
+	const snakeVals = lines.filter((l) => /^\s*val\s+[a-z]+_[a-z]/.test(l)).length;
+	const camelVals = lines.filter((l) => /^\s*val\s+[a-z]+[A-Z]/.test(l)).length;
+	const namingStyle: 'camelCase' | 'snake_case' = snakeVals > camelVals ? 'snake_case' : 'camelCase';
+
+	// Custom data class
+	const dataClassMatch = lines
+		.find((l) => /^\s*data\s+class\s+/.test(l))
+		?.match(/data\s+class\s+(\w+)/);
+	const customDataClass = dataClassMatch?.[1] ?? null;
+
+	const dataClassProps: string[] = [];
+	if (customDataClass) {
+		const dcLine = lines.find((l) => l.includes(`data class ${customDataClass}`));
+		const propsStr = dcLine?.match(/\((.*)\)/)?.[1] ?? '';
+		for (const seg of propsStr.split(',')) {
+			const propMatch = seg.match(/val\s+(\w+)/);
+			if (propMatch) dataClassProps.push(propMatch[1]);
+		}
+	}
+
+	// M3 builder
+	const includesM3Builder = lines.some(
+		(l) => /\bTypography\s*\(/.test(l) || /MaterialTheme/.test(l)
+	);
+
+	// Name map from val declarations (including constructor parameters)
+	const nameMap: Record<string, string> = {};
+	for (const line of lines) {
+		const valMatch = line.match(/^\s*val\s+(\w+)\s*[=:]/);
+		if (valMatch) nameMap[valMatch[1].toLowerCase()] = valMatch[1];
+	}
+
+	const bugWarnings: string[] = [];
+	if (/footnote.*this\.subhead/i.test(content)) {
+		bugWarnings.push('footnote copy() defaults reference "this.subhead_*" instead of "this.footnote_*" — copy-paste bug.');
+	}
+	if (/RLocalTypography|LocalTypography/i.test(content) && !/slprice/i.test(content)) {
+		bugWarnings.push('RLocalTypography is missing "slprice" entries. Generated output includes all tokens.');
+	}
+
+	return {
+		architecture,
+		containerName,
+		className,
+		packageName,
+		usesTextStyle,
+		customDataClass,
+		dataClassProps,
+		includesM3Builder,
+		includesLineHeightStyle,
+		namingStyle,
+		isImmutable,
+		nameMap,
+		bugWarnings
+	};
+}
+
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 export function transformToTypography(
 	typographyJson: Record<string, unknown>,
 	platforms: Platform[],
-	conventions?: DetectedTypographyConventions,
-	_referenceTypographySwift?: string,
-	_referenceTypographyKotlin?: string
+	conventions?: DetectedTypographyConventions
 ): TransformResult[] {
 	const conv = conventions ?? BEST_PRACTICE_TYPO_CONVENTIONS;
 
@@ -212,7 +486,9 @@ export function transformToTypography(
 		}
 	}
 
-	const entries = parseEntries(raw as Record<string, unknown>);
+	const SKIP_VARIANT_RE = /\((underline|strikethrough|headline)\)/i;
+	const entries = parseEntries(raw as Record<string, unknown>)
+		.filter((e) => !SKIP_VARIANT_RE.test(e.figmaName));
 	/* v8 ignore next -- @preserve */
 	if (entries.length === 0) return [];
 
@@ -230,12 +506,12 @@ export function transformToTypography(
 
 	if (platforms.includes('ios')) {
 		const ios = entries.filter((e) => e.targetPlatform === 'ios');
-		if (ios.length > 0) results.push(generateSwift(ios));
+		if (ios.length > 0) results.push(generateSwift(ios, conv.swift));
 	}
 
 	if (platforms.includes('android')) {
 		const android = entries.filter((e) => e.targetPlatform === 'android');
-		if (android.length > 0) results.push(generateKotlin(android));
+		if (android.length > 0) results.push(generateKotlin(android, conv.kotlin));
 	}
 
 	return results;
@@ -410,8 +686,11 @@ function generateScss(
 		}
 
 		lines.push('// Font sizes, line heights, and letter spacings');
+		const emittedSizeKeys = new Set<string>();
 		for (const entry of entries) {
 			const sizeKey = kebabToScssSize(entry.fullKey);
+			if (emittedSizeKeys.has(sizeKey)) continue;
+			emittedSizeKeys.add(sizeKey);
 			const { value: v } = entry;
 			lines.push(
 				`$${varPfx}${sizeKey}-size: ${fmtSize(v.fontSize)};${v.fontSize ? ` // ${fmtSize(v.fontSize)}` + (conv.sizeUnit === 'rem' ? ` * 16 = ${v.fontSize}px` : '') : ''}`
@@ -641,7 +920,37 @@ function swiftTextStyle(fontSize: number): string {
 	return '.caption2';
 }
 
-function generateSwift(entries: ParsedEntry[]): TransformResult {
+function generateSwift(
+	entries: ParsedEntry[],
+	conv: DetectedTypographyConventions['swift']
+): TransformResult {
+	return conv.architecture === 'enum'
+		? generateSwiftEnum(entries, conv)
+		: generateSwiftStruct(entries, conv);
+}
+
+function resolveNameFromMap(
+	shortKey: string,
+	nameMap: Record<string, string>,
+	namingStyle: 'camelCase' | 'snake_case' = 'camelCase'
+): string {
+	const camel = kebabToCamel(shortKey);
+	const mapped = nameMap[camel.toLowerCase()];
+	if (mapped) return mapped;
+	if (namingStyle === 'snake_case') return kebabToSnake(shortKey);
+	return camel;
+}
+
+function kebabToSnake(s: string): string {
+	return s.replace(/-/g, '_').replace(/_(\d)/g, '$1');
+}
+
+// ── SwiftUI struct + static let pattern (best-practices default) ─────────────
+
+function generateSwiftStruct(
+	entries: ParsedEntry[],
+	conv: DetectedTypographyConventions['swift']
+): TransformResult {
 	const lines: string[] = [];
 	lines.push('// Typography.swift');
 	lines.push('// Auto-generated from Figma Text Styles — DO NOT EDIT');
@@ -650,53 +959,52 @@ function generateSwift(entries: ParsedEntry[]): TransformResult {
 	lines.push('import SwiftUI');
 	lines.push('');
 
-	// ── TypographyStyle struct ────────────────────────────────────────────────
-	// Bundles font + tracking + lineSpacing into one value — 2025 best practice.
-	// Usage: Text("Hello").typography(.bodyR)
 	lines.push('// MARK: - Typography Style');
-	lines.push('/// Bundles a SwiftUI Font with its tracking and line-spacing values.');
+	const propsDesc = conv.includesTracking
+		? 'its tracking and line-spacing values'
+		: 'its line-spacing value';
+	lines.push(`/// Bundles a SwiftUI Font with ${propsDesc}.`);
 	lines.push('/// Apply with: Text("…").typography(.bodyR)');
-	lines.push('public struct TypographyStyle {');
+	lines.push(`public struct ${conv.typeName} {`);
 	lines.push('  public let font: Font');
-	lines.push('  /// Letter-spacing in points (Figma "letterSpacing" value).');
-	lines.push('  public let tracking: CGFloat');
+	if (conv.includesTracking) {
+		lines.push('  /// Letter-spacing in points (Figma "letterSpacing" value).');
+		lines.push('  public let tracking: CGFloat');
+	}
 	lines.push('  /// Extra space added between lines: lineHeight − fontSize.');
 	lines.push('  public let lineSpacing: CGFloat');
 	lines.push('');
-	lines.push('  public init(font: Font, tracking: CGFloat = 0, lineSpacing: CGFloat = 0) {');
+	const initParams = conv.includesTracking
+		? 'font: Font, tracking: CGFloat = 0, lineSpacing: CGFloat = 0'
+		: 'font: Font, lineSpacing: CGFloat = 0';
+	lines.push(`  public init(${initParams}) {`);
 	lines.push('    self.font = font');
-	lines.push('    self.tracking = tracking');
+	if (conv.includesTracking) lines.push('    self.tracking = tracking');
 	lines.push('    self.lineSpacing = lineSpacing');
 	lines.push('  }');
 	lines.push('}');
 	lines.push('');
 
-	// ── ViewModifier ─────────────────────────────────────────────────────────
 	lines.push('// MARK: - Typography Modifier');
 	lines.push('private struct TypographyModifier: ViewModifier {');
-	lines.push('  let style: TypographyStyle');
+	lines.push(`  let style: ${conv.typeName}`);
 	lines.push('');
 	lines.push('  func body(content: Content) -> some View {');
 	lines.push('    content');
 	lines.push('      .font(style.font)');
-	lines.push('      .tracking(style.tracking)');
+	if (conv.includesTracking) lines.push('      .tracking(style.tracking)');
 	lines.push('      .lineSpacing(style.lineSpacing)');
 	lines.push('  }');
 	lines.push('}');
 	lines.push('');
 	lines.push('public extension View {');
 	lines.push('  /// Apply a Figma text style. Example: Text("Hello").typography(.bodyR)');
-	lines.push('  func typography(_ style: TypographyStyle) -> some View {');
+	lines.push(`  func typography(_ style: ${conv.typeName}) -> some View {`);
 	lines.push('    modifier(TypographyModifier(style: style))');
 	lines.push('  }');
 	lines.push('}');
 	lines.push('');
 
-	// ── Token definitions ─────────────────────────────────────────────────────
-	// Note: SF Pro is the iOS system font — use Font.system() (not Font.custom()).
-	// For custom fonts (e.g. Inter Variable), bundle them in your app and register
-	// them in Info.plist. Font.custom("Inter Variable", …) will then work correctly.
-	// relativeTo: enables Dynamic Type scaling for accessibility.
 	lines.push('// MARK: - Typography Tokens');
 	lines.push('// Note: SF Pro is the iOS system font — Font.system() is correct and preferred.');
 	lines.push(
@@ -705,13 +1013,13 @@ function generateSwift(entries: ParsedEntry[]): TransformResult {
 	lines.push(
 		'// lineSpacing = Figma lineHeight − fontSize (approximation for SwiftUI lineSpacing).'
 	);
-	lines.push('public extension TypographyStyle {');
+	lines.push(`public extension ${conv.typeName} {`);
 
 	const grouped = groupEntries(entries);
 	for (const [groupLabel, groupEntries] of grouped) {
 		lines.push(`  // ${groupLabel}`);
 		for (const entry of groupEntries) {
-			const propName = kebabToCamel(entry.shortKey);
+			const propName = resolveNameFromMap(entry.shortKey, conv.nameMap);
 			const { value: v } = entry;
 			const isSfPro = v.fontFamily.toLowerCase().startsWith('sf pro');
 			const textStyle = swiftTextStyle(v.fontSize);
@@ -719,19 +1027,210 @@ function generateSwift(entries: ParsedEntry[]): TransformResult {
 				? `Font.system(size: ${v.fontSize}, weight: ${swiftWeight(v.fontWeight)}, design: .default)`
 				: `Font.custom("${v.fontFamily}", size: ${v.fontSize}, relativeTo: ${textStyle}).weight(${swiftWeight(v.fontWeight)})`;
 			const lineSpacing = Math.max(0, v.lineHeight - v.fontSize);
-			const hasTracking = v.letterSpacing !== 0;
+			const hasTracking = conv.includesTracking && v.letterSpacing !== 0;
 			if (hasTracking) {
 				lines.push(
-					`  static let ${propName} = TypographyStyle(font: ${fontExpr}, tracking: ${v.letterSpacing}, lineSpacing: ${lineSpacing})`
+					`  static let ${propName} = ${conv.typeName}(font: ${fontExpr}, tracking: ${v.letterSpacing}, lineSpacing: ${lineSpacing})`
 				);
 			} else {
 				lines.push(
-					`  static let ${propName} = TypographyStyle(font: ${fontExpr}, lineSpacing: ${lineSpacing})`
+					`  static let ${propName} = ${conv.typeName}(font: ${fontExpr}, lineSpacing: ${lineSpacing})`
 				);
 			}
 		}
 	}
 
+	lines.push('}');
+	lines.push('');
+
+	return {
+		filename: 'Typography.swift',
+		content: lines.join('\n') + '\n',
+		format: 'swift',
+		platform: 'ios'
+	};
+}
+
+// ── UIKit enum + switch + FontData pattern (match-existing) ──────────────────
+
+function buildSwiftDataStructArgs(
+	v: TypographyValue,
+	props: string[],
+	wrapFn?: string
+): string {
+	const wrap = (val: number) => (wrapFn ? `${wrapFn}(${val})` : `${val}`);
+	const args: string[] = [];
+	for (const prop of props) {
+		if (prop === 'fontWeight') {
+			args.push(`fontWeight: ${swiftWeight(v.fontWeight)}`);
+		} else if (prop === 'size' || prop === 'fontSize') {
+			args.push(`${prop}: ${wrap(v.fontSize)}`);
+		} else if (prop === 'lineHeight') {
+			args.push(`lineHeight: ${wrap(v.lineHeight)}`);
+		} else if (prop === 'tracking' || prop === 'letterSpacing') {
+			args.push(`${prop}: ${v.letterSpacing}`);
+		}
+	}
+	return args.join(', ');
+}
+
+function generateSwiftEnum(
+	entries: ParsedEntry[],
+	conv: DetectedTypographyConventions['swift']
+): TransformResult {
+	const lines: string[] = [];
+	lines.push('// Typography.swift');
+	lines.push('// Auto-generated from Figma Text Styles — DO NOT EDIT');
+	lines.push(`// Generated: ${new Date().toISOString()}`);
+	lines.push('');
+
+	if (conv.uiFramework === 'uikit' || conv.uiFramework === 'both') {
+		lines.push('import Foundation');
+		lines.push('import UIKit');
+	}
+	if (conv.uiFramework === 'swiftui' || conv.uiFramework === 'both') {
+		lines.push('import SwiftUI');
+	}
+	lines.push('');
+
+	// ── Enum declaration ─────────────────────────────────────────────────────
+	lines.push(`public enum ${conv.typeName}: String {`);
+	const grouped = groupEntries(entries);
+	for (const [, gEntries] of grouped) {
+		lines.push('');
+		for (const entry of gEntries) {
+			lines.push(`    case ${resolveNameFromMap(entry.shortKey, conv.nameMap)}`);
+		}
+	}
+	lines.push('');
+	lines.push('}');
+	lines.push('');
+
+	// ── FontConstants struct (for dynamic type scaling) ─────────────────────
+	if (conv.usesDynamicTypeScaling) {
+		lines.push('struct FontConstants {');
+		lines.push('');
+		lines.push('    static let addingRatio: CGFloat = 1.5');
+		lines.push('    static let subtractingRatio: CGFloat = -1.0');
+		lines.push('');
+		lines.push('}');
+		lines.push('');
+	}
+
+	// ── Extension with fontData switch ───────────────────────────────────────
+	const structName = conv.dataStructName ?? 'FontData';
+	const props =
+		conv.dataStructProps.length > 0 ? conv.dataStructProps : ['fontWeight', 'size', 'lineHeight'];
+
+	const wrapFn = conv.usesDynamicTypeScaling && conv.dynamicTypeMethodName
+		? `${conv.typeName}.${conv.dynamicTypeMethodName}`
+		: undefined;
+
+	lines.push(`extension ${conv.typeName} {`);
+	lines.push('');
+	lines.push(`    var fontData: ${structName} {`);
+	lines.push('');
+	lines.push('        switch self {');
+
+	for (const [, gEntries] of grouped) {
+		lines.push('');
+		for (const entry of gEntries) {
+			const name = resolveNameFromMap(entry.shortKey, conv.nameMap);
+			lines.push(`        case .${name}:`);
+			lines.push(
+				`            return ${structName}(${buildSwiftDataStructArgs(entry.value, props, wrapFn)})`
+			);
+		}
+	}
+
+	lines.push('');
+	lines.push('        }');
+	lines.push('');
+	lines.push('    }');
+
+	// ── calculateFontSize static method ──────────────────────────────────
+	if (conv.usesDynamicTypeScaling && conv.dynamicTypeMethodName) {
+		lines.push('');
+		lines.push(`    public static func ${conv.dynamicTypeMethodName}(_ standardFontSize: CGFloat, fmax: CGFloat = .infinity, fmin: CGFloat = 11) -> CGFloat {`);
+		lines.push('');
+		lines.push('        var contentSize: UIContentSizeCategory = .large');
+		lines.push('        if UIAccessibility.isLargerTextEnabled {');
+		lines.push('            contentSize = UIApplication.shared.preferredContentSizeCategory');
+		lines.push('        }');
+		lines.push('');
+		lines.push('        let minFontSize = standardFontSize < fmin ? standardFontSize : fmin');
+		lines.push('        let maxFontSize = standardFontSize > fmax ? standardFontSize : fmax');
+		lines.push('        switch contentSize {');
+		lines.push('        case .extraSmall:');
+		lines.push('            return max(minFontSize, standardFontSize + (FontConstants.subtractingRatio * 3))');
+		lines.push('        case .small:');
+		lines.push('            return max(minFontSize, standardFontSize + (FontConstants.subtractingRatio * 2))');
+		lines.push('        case .medium:');
+		lines.push('            return max(minFontSize, standardFontSize + (FontConstants.subtractingRatio * 1))');
+		lines.push('        case .large:');
+		lines.push('            return standardFontSize');
+		lines.push('        case .extraLarge:');
+		lines.push('            return min(maxFontSize, standardFontSize + (FontConstants.addingRatio * 1))');
+		lines.push('        case .extraExtraLarge:');
+		lines.push('            return min(maxFontSize, standardFontSize + (FontConstants.addingRatio * 1.5))');
+		lines.push('        case .extraExtraExtraLarge:');
+		lines.push('            return min(maxFontSize, standardFontSize + (FontConstants.addingRatio * 2))');
+		lines.push('        case .accessibilityMedium:');
+		lines.push('            return min(maxFontSize, standardFontSize + (FontConstants.addingRatio * 3))');
+		lines.push('        case .accessibilityLarge:');
+		lines.push('            return min(maxFontSize, standardFontSize + (FontConstants.addingRatio * 3.5))');
+		lines.push('        case .accessibilityExtraLarge:');
+		lines.push('            return min(maxFontSize, standardFontSize + (FontConstants.addingRatio * 4))');
+		lines.push('        case .accessibilityExtraExtraLarge:');
+		lines.push('            return min(maxFontSize, standardFontSize + (FontConstants.addingRatio * 4.5))');
+		lines.push('        case .accessibilityExtraExtraExtraLarge:');
+		lines.push('            return min(maxFontSize, standardFontSize + (FontConstants.addingRatio * 5))');
+		lines.push('        default:');
+		lines.push('            return standardFontSize');
+		lines.push('        }');
+		lines.push('    }');
+	}
+
+	lines.push('');
+	lines.push('}');
+	lines.push('');
+
+	// ── UIFont / SwiftUI bridge extensions ───────────────────────────────────
+	if (conv.uiFramework === 'uikit' || conv.uiFramework === 'both') {
+		lines.push(`extension ${conv.typeName} {`);
+		lines.push('');
+		lines.push('    public var font: UIFont {');
+		lines.push(
+			'        return UIFont.systemFont(ofSize: fontData.size, weight: fontData.fontWeight)'
+		);
+		lines.push('    }');
+		if (conv.uiFramework === 'both') {
+			lines.push('');
+			lines.push('    public var suiFont: Font {');
+			lines.push('        return Font(font)');
+			lines.push('    }');
+		}
+		lines.push('');
+		lines.push('}');
+		lines.push('');
+	}
+
+	// ── Data struct ──────────────────────────────────────────────────────────
+	const weightType =
+		conv.uiFramework === 'uikit' || conv.uiFramework === 'both'
+			? 'UIFont.Weight'
+			: 'Font.Weight';
+
+	lines.push(`public struct ${structName} {`);
+	lines.push('');
+	for (const prop of props) {
+		if (prop === 'fontWeight') {
+			lines.push(`    let ${prop}: ${weightType}`);
+		} else {
+			lines.push(`    let ${prop}: CGFloat`);
+		}
+	}
+	lines.push('');
 	lines.push('}');
 	lines.push('');
 
@@ -761,72 +1260,243 @@ function kotlinWeight(w: number): string {
 	return KOTLIN_WEIGHTS[w] ?? 'FontWeight.Normal';
 }
 
-function generateKotlin(entries: ParsedEntry[]): TransformResult {
+function generateKotlin(
+	entries: ParsedEntry[],
+	conv: DetectedTypographyConventions['kotlin']
+): TransformResult {
+	if (conv.architecture === 'class') {
+		return generateKotlinClass(entries, conv);
+	}
+
 	const lines: string[] = [];
+	const hasReference = Object.keys(conv.nameMap).length > 0;
+
 	lines.push('// Typography.kt');
 	lines.push('// Auto-generated from Figma Text Styles — DO NOT EDIT');
 	lines.push(`// Generated: ${new Date().toISOString()}`);
 	lines.push('');
-	lines.push('package com.example.design // TODO: update to your package name');
+
+	lines.push(...bugWarningBlock(conv.bugWarnings, '//'));
+
+	const isDefaultPackage = conv.packageName === 'com.example.design';
+	lines.push(
+		`package ${conv.packageName}${!hasReference && isDefaultPackage ? ' // TODO: update to your package name' : ''}`
+	);
 	lines.push('');
-	lines.push('import androidx.compose.material3.Typography');
-	lines.push('import androidx.compose.ui.text.TextStyle');
-	lines.push('import androidx.compose.ui.text.font.FontFamily');
+
+	if (conv.includesM3Builder) lines.push('import androidx.compose.material3.Typography');
+	if (conv.usesTextStyle || !conv.customDataClass) {
+		lines.push('import androidx.compose.ui.text.TextStyle');
+		lines.push('import androidx.compose.ui.text.font.FontFamily');
+	}
 	lines.push('import androidx.compose.ui.text.font.FontWeight');
-	lines.push('import androidx.compose.ui.unit.sp');
+	if (conv.usesTextStyle || !conv.customDataClass) lines.push('import androidx.compose.ui.unit.sp');
 	lines.push('');
-	lines.push('// TODO: Replace FontFamily.Default with your registered font family.');
-	lines.push(
-		'// Example: val InterVariable = FontFamily(Font(R.font.inter_variable, FontWeight.Normal),'
-	);
-	lines.push(
-		'//                                          Font(R.font.inter_variable_medium, FontWeight.Medium),'
-	);
-	lines.push(
-		'//                                          Font(R.font.inter_variable_bold, FontWeight.Bold))'
-	);
-	lines.push('');
-	lines.push('object TypographyTokens {');
+
+	if (!hasReference) {
+		lines.push('// TODO: Replace FontFamily.Default with your registered font family.');
+		lines.push(
+			'// Example: val InterVariable = FontFamily(Font(R.font.inter_variable, FontWeight.Normal),'
+		);
+		lines.push(
+			'//                                          Font(R.font.inter_variable_medium, FontWeight.Medium),'
+		);
+		lines.push(
+			'//                                          Font(R.font.inter_variable_bold, FontWeight.Bold))'
+		);
+		lines.push('');
+	}
+
+	if (conv.customDataClass) {
+		const propsStr = conv.dataClassProps
+			.map((p) => (p === 'fontWeight' ? `val ${p}: FontWeight` : `val ${p}: Float`))
+			.join(', ');
+		lines.push(`data class ${conv.customDataClass}(${propsStr})`);
+		lines.push('');
+	}
+
+	const isObject = conv.architecture === 'object';
+	const isCompanion = conv.architecture === 'companion';
+
+	if (isObject) {
+		lines.push(`object ${conv.containerName} {`);
+	} else if (isCompanion) {
+		lines.push(`class ${conv.containerName} {`);
+		lines.push('    companion object {');
+	}
+
+	const indent = isCompanion ? '        ' : isObject ? '    ' : '';
 
 	const grouped = groupEntries(entries);
-	for (const [groupLabel, groupEntries] of grouped) {
-		lines.push(`    // ${groupLabel}`);
-		for (const entry of groupEntries) {
-			const propName = kebabToCamel(entry.shortKey);
+	for (const [groupLabel, gEntries] of grouped) {
+		lines.push(`${indent}// ${groupLabel}`);
+		for (const entry of gEntries) {
+			const propName = resolveNameFromMap(entry.shortKey, conv.nameMap, conv.namingStyle);
 			const { value: v } = entry;
-			const lsFormatted = v.letterSpacing === 0 ? '0.sp' : `(${v.letterSpacing}).sp`;
-			lines.push(`    val ${propName} = TextStyle(`);
-			lines.push(`        fontFamily = FontFamily.Default, // TODO: replace with bundled font`);
-			lines.push(`        fontSize = ${v.fontSize}.sp,`);
-			lines.push(`        fontWeight = ${kotlinWeight(v.fontWeight)},`);
-			lines.push(`        lineHeight = ${v.lineHeight}.sp,`);
-			lines.push(`        letterSpacing = ${lsFormatted},`);
-			lines.push('    )');
+
+			if (conv.customDataClass) {
+				const args = buildKotlinDataClassArgs(v, conv.dataClassProps);
+				lines.push(`${indent}val ${propName} = ${conv.customDataClass}(${args})`);
+			} else {
+				const lsFormatted = v.letterSpacing === 0 ? '0.sp' : `(${v.letterSpacing}).sp`;
+				const fontFamilyComment = hasReference ? '' : ' // TODO: replace with bundled font';
+				lines.push(`${indent}val ${propName} = TextStyle(`);
+				lines.push(`${indent}    fontFamily = FontFamily.Default,${fontFamilyComment}`);
+				lines.push(`${indent}    fontSize = ${v.fontSize}.sp,`);
+				lines.push(`${indent}    fontWeight = ${kotlinWeight(v.fontWeight)},`);
+				lines.push(`${indent}    lineHeight = ${v.lineHeight}.sp,`);
+				lines.push(`${indent}    letterSpacing = ${lsFormatted},`);
+				lines.push(`${indent})`);
+			}
 		}
 		lines.push('');
 	}
 
+	if (isCompanion) {
+		lines.push('    }');
+		lines.push('}');
+	} else if (isObject) {
+		lines.push('}');
+	}
+	lines.push('');
+
+	if (conv.includesM3Builder) {
+		lines.push(
+			'// Material3 Typography builder — pass to MaterialTheme(typography = appTypography())'
+		);
+		lines.push('// TODO: map your token objects to M3 text style roles below.');
+		lines.push('fun appTypography() = Typography(');
+		lines.push(`    // displayLarge   = ${conv.containerName}.xlargeTitleR,`);
+		lines.push(`    // headlineLarge  = ${conv.containerName}.largeTitleR,`);
+		lines.push(`    // titleLarge     = ${conv.containerName}.title1R,`);
+		lines.push(`    // bodyLarge      = ${conv.containerName}.bodyR,`);
+		lines.push(`    // bodyMedium     = ${conv.containerName}.subheadR,`);
+		lines.push(`    // bodySmall      = ${conv.containerName}.footnoteR,`);
+		lines.push(`    // labelSmall     = ${conv.containerName}.captionR,`);
+		lines.push(')');
+		lines.push('');
+	}
+
+	return {
+		filename: 'Typography.kt',
+		content: lines.join('\n') + '\n',
+		format: 'kotlin',
+		platform: 'android'
+	};
+}
+
+function generateKotlinClass(
+	entries: ParsedEntry[],
+	conv: DetectedTypographyConventions['kotlin']
+): TransformResult {
+	const lines: string[] = [];
+	const className = conv.className ?? conv.containerName;
+
+	lines.push('// Typography.kt');
+	lines.push('// Auto-generated from Figma Text Styles — DO NOT EDIT');
+	lines.push(`// Generated: ${new Date().toISOString()}`);
+	lines.push('');
+
+	lines.push(...bugWarningBlock(conv.bugWarnings, '//'));
+
+	lines.push(`package ${conv.packageName}`);
+	lines.push('');
+
+	if (conv.isImmutable) lines.push('import androidx.compose.runtime.Immutable');
+	lines.push('import androidx.compose.ui.text.TextStyle');
+	lines.push('import androidx.compose.ui.text.font.FontFamily');
+	lines.push('import androidx.compose.ui.text.font.FontWeight');
+	if (conv.includesLineHeightStyle) {
+		lines.push('import androidx.compose.ui.text.style.LineHeightStyle');
+	}
+	lines.push('import androidx.compose.ui.unit.sp');
+	lines.push('');
+
+	const propNames = entries.map((e) => resolveNameFromMap(e.shortKey, conv.nameMap, conv.namingStyle));
+
+	// Primary constructor
+	if (conv.isImmutable) lines.push('@Immutable');
+	lines.push(`class ${className} internal constructor(`);
+	for (let i = 0; i < entries.length; i++) {
+		const comma = i < entries.length - 1 ? ',' : '';
+		lines.push(`    val ${propNames[i]}: TextStyle${comma}`);
+	}
+	lines.push(') {');
+	lines.push('');
+
+	// Secondary constructor with defaults
+	lines.push('    constructor(');
+	lines.push('        defaultFontFamily: FontFamily = FontFamily.Default,');
+	lines.push('');
+	for (let i = 0; i < entries.length; i++) {
+		const { value: v } = entries[i];
+		const lsFormatted = v.letterSpacing === 0 ? '0.sp' : `(${v.letterSpacing}).sp`;
+		const comma = i < entries.length - 1 ? ',' : '';
+		lines.push(`        ${propNames[i]}: TextStyle = TextStyle(`);
+		lines.push(`            fontWeight = ${kotlinWeight(v.fontWeight)},`);
+		lines.push(`            fontSize = ${v.fontSize}.sp,`);
+		lines.push(`            lineHeight = ${v.lineHeight}.sp,`);
+		lines.push(`            letterSpacing = ${lsFormatted},`);
+		if (conv.includesLineHeightStyle) {
+			lines.push('            lineHeightStyle = LineHeightStyle(');
+			lines.push('                alignment = LineHeightStyle.Alignment.Center,');
+			lines.push('                trim = LineHeightStyle.Trim.None');
+			lines.push('            )');
+		}
+		lines.push(`        )${comma}`);
+	}
+	lines.push(`    ) : this(`);
+	for (let i = 0; i < entries.length; i++) {
+		const comma = i < entries.length - 1 ? ',' : '';
+		lines.push(`        ${propNames[i]} = ${propNames[i]}.withDefaultFontFamily(defaultFontFamily)${comma}`);
+	}
+	lines.push('    )');
+	lines.push('');
+
+	// copy()
+	lines.push('    fun copy(');
+	for (let i = 0; i < entries.length; i++) {
+		const comma = i < entries.length - 1 ? ',' : '';
+		lines.push(`        ${propNames[i]}: TextStyle = this.${propNames[i]}${comma}`);
+	}
+	lines.push(`    ): ${className} = ${className}(`);
+	for (let i = 0; i < entries.length; i++) {
+		const comma = i < entries.length - 1 ? ',' : '';
+		lines.push(`        ${propNames[i]} = ${propNames[i]}${comma}`);
+	}
+	lines.push('    )');
+	lines.push('');
+
+	// equals()
+	lines.push('    override fun equals(other: Any?): Boolean {');
+	lines.push('        if (this === other) return true');
+	lines.push(`        if (other !is ${className}) return false`);
+	for (const name of propNames) {
+		lines.push(`        if (${name} != other.${name}) return false`);
+	}
+	lines.push('        return true');
+	lines.push('    }');
+	lines.push('');
+
+	// hashCode()
+	lines.push('    override fun hashCode(): Int {');
+	lines.push(`        var result = ${propNames[0]}.hashCode()`);
+	for (let i = 1; i < propNames.length; i++) {
+		lines.push(`        result = 31 * result + ${propNames[i]}.hashCode()`);
+	}
+	lines.push('        return result');
+	lines.push('    }');
+	lines.push('');
+
+	// toString()
+	lines.push('    override fun toString(): String = ""');
 	lines.push('}');
 	lines.push('');
 
-	// ── Material3 Typography builder ────────────────────────────────────────────
-	// Wire your token objects into Material3's Typography so you can pass them to
-	// MaterialTheme. M3 roles: displayLarge/Medium/Small, headlineLarge/Medium/Small,
-	// titleLarge/Medium/Small, bodyLarge/Medium/Small, labelLarge/Medium/Small.
-	// See https://m3.material.io/styles/typography/type-scale-tokens
-	lines.push(
-		'// Material3 Typography builder — pass to MaterialTheme(typography = appTypography())'
-	);
-	lines.push('// TODO: map your token objects to M3 text style roles below.');
-	lines.push('fun appTypography() = Typography(');
-	lines.push('    // displayLarge   = TypographyTokens.xlargeTitleR,');
-	lines.push('    // headlineLarge  = TypographyTokens.largeTitleR,');
-	lines.push('    // titleLarge     = TypographyTokens.title1R,');
-	lines.push('    // bodyLarge      = TypographyTokens.bodyR,');
-	lines.push('    // bodyMedium     = TypographyTokens.subheadR,');
-	lines.push('    // bodySmall      = TypographyTokens.footnoteR,');
-	lines.push('    // labelSmall     = TypographyTokens.captionR,');
-	lines.push(')');
+	// withDefaultFontFamily helper
+	lines.push('private fun TextStyle.withDefaultFontFamily(default: FontFamily): TextStyle {');
+	lines.push('    return if (fontFamily != null) this else copy(fontFamily = default)');
+	lines.push('}');
 	lines.push('');
 
 	return {
@@ -835,6 +1505,17 @@ function generateKotlin(entries: ParsedEntry[]): TransformResult {
 		format: 'kotlin',
 		platform: 'android'
 	};
+}
+
+function buildKotlinDataClassArgs(v: TypographyValue, props: string[]): string {
+	const args: string[] = [];
+	for (const prop of props) {
+		if (prop === 'fontWeight') args.push(`fontWeight = ${kotlinWeight(v.fontWeight)}`);
+		else if (prop === 'fontSize') args.push(`fontSize = ${v.fontSize}f`);
+		else if (prop === 'lineHeight') args.push(`lineHeight = ${v.lineHeight}f`);
+		else if (prop === 'letterSpacing') args.push(`letterSpacing = ${v.letterSpacing}f`);
+	}
+	return args.join(', ');
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

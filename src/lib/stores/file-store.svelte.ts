@@ -10,12 +10,12 @@ import {
 	clearRefFile,
 	savePlatforms,
 	loadPlatforms,
-	saveBestPractices,
-	loadBestPractices,
 	clearAllStorage,
 	migrateStorageIfNeeded
 } from '$lib/storage.js';
 import { validateFigmaJson, computeInsight } from '$lib/file-validation.js';
+import { computeConventionHints } from '$lib/convention-hints.js';
+import { computeValidation, type ValidationSummary } from '$lib/pre-validation.js';
 import { parseSwatches } from '$lib/swatch-utils.js';
 import { buildDependencyMap } from '$lib/token-analysis.js';
 
@@ -24,27 +24,19 @@ export const ALL_KEYS: DropZoneKey[] = [
 	'darkColors',
 	'values',
 	'typography',
-	'referencePrimitivesScss',
-	'referenceColorsScss',
-	'referencePrimitivesTs',
-	'referenceColorsTs',
+	'referenceColorsWeb',
+	'referenceTypographyWeb',
 	'referenceColorsSwift',
 	'referenceColorsKotlin',
-	'referenceTypographyScss',
-	'referenceTypographyTs',
 	'referenceTypographySwift',
 	'referenceTypographyKotlin'
 ];
 
 export const REF_KEYS: DropZoneKey[] = [
-	'referencePrimitivesScss',
-	'referenceColorsScss',
-	'referencePrimitivesTs',
-	'referenceColorsTs',
+	'referenceColorsWeb',
+	'referenceTypographyWeb',
 	'referenceColorsSwift',
 	'referenceColorsKotlin',
-	'referenceTypographyScss',
-	'referenceTypographyTs',
 	'referenceTypographySwift',
 	'referenceTypographyKotlin'
 ];
@@ -52,11 +44,12 @@ export const REF_KEYS: DropZoneKey[] = [
 class FileStoreClass {
 	selectedPlatforms = $state<Platform[]>(['web']);
 	selectedOutputs = $state<OutputCategory[]>(['colors', 'typography']);
-	bestPractices = $state(true);
 	loading = $state(false);
 	bulkDropActive = $state(false);
 	needsRegeneration = $state(false);
 	fileInsights = $state<Partial<Record<DropZoneKey, FileInsight>>>({});
+	conventionHints = $state<Partial<Record<DropZoneKey, string[]>>>({});
+	validations = $state<Partial<Record<DropZoneKey, ValidationSummary>>>({});
 	swatches = $state<Swatch[]>([]);
 	dependencyMap = $state<DependencyEntry[]>([]);
 	prevPlatforms = $state<string>(JSON.stringify(['web']));
@@ -70,6 +63,8 @@ class FileStoreClass {
 			platforms: ['web', 'android', 'ios'],
 			required: true,
 			file: null,
+			files: [],
+			multiFile: false,
 			dragging: false,
 			restored: false,
 			warning: null
@@ -82,6 +77,8 @@ class FileStoreClass {
 			platforms: ['web', 'android', 'ios'],
 			required: true,
 			file: null,
+			files: [],
+			multiFile: false,
 			dragging: false,
 			restored: false,
 			warning: null
@@ -94,54 +91,36 @@ class FileStoreClass {
 			platforms: ['web', 'android', 'ios'],
 			required: true,
 			file: null,
+			files: [],
+			multiFile: false,
 			dragging: false,
 			restored: false,
 			warning: null
 		},
-		referencePrimitivesScss: {
-			label: 'Primitives.scss',
-			accept: '.scss,text/plain',
-			hint: 'Current file — primitive color variables',
+		referenceColorsWeb: {
+			label: 'Color files',
+			accept: '.scss,.ts,.css,text/plain',
+			hint: 'Drop your existing color files (.scss, .ts, .css)',
 			ext: 'scss',
 			platforms: ['web'],
 			required: false,
 			file: null,
+			files: [],
+			multiFile: true,
 			dragging: false,
 			restored: false,
 			warning: null
 		},
-		referenceColorsScss: {
-			label: 'Colors.scss',
-			accept: '.scss,text/plain',
-			hint: 'Current file — semantic color variables',
+		referenceTypographyWeb: {
+			label: 'Typography files',
+			accept: '.scss,.ts,.css,text/plain',
+			hint: 'Drop your existing typography files (.scss, .ts, .css)',
 			ext: 'scss',
 			platforms: ['web'],
 			required: false,
 			file: null,
-			dragging: false,
-			restored: false,
-			warning: null
-		},
-		referencePrimitivesTs: {
-			label: 'Primitives.ts',
-			accept: '.ts,text/plain',
-			hint: 'Current file — primitive color constants',
-			ext: 'ts',
-			platforms: ['web'],
-			required: false,
-			file: null,
-			dragging: false,
-			restored: false,
-			warning: null
-		},
-		referenceColorsTs: {
-			label: 'Colors.ts',
-			accept: '.ts,text/plain',
-			hint: 'Current file — semantic color constants',
-			ext: 'ts',
-			platforms: ['web'],
-			required: false,
-			file: null,
+			files: [],
+			multiFile: true,
 			dragging: false,
 			restored: false,
 			warning: null
@@ -149,11 +128,13 @@ class FileStoreClass {
 		referenceColorsSwift: {
 			label: 'Colors.swift',
 			accept: '.swift,text/plain',
-			hint: 'Current file — matches existing naming conventions',
+			hint: 'Drop your existing color files',
 			ext: 'swift',
 			platforms: ['ios'],
 			required: false,
 			file: null,
+			files: [],
+			multiFile: true,
 			dragging: false,
 			restored: false,
 			warning: null
@@ -161,35 +142,13 @@ class FileStoreClass {
 		referenceColorsKotlin: {
 			label: 'Colors.kt',
 			accept: '.kt,text/plain',
-			hint: 'Current file — matches existing naming conventions',
+			hint: 'Drop your existing color files',
 			ext: 'kt',
 			platforms: ['android'],
 			required: false,
 			file: null,
-			dragging: false,
-			restored: false,
-			warning: null
-		},
-		referenceTypographyScss: {
-			label: 'Typography.scss',
-			accept: '.scss,text/plain',
-			hint: 'Current file — typography variables & mixins',
-			ext: 'scss',
-			platforms: ['web'],
-			required: false,
-			file: null,
-			dragging: false,
-			restored: false,
-			warning: null
-		},
-		referenceTypographyTs: {
-			label: 'Typography.ts',
-			accept: '.ts,text/plain',
-			hint: 'Current file — typography constants',
-			ext: 'ts',
-			platforms: ['web'],
-			required: false,
-			file: null,
+			files: [],
+			multiFile: true,
 			dragging: false,
 			restored: false,
 			warning: null
@@ -197,11 +156,13 @@ class FileStoreClass {
 		referenceTypographySwift: {
 			label: 'Typography.swift',
 			accept: '.swift,text/plain',
-			hint: 'Current file — typography styles',
+			hint: 'Drop your existing typography files',
 			ext: 'swift',
 			platforms: ['ios'],
 			required: false,
 			file: null,
+			files: [],
+			multiFile: true,
 			dragging: false,
 			restored: false,
 			warning: null
@@ -209,11 +170,13 @@ class FileStoreClass {
 		referenceTypographyKotlin: {
 			label: 'Typography.kt',
 			accept: '.kt,text/plain',
-			hint: 'Current file — typography text styles',
+			hint: 'Drop your existing typography files',
 			ext: 'kt',
 			platforms: ['android'],
 			required: false,
 			file: null,
+			files: [],
+			multiFile: true,
 			dragging: false,
 			restored: false,
 			warning: null
@@ -226,6 +189,8 @@ class FileStoreClass {
 			platforms: ['web', 'android', 'ios'],
 			required: false,
 			file: null,
+			files: [],
+			multiFile: false,
 			dragging: false,
 			restored: false,
 			warning: null
@@ -240,8 +205,8 @@ class FileStoreClass {
 
 		const webKeys: DropZoneKey[] = this.selectedPlatforms.includes('web')
 			? [
-					...(wantColors ? (['referencePrimitivesScss', 'referenceColorsScss', 'referencePrimitivesTs', 'referenceColorsTs'] as DropZoneKey[]) : []),
-					...(wantTypo ? (['referenceTypographyScss', 'referenceTypographyTs'] as DropZoneKey[]) : [])
+					...(wantColors ? (['referenceColorsWeb'] as DropZoneKey[]) : []),
+					...(wantTypo ? (['referenceTypographyWeb'] as DropZoneKey[]) : [])
 				]
 			: [];
 		const iosKeys: DropZoneKey[] = this.selectedPlatforms.includes('ios')
@@ -285,29 +250,30 @@ class FileStoreClass {
 		return REF_KEYS.some((k) => !!this.slots[k].file);
 	}
 
+	get bestPractices() {
+		return !this.hasRefFiles;
+	}
+
 	init() {
 		migrateStorageIfNeeded();
 		const storedPlatforms = loadPlatforms();
 		if (storedPlatforms?.length) this.selectedPlatforms = storedPlatforms;
-		this.bestPractices = loadBestPractices();
 
 		for (const key of REF_KEYS) {
 			const stored = loadRefFile(key);
 			if (!stored) continue;
 			const synthetic = new File([stored.content], stored.name, { type: 'text/plain' });
 			this.slots[key].file = synthetic;
+			this.slots[key].files = [synthetic];
 			this.slots[key].restored = true;
+			this.conventionHints[key] = computeConventionHints(key, stored.content);
+			this.validations[key] = computeValidation(key, stored.content);
 		}
 	}
 
 	selectPlatform(id: Platform) {
 		this.selectedPlatforms = [id];
 		if (browser) savePlatforms([id]);
-	}
-
-	setBestPractices(val: boolean) {
-		this.bestPractices = val;
-		saveBestPractices(val);
 	}
 
 	toggleOutput(cat: OutputCategory) {
@@ -319,13 +285,14 @@ class FileStoreClass {
 	}
 
 	async assignFile(key: DropZoneKey, file: File) {
-		if (REF_KEYS.includes(key)) {
-			const expectedExt = `.${this.slots[key].ext}`;
+		const slot = this.slots[key];
+		if (REF_KEYS.includes(key) && !slot.multiFile) {
+			const expectedExt = `.${slot.ext}`;
 			const fileExt = file.name.includes('.')
 				? `.${file.name.split('.').pop()!.toLowerCase()}`
 				: '';
 			if (fileExt && fileExt !== expectedExt && fileExt !== '.txt') {
-				toast.error(`Expected a ${expectedExt} file for ${this.slots[key].label}, got "${file.name}"`);
+				toast.error(`Expected a ${expectedExt} file for ${slot.label}, got "${file.name}"`);
 				return;
 			}
 		}
@@ -334,14 +301,19 @@ class FileStoreClass {
 			content = await file.text();
 		} catch {
 			toast.error(`Could not read ${file.name}`);
-			this.slots[key].file = null;
+			slot.file = null;
 			return;
 		}
-		this.slots[key].file = file;
-		this.slots[key].restored = false;
-		this.slots[key].warning = validateFigmaJson(key, content);
+		slot.file = file;
+		slot.files = [file];
+		slot.restored = false;
+		slot.warning = validateFigmaJson(key, content);
 		this.fileInsights[key] = computeInsight(key, content);
-		if (REF_KEYS.includes(key)) saveRefFile(key, file.name, content);
+		if (REF_KEYS.includes(key)) {
+			this.conventionHints[key] = computeConventionHints(key, content);
+			this.validations[key] = computeValidation(key, content);
+			saveRefFile(key, file.name, content);
+		}
 		if (key === 'lightColors') {
 			try {
 				const parsed = JSON.parse(content);
@@ -354,24 +326,87 @@ class FileStoreClass {
 		}
 	}
 
+	async assignMultipleFiles(key: DropZoneKey, files: File[]) {
+		const slot = this.slots[key];
+		if (!slot.multiFile || files.length === 0) return;
+
+		const acceptedExts = slot.accept
+			.split(',')
+			.filter((s) => s.startsWith('.'))
+			.map((s) => s.toLowerCase());
+		const validFiles: File[] = [];
+
+		for (const f of files) {
+			if (f.name.toLowerCase().endsWith('.zip')) {
+				try {
+					const { unzipSync, strFromU8 } = await import('fflate');
+					const buf = new Uint8Array(await f.arrayBuffer());
+					const extracted = unzipSync(buf);
+					for (const [name, data] of Object.entries(extracted)) {
+						const ext = name.includes('.') ? `.${name.split('.').pop()!.toLowerCase()}` : '';
+						if (acceptedExts.includes(ext) || ext === '.txt') {
+							const content = strFromU8(data);
+							validFiles.push(new File([content], name, { type: 'text/plain' }));
+						}
+					}
+				} catch {
+					toast.error(`Could not extract ${f.name}`);
+				}
+				continue;
+			}
+			const ext = f.name.includes('.') ? `.${f.name.split('.').pop()!.toLowerCase()}` : '';
+			if (acceptedExts.length === 0 || acceptedExts.includes(ext) || ext === '.txt') {
+				validFiles.push(f);
+			} else {
+				toast.error(`Skipped "${f.name}" — expected ${acceptedExts.join(', ')}`);
+			}
+		}
+
+		if (validFiles.length === 0) return;
+
+		slot.files = validFiles;
+		slot.file = validFiles[0];
+		slot.restored = false;
+
+		const allContents: string[] = [];
+		for (const f of validFiles) {
+			try { allContents.push(await f.text()); } catch { /* skip unreadable */ }
+		}
+		const combinedContent = allContents.join('\n');
+		slot.warning = null;
+		this.fileInsights[key] = computeInsight(key, combinedContent);
+		this.conventionHints[key] = computeConventionHints(key, combinedContent);
+		this.validations[key] = computeValidation(key, combinedContent);
+		if (REF_KEYS.includes(key)) saveRefFile(key, validFiles.map((f) => f.name).join(','), combinedContent);
+
+		const count = validFiles.length;
+		toast.success(`${count} file${count > 1 ? 's' : ''} loaded for ${slot.label}`);
+	}
+
 	clearFile(key: DropZoneKey, e: MouseEvent) {
 		e.stopPropagation();
 		e.preventDefault();
 		this.slots[key].file = null;
+		this.slots[key].files = [];
 		this.slots[key].restored = false;
 		this.slots[key].warning = null;
+		delete this.conventionHints[key];
+		delete this.validations[key];
 		if (REF_KEYS.includes(key)) clearRefFile(key);
 	}
 
 	resetSlots() {
 		for (const key of ALL_KEYS) {
 			this.slots[key].file = null;
+			this.slots[key].files = [];
 			this.slots[key].restored = false;
 			this.slots[key].warning = null;
 		}
 		clearAllStorage();
 		this.swatches = [];
 		this.fileInsights = {};
+		this.conventionHints = {};
+		this.validations = {};
 		this.dependencyMap = [];
 	}
 
@@ -397,13 +432,27 @@ class FileStoreClass {
 		e.preventDefault();
 		this.dragCounters[key] = 0;
 		this.slots[key].dragging = false;
-		const file = e.dataTransfer?.files[0];
-		if (file) this.assignFile(key, file);
+		const dt = e.dataTransfer;
+		if (!dt?.files.length) return;
+		if (this.slots[key].multiFile && dt.files.length > 1) {
+			this.assignMultipleFiles(key, Array.from(dt.files));
+		} else if (this.slots[key].multiFile && dt.files[0].name.toLowerCase().endsWith('.zip')) {
+			this.assignMultipleFiles(key, [dt.files[0]]);
+		} else {
+			this.assignFile(key, dt.files[0]);
+		}
 	}
 
 	handleFileInput(key: DropZoneKey, e: Event) {
 		const input = e.target as HTMLInputElement;
-		if (input.files?.[0]) this.assignFile(key, input.files[0]);
+		if (!input.files?.length) return;
+		if (this.slots[key].multiFile && input.files.length > 1) {
+			this.assignMultipleFiles(key, Array.from(input.files));
+		} else if (this.slots[key].multiFile && input.files[0].name.toLowerCase().endsWith('.zip')) {
+			this.assignMultipleFiles(key, [input.files[0]]);
+		} else if (input.files[0]) {
+			this.assignFile(key, input.files[0]);
+		}
 	}
 
 	async autoDetectSlot(file: File): Promise<DropZoneKey | null> {

@@ -363,9 +363,16 @@
 			fd.append('values', fileStore.slots.values.file!);
 			fd.append('platforms', JSON.stringify(fileStore.selectedPlatforms));
 			fd.append('outputs', JSON.stringify(fileStore.selectedOutputs));
-			fd.append('bestPractices', String(fileStore.bestPractices));
-			const optionalKeys: DropZoneKey[] = ['typography', 'referencePrimitivesScss', 'referenceColorsScss', 'referencePrimitivesTs', 'referenceColorsTs', 'referenceColorsSwift', 'referenceColorsKotlin', 'referenceTypographyScss', 'referenceTypographyTs', 'referenceTypographySwift', 'referenceTypographyKotlin'];
-			for (const key of optionalKeys) { if (fileStore.slots[key].file) fd.append(key, fileStore.slots[key].file!); }
+			if (fileStore.slots.typography.file) fd.append('typography', fileStore.slots.typography.file);
+			const refKeys: DropZoneKey[] = ['referenceColorsWeb', 'referenceTypographyWeb', 'referenceColorsSwift', 'referenceColorsKotlin', 'referenceTypographySwift', 'referenceTypographyKotlin'];
+			for (const key of refKeys) {
+				const slot = fileStore.slots[key];
+				if (slot.files.length > 0) {
+					for (const f of slot.files) fd.append(key, f);
+				} else if (slot.file) {
+					fd.append(key, slot.file);
+				}
+			}
 			const res = await fetch('/api/generate', { method: 'POST', body: fd });
 			if (!res.ok) { const text = await res.text(); throw new Error(text || `HTTP ${res.status}`); }
 			let parsed: GenerateResponse;
@@ -402,10 +409,11 @@
 
 	async function downloadZip() {
 		if (!genStore.result?.files.length) return;
-		const { default: JSZip } = await import('jszip');
-		const zip = new JSZip();
-		for (const file of genStore.result.files) zip.file(file.filename, file.content);
-		const blob = await zip.generateAsync({ type: 'blob' });
+		const { zipSync, strToU8 } = await import('fflate');
+		const zipped = zipSync(
+			Object.fromEntries(genStore.result.files.map((f) => [f.filename, strToU8(f.content)]))
+		);
+		const blob = new Blob([zipped.buffer as ArrayBuffer], { type: 'application/zip' });
 		const url = URL.createObjectURL(blob);
 		const a = document.createElement('a'); a.href = url; a.download = `tokensmith-${new Date().toISOString().slice(0, 10)}.zip`; a.click();
 		URL.revokeObjectURL(url); toast.success('ZIP downloaded');
@@ -441,6 +449,8 @@
 					fileStore.slots[key as DropZoneKey].file = synthetic; fileStore.slots[key as DropZoneKey].restored = true;
 					import('$lib/storage.js').then(m => m.saveRefFile(key, data.name, data.content));
 					import('$lib/file-validation.js').then(m => { fileStore.fileInsights[key as DropZoneKey] = m.computeInsight(key as DropZoneKey, data.content); });
+					import('$lib/convention-hints.js').then(m => { fileStore.conventionHints[key as DropZoneKey] = m.computeConventionHints(key as DropZoneKey, data.content); });
+					import('$lib/pre-validation.js').then(m => { fileStore.validations[key as DropZoneKey] = m.computeValidation(key as DropZoneKey, data.content); });
 				}
 				toast.success('Config imported');
 			} catch { toast.error('Invalid config file'); }
@@ -663,9 +673,8 @@
 				fileInsights={fileStore.fileInsights}
 				platforms={PLATFORMS}
 				selectedPlatforms={fileStore.selectedPlatforms}
-				hasRefFiles={fileStore.hasRefFiles}
-				bestPractices={fileStore.bestPractices}
-				bulkDropActive={fileStore.bulkDropActive}
+			hasRefFiles={fileStore.hasRefFiles}
+			bulkDropActive={fileStore.bulkDropActive}
 				canGenerate={fileStore.canGenerate}
 				loading={fileStore.loading}
 				errorMsg={genStore.errorMsg}
@@ -681,8 +690,7 @@
 				onBulkDragOver={(e) => { e.preventDefault(); }}
 				onBulkDragLeave={(e) => { if (e.currentTarget === e.target || !(e.currentTarget as HTMLElement).contains(e.relatedTarget as Node)) fileStore.bulkDropActive = false; }}
 				onBulkDrop={(e) => fileStore.handleBulkDrop(e)}
-				onBestPracticesChange={(val) => fileStore.setBestPractices(val)}
-				selectedOutputs={fileStore.selectedOutputs}
+			selectedOutputs={fileStore.selectedOutputs}
 				onToggleOutput={(cat) => fileStore.toggleOutput(cat)}
 				onExportConfig={exportConfig}
 				onImportConfig={importConfigFile}
@@ -793,9 +801,9 @@
 			visibleKeysAll={fileStore.visibleKeys}
 			slots={fileStore.slots}
 			fileInsights={fileStore.fileInsights}
+			conventionHints={fileStore.conventionHints}
+			validations={fileStore.validations}
 			hasRefFiles={fileStore.hasRefFiles}
-			bestPractices={fileStore.bestPractices}
-			onBestPracticesChange={(val) => (fileStore.bestPractices = val)}
 			selectedOutputs={fileStore.selectedOutputs}
 			onToggleOutput={(cat) => fileStore.toggleOutput(cat)}
 			tokensInitialLoading={tokenStore.tokensInitialLoading}

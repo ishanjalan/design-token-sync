@@ -41,7 +41,9 @@ export function detectConventions(
 		importStyle: detectImportStyle(allScss || undefined),
 		importSuffix: detectImportSuffix(allScss || undefined),
 		scssColorStructure: detectScssColorStructure(colorsScss),
-		hasTypeAnnotations: detectTypeAnnotations(allTs || undefined)
+		hasTypeAnnotations: detectTypeAnnotations(allTs || undefined),
+		tsHexCasing: detectTsHexCasing(allTs || undefined),
+		tsUsesAsConst: detectTsAsConst(allTs || undefined)
 	};
 }
 
@@ -134,5 +136,17 @@ function detectScssColorStructure(colorsScss: string | undefined): ScssColorStru
 	if (hasRoot && hasMediaQuery) return 'media-query';
 	if (hasRoot) return 'modern';
 	return 'inline';
+}
+
+function detectTsHexCasing(ts: string | undefined): 'upper' | 'lower' {
+	if (!ts) return 'lower';
+	const upperCount = (ts.match(/'#[0-9A-F]{6}'/g) ?? []).length;
+	const lowerCount = (ts.match(/'#[0-9a-f]{6}'/g) ?? []).length;
+	return upperCount > lowerCount ? 'upper' : 'lower';
+}
+
+function detectTsAsConst(ts: string | undefined): boolean {
+	if (!ts) return false;
+	return /\bas\s+const\b/.test(ts);
 }
 
