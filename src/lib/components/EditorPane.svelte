@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Download, ClipboardCopy, GitPullRequest, List, WrapText, Check, X, ChevronRight, ChevronUp, ChevronDown, AlertTriangle, ArrowLeftRight, Target, Pencil, ArrowRight } from 'lucide-svelte';
+	import { Download, ClipboardCopy, GitPullRequest, List, WrapText, Check, X, ChevronRight, ChevronUp, ChevronDown, AlertTriangle, ArrowLeftRight, Target, Pencil, ArrowRight, Home } from 'lucide-svelte';
 	import type { GeneratedFile, Platform, DropZoneKey, FileSlot, OutputCategory } from '$lib/types.js';
 	import type { FileInsight } from '$lib/file-validation.js';
 	import WelcomeView from './WelcomeView.svelte';
@@ -20,9 +20,8 @@
 	import CodeMinimap from './CodeMinimap.svelte';
 	import PlatformConsistency from './PlatformConsistency.svelte';
 	import SwatchPanel from './SwatchPanel.svelte';
-	import HistoryPanel from './HistoryPanel.svelte';
 	import PrResults from './PrResults.svelte';
-	import type { HistoryEntry, PrResult, GenerateResponse } from '$lib/types.js';
+	import type { PrResult, GenerateResponse } from '$lib/types.js';
 	import { type PlatformMismatch, diffStats as computeDiffStats } from '$lib/diff-utils.js';
 
 	interface ThemeOption {
@@ -43,6 +42,7 @@
 
 	interface Props {
 		result: GenerateResponse | null;
+		errorMsg?: string | null;
 		visibleFiles: GeneratedFile[];
 		activeTab: string;
 		highlights: Record<string, string>;
@@ -75,8 +75,6 @@
 		showSwatches: boolean;
 		swatchComparisons: SwatchComparison[];
 		swatchTab: 'all' | 'changes';
-		showHistory: boolean;
-		history: HistoryEntry[];
 		prResults: PrResult[];
 		platformMismatches: PlatformMismatch[];
 		themes: readonly ThemeOption[];
@@ -87,6 +85,7 @@
 		storedTokenPushedAt?: string | null;
 		tokensUpdatedBanner?: { version: number; summary: string } | null;
 		onRegenerate?: () => void;
+		onBackToHome?: () => void;
 		platforms: PlatformOption[];
 		onSelectPlatform: (id: Platform) => void;
 		swatchCount: number;
@@ -94,14 +93,13 @@
 		visibleKeysAll: DropZoneKey[];
 		slots: Record<DropZoneKey, FileSlot>;
 		fileInsights: Partial<Record<DropZoneKey, FileInsight>>;
-		conventionHints: Partial<Record<DropZoneKey, string[]>>;
-		validations: Partial<Record<DropZoneKey, import('$lib/pre-validation.js').ValidationSummary>>;
 		hasRefFiles: boolean;
 		selectedOutputs: OutputCategory[];
 		onToggleOutput: (cat: OutputCategory) => void;
 		tokensInitialLoading: boolean;
 		canGenerate: boolean;
 		loading: boolean;
+		progressStatus?: string | null;
 		onGenerate: () => void;
 		onOpenImportPanel: () => void;
 		onOpenSettings: () => void;
@@ -136,8 +134,6 @@
 		onCopyChangelog: () => void;
 		onToggleSwatches: () => void;
 		onSwatchTabChange: (t: 'all' | 'changes') => void;
-		onToggleHistory: () => void;
-		onRestoreHistory: (entry: HistoryEntry) => void;
 		onDismissPrResults: () => void;
 		onRetryPr: (platform: string) => void;
 		onChangeTheme: (id: string) => void;
@@ -151,20 +147,20 @@
 	}
 
 	let {
-		result, visibleFiles, activeTab, highlights, diffs, viewModes, modifications,
+		result, errorMsg = null, visibleFiles, activeTab, highlights, diffs, viewModes, modifications,
 		renames, familyRenames, tokenCoverage, deprecations, impactedTokens,
 		searchQuery, searchInputEl, searchShortcutHint, highlightedLines, wrapLines,
 		showSectionNav, showChangeSummary, collapsedSections, currentBreadcrumb,
 		codeScrollTop, codeScrollHeight, codeClientHeight, codeScrollEl,
 		lastGeneratedAt, sendingPrs, diffTotals, diffNavIndex, swatches,
-		showSwatches, swatchComparisons, swatchTab, showHistory, history, prResults,
+		showSwatches, swatchComparisons, swatchTab, prResults,
 		platformMismatches, themes, selectedTheme, showThemePicker, selectedPlatforms,
 		storedTokenVersion = null, storedTokenPushedAt = null,
-		tokensUpdatedBanner = null, onRegenerate,
+		tokensUpdatedBanner = null, onRegenerate, onBackToHome,
 		platforms, onSelectPlatform, swatchCount,
-		refKeys, visibleKeysAll, slots, fileInsights, conventionHints, validations, hasRefFiles,
+		refKeys, visibleKeysAll, slots, fileInsights, hasRefFiles,
 		selectedOutputs, onToggleOutput,
-		tokensInitialLoading, canGenerate, loading, onGenerate, onOpenImportPanel, onOpenSettings,
+		tokensInitialLoading, canGenerate, loading, progressStatus = null, onGenerate, onOpenImportPanel, onOpenSettings,
 		onWelcomeDragEnter, onWelcomeDragOver, onWelcomeDragLeave, onWelcomeDrop,
 		onWelcomeFileInput, onWelcomeClearFile, requiredFilled,
 		formatTime, timeAgo, platformColor,
@@ -172,7 +168,7 @@
 		onCodeKeydown, onCodeScroll, onCodeScrollBind, onLineClick, onSectionNavToggle,
 		onScrollToLine, onWrapToggle, onChangeSummaryToggle, onNavigateDiff,
 		onSeekMinimap, onDownloadZip, onCopyFile, onSendPRs, onCopyChangelog, onToggleSwatches,
-		onSwatchTabChange, onToggleHistory, onRestoreHistory, onDismissPrResults,
+		onSwatchTabChange, onDismissPrResults,
 		onRetryPr, onChangeTheme, onThemePickerToggle,
 		extractSections, extractDiffColor, computeHunkHeaders, nearestContext,
 		langLabel, formatFileSize
@@ -211,17 +207,15 @@
 			visibleKeys={visibleKeysAll}
 			{slots}
 			{fileInsights}
-			{conventionHints}
-			{validations}
 			{hasRefFiles}
 			{selectedOutputs}
 			{onToggleOutput}
 			{tokensInitialLoading}
 			{canGenerate}
 			{loading}
+			{progressStatus}
+			{errorMsg}
 			{onGenerate}
-			{onOpenImportPanel}
-			{onOpenSettings}
 			onDragEnter={onWelcomeDragEnter}
 			onDragOver={onWelcomeDragOver}
 			onDragLeave={onWelcomeDragLeave}
@@ -243,6 +237,11 @@
 		{/if}
 		<!-- File tabs bar -->
 		<div class="file-tabs-bar">
+			{#if onBackToHome}
+				<button class="home-btn" onclick={onBackToHome} title="Back to home" aria-label="Back to home">
+					<Home size={13} strokeWidth={2} />
+				</button>
+			{/if}
 			<div class="file-tabs" role="tablist" aria-label="Open files">
 				{#each visibleFiles as file (file.filename)}
 					{@const dotColor = file.format === 'scss' ? '#F06090' : file.format === 'css' ? '#2196F3' : file.format === 'typescript' ? '#3178C6' : file.format === 'swift' ? '#FF8040' : file.format === 'kotlin' ? '#B060FF' : '#4D9EFF'}
@@ -388,9 +387,9 @@
 								{@const ds = diffStats(diffs[file.filename], modifications[file.filename])}
 								<div class="view-toggle" role="group" aria-label="View mode">
 									<button class="toggle-btn" class:toggle-btn--active={mode === 'code'} onclick={() => onViewModeChange(file.filename, 'code')}>Code</button>
-									<button class="toggle-btn" class:toggle-btn--active={mode === 'diff'} onclick={() => onViewModeChange(file.filename, 'diff')}>
-										Diff <span class="toggle-badge">+{ds.added} -{ds.removed}</span>
-									</button>
+								<button class="toggle-btn" class:toggle-btn--active={mode === 'diff'} onclick={() => onViewModeChange(file.filename, 'diff')} title="Compare generated output against your reference file">
+									vs Reference <span class="toggle-badge">+{ds.added} -{ds.removed}</span>
+								</button>
 									<button class="toggle-btn" class:toggle-btn--active={mode === 'changes'} onclick={() => onViewModeChange(file.filename, 'changes')}>Changes</button>
 								</div>
 								{#if mode === 'diff' || mode === 'changes'}
@@ -587,15 +586,16 @@
 								<pre class="code-pre numbered" class:code-pre--wrap={wrapLines}><code>{file.content}</code></pre>
 							{/if}
 						</div>
-						<CodeMinimap
-							content={file.content}
-							totalLines={file.content.split('\n').length}
-							scrollTop={codeScrollTop}
-							scrollHeight={codeScrollHeight}
-							clientHeight={codeClientHeight}
-							diffRegions={diffs[file.filename]?.filter(l => l.type !== 'equal').map(l => ({ line: l.newLineNum ?? l.oldLineNum ?? 0, type: l.type === 'add' ? 'add' as const : 'remove' as const })) ?? []}
-							onSeek={onSeekMinimap}
-						/>
+					<CodeMinimap
+						content={file.content}
+						totalLines={file.content.split('\n').length}
+						scrollTop={codeScrollTop}
+						scrollHeight={codeScrollHeight}
+						clientHeight={codeClientHeight}
+						diffRegions={diffs[file.filename]?.filter(l => l.type !== 'equal').map(l => ({ line: l.newLineNum ?? l.oldLineNum ?? 0, type: l.type === 'add' ? 'add' as const : 'remove' as const })) ?? []}
+						searchMatchLines={sr?.matchLines ?? []}
+						onSeek={onSeekMinimap}
+					/>
 					</div>
 				</div>
 			{/if}
@@ -611,15 +611,6 @@
 				tab={swatchTab}
 				onTabChange={onSwatchTabChange}
 				onClose={() => onToggleSwatches()}
-			/>
-		{/if}
-
-		{#if showHistory}
-			<HistoryPanel
-				{history}
-				{platformColor}
-				onRestore={onRestoreHistory}
-				onClose={() => onToggleHistory()}
 			/>
 		{/if}
 
@@ -829,6 +820,26 @@
 		flex-shrink: 0;
 		min-height: 36px;
 		position: relative;
+	}
+
+	.home-btn {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 32px;
+		height: 28px;
+		flex-shrink: 0;
+		background: none;
+		border: none;
+		border-right: 1px solid var(--borderColor-muted);
+		color: var(--fgColor-muted);
+		cursor: pointer;
+		transition: color 100ms ease, background 100ms ease;
+	}
+
+	.home-btn:hover {
+		color: var(--fgColor-accent);
+		background: var(--control-bgColor-hover);
 	}
 
 	.file-tabs {

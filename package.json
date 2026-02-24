@@ -4,9 +4,6 @@
 	"private": true,
 	"version": "1.0.0",
 	"type": "module",
-	"bin": {
-		"tokensmith": "./dist/cli.js"
-	},
 	"engines": {
 		"node": ">=24"
 	},

@@ -29,6 +29,8 @@ import { fileStore } from './file-store.svelte.js';
 class GenerationStoreClass {
 	result = $state<GenerateResponse | null>(null);
 	errorMsg = $state<string | null>(null);
+	errorHint = $state<string | null>(null);
+	progressStatus = $state<string | null>(null);
 	activeTab = $state<string>('');
 	lastGeneratedAt = $state<Date | null>(null);
 	viewModes = $state<Record<string, ViewMode>>({});
@@ -81,6 +83,8 @@ class GenerationStoreClass {
 
 	resetForGeneration() {
 		this.errorMsg = null;
+		this.errorHint = null;
+		this.progressStatus = null;
 		this.result = null;
 		this.highlights = {};
 		this.diffs = {};
@@ -101,6 +105,8 @@ class GenerationStoreClass {
 		this.diffs = {};
 		this.viewModes = {};
 		this.errorMsg = null;
+		this.errorHint = null;
+		this.progressStatus = null;
 		this.modifications = {};
 		this.renames = {};
 		this.familyRenames = {};

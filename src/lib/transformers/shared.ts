@@ -252,9 +252,12 @@ export function capitalize(s: string): string {
 export function resolveColorValue(token: FigmaColorToken): string | null {
 	const v = token.$value;
 	if (!v || typeof v !== 'object') return null;
+	if (!Array.isArray(v.components) || v.components.length < 3) return null;
+	if (typeof v.alpha !== 'number') return null;
 	const [r, g, b] = v.components;
 	const alpha = parseFloat(v.alpha.toFixed(4));
 	if (alpha < 1) return figmaToHex(r, g, b, alpha);
+	if (!v.hex || typeof v.hex !== 'string') return null;
 	return v.hex.toLowerCase();
 }
 
@@ -340,4 +343,23 @@ export function collectSpacingEntries(valuesExport: Record<string, unknown>): Ra
 	}
 
 	return entries.sort((a, b) => a.rawValue - b.rawValue);
+}
+
+// ─── Shared File Header ──────────────────────────────────────────────────────
+
+export function fileHeaderLines(
+	commentPrefix: string,
+	bestPractices: boolean,
+	referenceFilenames?: string[]
+): string[] {
+	const mode = bestPractices ? 'best-practices' : 'match-existing';
+	const lines = [
+		`${commentPrefix} Auto-generated from Figma Variables — DO NOT EDIT`,
+		`${commentPrefix} Generated: ${new Date().toISOString()}`,
+		`${commentPrefix} Mode: ${mode}`
+	];
+	if (!bestPractices && referenceFilenames?.length) {
+		lines.push(`${commentPrefix} Reference: ${referenceFilenames.join(', ')}`);
+	}
+	return lines;
 }

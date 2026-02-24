@@ -7,7 +7,7 @@
 
 import type { TransformResult, Platform } from '$lib/types.js';
 import { figmaToHex } from '$lib/color-utils.js';
-import { pathToKebab, pathToCamel, extractNumericKey } from './shared.js';
+import { pathToKebab, pathToCamel, extractNumericKey, fileHeaderLines } from './shared.js';
 
 interface BorderEntry {
 	name: string;
@@ -85,8 +85,7 @@ function generateBorderScss(entries: BorderEntry[]): TransformResult {
 	const sorted = [...entries].sort((a, b) => a.sortKey - b.sortKey || a.name.localeCompare(b.name));
 	const lines: string[] = [
 		'// Borders.scss',
-		'// Auto-generated from Figma Variables — DO NOT EDIT',
-		`// Generated: ${new Date().toISOString()}`,
+		...fileHeaderLines('//', true),
 		''
 	];
 
@@ -111,8 +110,7 @@ function generateBorderSwift(entries: BorderEntry[]): TransformResult {
 	const sorted = [...entries].sort((a, b) => a.sortKey - b.sortKey || a.name.localeCompare(b.name));
 	const lines: string[] = [
 		'// Borders.swift',
-		'// Auto-generated from Figma Variables — DO NOT EDIT',
-		`// Generated: ${new Date().toISOString()}`,
+		...fileHeaderLines('//', true),
 		'',
 		'import SwiftUI',
 		'',
@@ -143,8 +141,7 @@ function generateBorderKotlin(entries: BorderEntry[], kotlinPackage: string): Tr
 	const sorted = [...entries].sort((a, b) => a.sortKey - b.sortKey || a.name.localeCompare(b.name));
 	const lines: string[] = [
 		'// Borders.kt',
-		'// Auto-generated from Figma Variables — DO NOT EDIT',
-		`// Generated: ${new Date().toISOString()}`,
+		...fileHeaderLines('//', true),
 		'',
 		`package ${kotlinPackage}`,
 		'',

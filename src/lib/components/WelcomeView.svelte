@@ -1,10 +1,7 @@
 <script lang="ts">
-	import { browser } from '$app/environment';
-	import { Upload, Settings, Loader2, ArrowRight, Check, X, Info, Sparkles, CheckCircle2, AlertTriangle } from 'lucide-svelte';
+	import { Upload, Loader2, ArrowRight, Check, X, Sparkles, CheckCircle2, AlertTriangle } from 'lucide-svelte';
 	import type { Platform, DropZoneKey, FileSlot, OutputCategory } from '$lib/types.js';
 	import type { FileInsight } from '$lib/file-validation.js';
-	import type { ValidationSummary } from '$lib/pre-validation.js';
-	import { aggregateValidation } from '$lib/pre-validation.js';
 
 	interface TechIcon {
 		svg: string;
@@ -32,17 +29,15 @@
 		visibleKeys: DropZoneKey[];
 		slots: Record<DropZoneKey, FileSlot>;
 		fileInsights: Partial<Record<DropZoneKey, FileInsight>>;
-		conventionHints: Partial<Record<DropZoneKey, string[]>>;
-		validations: Partial<Record<DropZoneKey, ValidationSummary>>;
 		hasRefFiles: boolean;
 		selectedOutputs: OutputCategory[];
 		onToggleOutput: (cat: OutputCategory) => void;
 		tokensInitialLoading: boolean;
 		canGenerate: boolean;
 		loading: boolean;
+		progressStatus?: string | null;
+		errorMsg?: string | null;
 		onGenerate: () => void;
-		onOpenImportPanel: () => void;
-		onOpenSettings: () => void;
 		onDragEnter: (key: DropZoneKey, e: DragEvent) => void;
 		onDragOver: (key: DropZoneKey, e: DragEvent) => void;
 		onDragLeave: (key: DropZoneKey) => void;
@@ -55,16 +50,15 @@
 	let {
 		platforms, selectedPlatforms, onSelectPlatform,
 		swatchCount, storedTokenVersion, storedTokenPushedAt,
-		refKeys, visibleKeys, slots, fileInsights, conventionHints, validations, hasRefFiles,
+		refKeys, visibleKeys, slots, fileInsights, hasRefFiles,
 		selectedOutputs, onToggleOutput,
-		tokensInitialLoading, canGenerate, loading, onGenerate, onOpenImportPanel, onOpenSettings,
+		tokensInitialLoading, canGenerate, loading, progressStatus = null, errorMsg = null, onGenerate,
 		onDragEnter, onDragOver, onDragLeave, onDrop, onFileInput, onClearFile,
 		requiredFilled
 	}: Props = $props();
 
 	const activeRefKeys = $derived(visibleKeys.filter((k) => refKeys.includes(k)));
 	const tokensReady = $derived(requiredFilled === 3);
-	const validationAgg = $derived(aggregateValidation(validations));
 
 	function extColor(ext: string): string {
 		if (ext === 'scss') return '#F06090';
@@ -88,20 +82,11 @@
 		if (diffDays < 7) return `${diffDays}d ago`;
 		return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 	}
-
-	let showHelp = $state(false);
-	if (browser) {
-		showHelp = !localStorage.getItem('tokensmith:onboarded');
-	}
-	function dismissHelp() {
-		showHelp = false;
-		if (browser) localStorage.setItem('tokensmith:onboarded', '1');
-	}
 </script>
 
 <div class="welcome">
 	<div class="welcome-card">
-		<!-- ─── Step 1: Tokens ──────────────────────────────────── -->
+		<!-- Step 1: Tokens -->
 		<div class="step" style="animation-delay: 0ms">
 			<div class="step-header">
 				<span class="step-num">1</span>
@@ -121,15 +106,17 @@
 					<span class="token-badge token-badge--empty">{requiredFilled}/3 files</span>
 				{/if}
 			</div>
-			{#if !tokensReady && !tokensInitialLoading}
-				<p class="step-hint">
-					Tokens are pulled automatically from the design-tokens repo.
-					<button class="inline-link" onclick={onOpenImportPanel}>Upload manually</button>
-				</p>
-			{/if}
+			{#each ['lightColors', 'darkColors', 'values'] as reqKey}
+				{#if slots[reqKey as DropZoneKey].warning}
+					<div class="step-warning">
+						<AlertTriangle size={11} strokeWidth={2} />
+						<span>{slots[reqKey as DropZoneKey].warning}</span>
+					</div>
+				{/if}
+			{/each}
 		</div>
 
-		<!-- ─── Step 2: Platform ────────────────────────────────── -->
+		<!-- Step 2: Platform -->
 		<div class="step" style="animation-delay: 60ms">
 			<div class="step-header">
 				<span class="step-num">2</span>
@@ -156,7 +143,7 @@
 			</div>
 		</div>
 
-		<!-- ─── Step 3: Output ──────────────────────────────────── -->
+		<!-- Step 3: Output -->
 		<div class="step" style="animation-delay: 120ms">
 			<div class="step-header">
 				<span class="step-num">3</span>
@@ -185,7 +172,7 @@
 			{/if}
 		</div>
 
-		<!-- ─── Step 4: Reference files ─────────────────────────── -->
+		<!-- Step 4: Reference files -->
 		{#if activeRefKeys.length > 0}
 			<div class="step" style="animation-delay: 160ms">
 				<div class="step-header">
@@ -193,17 +180,17 @@
 					<span class="step-title">Reference files</span>
 					<span class="step-optional">optional</span>
 				</div>
-				<p class="step-hint">Drop your existing code files so generated output matches your architecture, naming, and patterns — ready for drop-in replacement</p>
+				<p class="step-hint">Drop your existing code files so generated output matches your architecture, naming, and patterns</p>
 				<div class="ref-grid">
 					{#each activeRefKeys as key (key)}
 						{@const slot = slots[key]}
 						{@const filled = !!slot.file}
 						{@const insight = fileInsights[key]}
-						{@const hints = conventionHints[key]}
 						{@const fileCount = slot.files.length}
 						<label
 							class="ref-slot"
 							class:ref-slot--filled={filled}
+							class:ref-slot--multi={filled && fileCount > 1}
 							class:ref-slot--dragging={slot.dragging}
 							ondragenter={(e) => onDragEnter(key, e)}
 							ondragover={(e) => onDragOver(key, e)}
@@ -212,33 +199,34 @@
 						>
 							<input type="file" accept={slot.accept} class="sr-only" multiple={slot.multiFile} onchange={(e) => onFileInput(key, e)} />
 							{#if filled}
-								<span class="ref-dot" style="background: {extColor(slot.ext)}"></span>
-								<span class="ref-info">
-									<span class="ref-name">
+								<div class="ref-top-row">
+									<span class="ref-dot" style="background: {extColor(slot.ext)}"></span>
+									<span class="ref-label">
 										{#if fileCount > 1}
-											{slot.label} ({fileCount} files)
+											{slot.label}
+											<span class="ref-count">{fileCount} files</span>
 										{:else}
 											{slot.file?.name ?? slot.label}
 										{/if}
 									</span>
-									{#if hints && hints.length > 0}
-										<span class="ref-hints">
-											{#each hints as hint (hint)}
-												<span class="ref-hint-tag">{hint}</span>
-											{/each}
-										</span>
+									{#if insight}
+										<span class="ref-meta">{insight.count} {insight.label}</span>
 									{/if}
-								</span>
-								{#if insight}
-									<span class="ref-meta">{insight.count} {insight.label}</span>
+									<Check size={10} strokeWidth={2.5} class="ref-check-icon" />
+									<button class="ref-clear" onclick={(e) => onClearFile(key, e)} aria-label="Remove">
+										<X size={9} strokeWidth={2} />
+									</button>
+								</div>
+								{#if fileCount > 1}
+									<ul class="ref-files-list">
+										{#each slot.files as f (f.name)}
+											<li>{f.name}</li>
+										{/each}
+									</ul>
 								{/if}
-								<Check size={10} strokeWidth={2.5} class="ref-check-icon" />
-								<button class="ref-clear" onclick={(e) => onClearFile(key, e)} aria-label="Remove">
-									<X size={9} strokeWidth={2} />
-								</button>
 							{:else}
 								<Upload size={11} strokeWidth={1.5} />
-								<span class="ref-name">{slot.label}</span>
+								<span class="ref-label">{slot.label}</span>
 								<span class="ref-cta">{slot.dragging ? 'Drop' : slot.multiFile ? 'Click or drag files' : 'Click or drag'}</span>
 							{/if}
 						</label>
@@ -247,69 +235,41 @@
 			</div>
 		{/if}
 
-		<!-- ─── Generate ────────────────────────────────────────── -->
+		<!-- Generate -->
 		<div class="step step--cta" style="animation-delay: {activeRefKeys.length > 0 ? 220 : 180}ms">
 			<span class="mode-indicator" class:mode-indicator--match={hasRefFiles}>
 				{#if hasRefFiles}
 					<CheckCircle2 size={12} strokeWidth={2} />
-					Matching your existing conventions — drop-in replacement
+					Matching your existing conventions
 				{:else}
 					<Sparkles size={12} strokeWidth={2} />
-					Using best practices — modern, opinionated output
+					Best practices output
 				{/if}
 			</span>
-			{#if hasRefFiles && (validationAgg.totalRenames > 0 || validationAgg.totalBugs > 0)}
-				<div class="validation-badges">
-					{#if validationAgg.totalRenames > 0}
-						<span class="val-badge val-badge--rename" title="Figma name changes detected — migration comments will be added">
-							<ArrowRight size={10} strokeWidth={2} />
-							{validationAgg.totalRenames} rename{validationAgg.totalRenames !== 1 ? 's' : ''} detected
-						</span>
-					{/if}
-					{#if validationAgg.totalBugs > 0}
-						<span class="val-badge val-badge--bug" title={validationAgg.bugMessages.join('\n')}>
-							<AlertTriangle size={10} strokeWidth={2} />
-							{validationAgg.totalBugs} known issue{validationAgg.totalBugs !== 1 ? 's' : ''} in reference
-						</span>
-					{/if}
-				</div>
-			{/if}
 			<button
 				class="gen-btn"
 				class:gen-btn--ready={canGenerate && !loading}
 				disabled={!canGenerate}
 				onclick={onGenerate}
 			>
-				{#if loading}
-					<span class="gen-spinner"></span>
-					Generating…
+			{#if loading}
+				<span class="gen-spinner"></span>
+				{progressStatus ?? 'Generating…'}
 				{:else if selectedOutputs.length === 0}
 					Select an output
 				{:else}
-					Generate{hasRefFiles ? ' (match existing)' : ' (best practices)'}
+					Generate
 					<ArrowRight size={14} strokeWidth={2} />
 				{/if}
 			</button>
-		</div>
-
-		<!-- ─── Secondary actions ───────────────────────────────── -->
-		<div class="step step--footer" style="animation-delay: {activeRefKeys.length > 0 ? 280 : 240}ms">
-			<button class="footer-action" onclick={onOpenImportPanel}>
-				<Upload size={12} strokeWidth={1.5} />
-				Import panel
-			</button>
-			<button class="footer-action" onclick={onOpenSettings}>
-				<Settings size={12} strokeWidth={1.5} />
-				Settings
-			</button>
+			{#if errorMsg}
+				<div class="gen-error">
+					<AlertTriangle size={12} strokeWidth={2} />
+					<span class="gen-error-text">{errorMsg}</span>
+				</div>
+			{/if}
 		</div>
 	</div>
-
-	{#if showHelp}
-		<button class="help-tip" onclick={dismissHelp} style="animation-delay: 300ms">
-			Tip: tokens load automatically from your design-tokens repo. Just pick a platform and hit Generate. <span class="help-dismiss">Dismiss</span>
-		</button>
-	{/if}
 </div>
 
 <style>
@@ -325,7 +285,6 @@
 		gap: 16px;
 	}
 
-	/* ─── Card container ───────────────────── */
 	.welcome-card {
 		display: flex;
 		flex-direction: column;
@@ -337,7 +296,6 @@
 		overflow: hidden;
 	}
 
-	/* ─── Steps ─────────────────────────────── */
 	.step {
 		padding: 16px 20px;
 		border-bottom: 1px solid var(--borderColor-muted);
@@ -387,23 +345,7 @@
 		line-height: 1.5;
 	}
 
-	.inline-link {
-		background: none;
-		border: none;
-		padding: 0;
-		color: var(--fgColor-accent);
-		font-size: 12px;
-		cursor: pointer;
-		text-decoration: underline;
-		text-decoration-style: dotted;
-		text-underline-offset: 2px;
-	}
-
-	.inline-link:hover {
-		color: var(--fgColor-default);
-	}
-
-	/* ─── Token badge ──────────────────────── */
+	/* Token badge */
 	.token-badge {
 		margin-left: auto;
 		font-family: var(--fontStack-monospace);
@@ -435,7 +377,7 @@
 		animation: spin 1s linear infinite;
 	}
 
-	/* ─── Platform row ─────────────────────── */
+	/* Platform row */
 	.platform-row {
 		display: grid;
 		grid-template-columns: repeat(3, 1fr);
@@ -511,7 +453,7 @@
 		color: var(--fgColor-disabled);
 	}
 
-	/* ─── Output row ───────────────────────── */
+	/* Output row */
 	.output-row {
 		display: flex;
 		gap: 8px;
@@ -565,7 +507,7 @@
 		margin: 6px 0 0 30px;
 	}
 
-	/* ─── Reference files ──────────────────── */
+	/* Reference files */
 	.step-optional {
 		font-size: 11px;
 		font-weight: 400;
@@ -579,7 +521,7 @@
 
 	.ref-grid {
 		display: flex;
-		flex-wrap: wrap;
+		flex-direction: column;
 		gap: 6px;
 		margin-top: 10px;
 	}
@@ -616,10 +558,23 @@
 		background: var(--control-bgColor-hover);
 	}
 
+	.ref-slot--multi {
+		flex-direction: column;
+		align-items: stretch;
+		gap: 4px;
+	}
+
 	.ref-slot--dragging {
 		border-color: var(--borderColor-accent-emphasis);
 		border-style: solid;
 		background: var(--bgColor-accent-muted);
+	}
+
+	.ref-top-row {
+		display: flex;
+		align-items: center;
+		gap: 5px;
+		width: 100%;
 	}
 
 	.ref-dot {
@@ -629,39 +584,47 @@
 		flex-shrink: 0;
 	}
 
-	.ref-info {
-		display: flex;
-		flex-direction: column;
-		gap: 3px;
-		min-width: 0;
-	}
-
-	.ref-name {
+	.ref-label {
 		font-family: var(--fontStack-monospace);
 		font-size: 11px;
 		font-weight: 500;
-	}
-
-	.ref-hints {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 3px;
-	}
-
-	.ref-hint-tag {
-		font-size: 9px;
-		font-family: var(--fontStack-monospace);
-		padding: 1px 5px;
-		border-radius: 3px;
-		background: color-mix(in srgb, var(--fgColor-accent) 8%, transparent);
-		color: var(--fgColor-accent);
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
 		white-space: nowrap;
+	}
+
+	.ref-count {
+		font-weight: 400;
+		color: var(--fgColor-muted);
+		margin-left: 4px;
+	}
+
+	.ref-files-list {
+		list-style: none;
+		margin: 0;
+		padding: 0 0 0 11px;
+		max-height: 80px;
+		overflow-y: auto;
+		scrollbar-width: thin;
+		scrollbar-color: var(--borderColor-default) transparent;
+	}
+
+	.ref-files-list li {
+		font-family: var(--fontStack-monospace);
+		font-size: 10px;
+		color: var(--fgColor-muted);
+		line-height: 1.7;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 
 	.ref-meta {
 		font-size: 10px;
 		color: var(--fgColor-disabled);
 		flex-shrink: 0;
+		margin-left: auto;
 	}
 
 	.ref-slot :global(.ref-check-icon) {
@@ -688,6 +651,7 @@
 		cursor: pointer;
 		padding: 1px;
 		border-radius: 2px;
+		flex-shrink: 0;
 		transition: color 100ms ease;
 	}
 
@@ -703,7 +667,7 @@
 		overflow: hidden;
 	}
 
-	/* ─── Generate CTA ─────────────────────── */
+	/* Generate CTA */
 	.step--cta {
 		display: flex;
 		flex-direction: column;
@@ -727,35 +691,6 @@
 	.mode-indicator--match {
 		color: var(--fgColor-success);
 		background: color-mix(in srgb, var(--fgColor-success) 8%, transparent);
-	}
-
-	.validation-badges {
-		display: flex;
-		gap: 8px;
-		flex-wrap: wrap;
-		justify-content: center;
-	}
-
-	.val-badge {
-		display: inline-flex;
-		align-items: center;
-		gap: 4px;
-		font-size: 10px;
-		font-family: var(--fontStack-monospace);
-		padding: 3px 8px;
-		border-radius: var(--borderRadius-medium);
-		white-space: nowrap;
-		cursor: default;
-	}
-
-	.val-badge--rename {
-		background: color-mix(in srgb, var(--fgColor-accent) 10%, transparent);
-		color: var(--fgColor-accent);
-	}
-
-	.val-badge--bug {
-		background: color-mix(in srgb, var(--fgColor-attention) 10%, transparent);
-		color: var(--fgColor-attention);
 	}
 
 	.gen-btn {
@@ -801,6 +736,33 @@
 		50% { box-shadow: 0 0 20px color-mix(in srgb, var(--brand-color) 40%, transparent); }
 	}
 
+	.gen-error {
+		display: flex;
+		align-items: flex-start;
+		gap: 8px;
+		margin-top: 12px;
+		padding: 10px 14px;
+		border-radius: var(--borderRadius-medium);
+		background: color-mix(in srgb, var(--bgColor-danger-muted) 40%, transparent);
+		border: 1px solid var(--borderColor-danger-muted, #f8514940);
+		color: var(--fgColor-danger);
+		font-size: 12px;
+		line-height: 1.5;
+		max-width: 480px;
+		text-align: left;
+		animation: gen-error-in 200ms ease;
+	}
+
+	.gen-error-text {
+		flex: 1;
+		word-break: break-word;
+	}
+
+	@keyframes gen-error-in {
+		from { opacity: 0; transform: translateY(-4px); }
+		to { opacity: 1; transform: translateY(0); }
+	}
+
 	.gen-spinner {
 		display: inline-block;
 		width: 13px;
@@ -813,64 +775,9 @@
 
 	@keyframes spin { to { transform: rotate(360deg); } }
 
-	/* ─── Footer links ─────────────────────── */
-	.step--footer {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		gap: 16px;
-		flex-wrap: wrap;
-		padding: 10px 20px;
-		background: color-mix(in srgb, var(--bgColor-default) 40%, var(--bgColor-inset));
-	}
-
-	.footer-action {
-		display: inline-flex;
-		align-items: center;
-		gap: 4px;
-		background: none;
-		border: none;
-		padding: 0;
-		font-size: 11px;
-		color: var(--fgColor-muted);
-		cursor: pointer;
-		transition: color 100ms ease;
-	}
-
-	.footer-action:hover {
-		color: var(--fgColor-accent);
-	}
-
-	/* ─── Help tip ──────────────────────────── */
-	.help-tip {
-		max-width: 480px;
-		width: 100%;
-		font-size: 12px;
-		color: var(--fgColor-muted);
-		background: color-mix(in srgb, var(--bgColor-accent-muted) 25%, var(--bgColor-inset));
-		border: 1px solid var(--borderColor-accent-muted);
-		border-radius: var(--borderRadius-medium);
-		padding: 10px 16px;
-		line-height: 1.5;
-		cursor: pointer;
-		text-align: left;
-		transition: opacity 150ms ease;
-		animation: step-in 350ms ease both;
-	}
-
-	.help-tip:hover {
-		opacity: 0.7;
-	}
-
-	.help-dismiss {
-		color: var(--fgColor-accent);
-		text-decoration: underline;
-		text-underline-offset: 2px;
-	}
-
-	/* ─── Motion ────────────────────────────── */
+	/* Motion */
 	@media (prefers-reduced-motion: reduce) {
-		.step, .help-tip {
+		.step {
 			animation-duration: 0.01ms !important;
 		}
 		.gen-btn--ready {
@@ -878,7 +785,7 @@
 		}
 	}
 
-	/* ─── Mobile ────────────────────────────── */
+	/* Mobile */
 	@media (max-width: 767px) {
 		.welcome {
 			padding: 16px;
@@ -907,5 +814,23 @@
 			width: 100%;
 			justify-content: center;
 		}
+	}
+
+	.step-warning {
+		display: flex;
+		align-items: flex-start;
+		gap: 6px;
+		margin: 8px 0 0 30px;
+		padding: 6px 10px;
+		border-radius: var(--borderRadius-small);
+		background: color-mix(in srgb, var(--fgColor-attention) 8%, transparent);
+		color: var(--fgColor-attention);
+		font-size: 11px;
+		line-height: 1.5;
+	}
+
+	.step-warning :global(svg) {
+		flex-shrink: 0;
+		margin-top: 2px;
 	}
 </style>

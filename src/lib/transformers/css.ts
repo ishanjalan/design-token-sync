@@ -20,7 +20,8 @@ import {
 	orderCategories,
 	collectSpacingEntries,
 	renameComment,
-	newTokenComment
+	newTokenComment,
+	fileHeaderLines
 } from './shared.js';
 
 interface PrimitiveEntry {
@@ -45,18 +46,19 @@ export function transformToCSS(
 	conventions: DetectedConventions,
 	values?: Record<string, unknown>,
 	renames: Map<string, string> = new Map(),
-	isNew: (name: string) => boolean = () => false
+	isNew: (name: string) => boolean = () => false,
+	bestPractices: boolean = true
 ): TransformResult[] {
 	const primitiveMap = buildPrimitiveMap(lightColors, darkColors);
 	const semanticEntries = buildSemanticEntries(lightColors, darkColors, primitiveMap);
 	const structure = conventions.scssColorStructure ?? 'modern';
 	const results: TransformResult[] = [
-		generatePrimitivesCSS(primitiveMap, renames, isNew),
-		generateColorsCSS(semanticEntries, structure)
+		generatePrimitivesCSS(primitiveMap, renames, isNew, bestPractices),
+		generateColorsCSS(semanticEntries, structure, bestPractices)
 	];
 
 	if (values) {
-		const spacingResult = generateSpacingCSS(values);
+		const spacingResult = generateSpacingCSS(values, bestPractices);
 		if (spacingResult) results.push(spacingResult);
 	}
 
@@ -133,15 +135,20 @@ function buildSemanticEntries(
 function generatePrimitivesCSS(
 	primitiveMap: Map<string, PrimitiveEntry>,
 	renames: Map<string, string> = new Map(),
-	isNew: (name: string) => boolean = () => false
+	isNew: (name: string) => boolean = () => false,
+	bestPractices: boolean = true
 ): TransformResult {
+	const useLayer = bestPractices;
 	const lines: string[] = [
 		'/* primitives.css */',
-		'/* Auto-generated from Figma Variables — DO NOT EDIT */',
-		`/* Generated: ${new Date().toISOString()} */`,
-		'',
-		':root {'
+		...fileHeaderLines('/*', bestPractices).map((l) => l + ' */'),
+		''
 	];
+
+	if (useLayer) lines.push('@layer tokens {');
+	const indent = useLayer ? '  ' : '';
+
+	lines.push(`${indent}:root {`);
 
 	const byFamily = new Map<string, PrimitiveEntry[]>();
 	for (const entry of primitiveMap.values()) {
@@ -156,24 +163,25 @@ function generatePrimitivesCSS(
 		const familyIsNew = !oldName && isNew(family);
 		if (oldName) {
 			for (const cl of renameComment(oldName, family, '/*')) {
-				lines.push(`  ${cl}`);
+				lines.push(`${indent}  ${cl}`);
 			}
 		}
 		if (familyIsNew) {
 			for (const cl of newTokenComment('/*')) {
-				lines.push(`  ${cl}`);
+				lines.push(`${indent}  ${cl}`);
 			}
 		}
-		lines.push(`  /* ${family} */`);
+		lines.push(`${indent}  /* ${family} */`);
 		const sorted = [...entries].sort(
 			(a, b) => a.sortKey - b.sortKey || a.cssVar.localeCompare(b.cssVar)
 		);
 		for (const { cssVar, value } of sorted) {
-			lines.push(`  ${cssVar}: ${value};`);
+			lines.push(`${indent}  ${cssVar}: ${value};`);
 		}
 	}
 
-	lines.push('}');
+	lines.push(`${indent}}`);
+	if (useLayer) lines.push('}');
 	lines.push('');
 
 	return {
@@ -188,12 +196,12 @@ function generatePrimitivesCSS(
 
 function generateColorsCSS(
 	entries: SemanticEntry[],
-	structure: 'modern' | 'media-query' | 'inline'
+	structure: 'modern' | 'media-query' | 'inline',
+	bestPractices: boolean = true
 ): TransformResult {
 	const lines: string[] = [
 		'/* colors.css */',
-		'/* Auto-generated from Figma Variables — DO NOT EDIT */',
-		`/* Generated: ${new Date().toISOString()} */`,
+		...fileHeaderLines('/*', bestPractices).map((l) => l + ' */'),
 		''
 	];
 
@@ -206,45 +214,54 @@ function generateColorsCSS(
 	}
 
 	const orderedCategories = orderCategories(byCategory.keys());
+	const useLayer = bestPractices;
 
 	if (structure === 'media-query') {
-		lines.push(':root {');
+		if (useLayer) lines.push('@layer tokens {');
+		const i = useLayer ? '  ' : '';
+
+		lines.push(`${i}:root {`);
 		for (const category of orderedCategories) {
-			lines.push(`  /* ${capitalize(category)} */`);
+			lines.push(`${i}  /* ${capitalize(category)} */`);
 			for (const entry of byCategory.get(category)!) {
-				lines.push(`  ${entry.cssVar}: ${entry.lightValue};`);
+				lines.push(`${i}  ${entry.cssVar}: ${entry.lightValue};`);
 			}
 		}
-		lines.push('}');
+		lines.push(`${i}}`);
 		lines.push('');
 
-		lines.push('@media (prefers-color-scheme: dark) {');
-		lines.push('  :root {');
+		lines.push(`${i}@media (prefers-color-scheme: dark) {`);
+		lines.push(`${i}  :root {`);
 		for (const category of orderedCategories) {
 			for (const entry of byCategory.get(category)!) {
 				if (!entry.isStatic) {
-					lines.push(`    ${entry.cssVar}: ${entry.darkValue};`);
+					lines.push(`${i}    ${entry.cssVar}: ${entry.darkValue};`);
 				}
 			}
 		}
-		lines.push('  }');
-		lines.push('}');
+		lines.push(`${i}  }`);
+		lines.push(`${i}}`);
+		if (useLayer) lines.push('}');
 		lines.push('');
 	} else {
-		lines.push(':root {');
-		lines.push('  color-scheme: light dark;');
+		if (useLayer) lines.push('@layer tokens {');
+		const i = useLayer ? '  ' : '';
+
+		lines.push(`${i}:root {`);
+		lines.push(`${i}  color-scheme: light dark;`);
 		lines.push('');
 		for (const category of orderedCategories) {
-			lines.push(`  /* ${capitalize(category)} */`);
+			lines.push(`${i}  /* ${capitalize(category)} */`);
 			for (const entry of byCategory.get(category)!) {
 				if (entry.isStatic) {
-					lines.push(`  ${entry.cssVar}: ${entry.lightValue};`);
+					lines.push(`${i}  ${entry.cssVar}: ${entry.lightValue};`);
 				} else {
-					lines.push(`  ${entry.cssVar}: light-dark(${entry.lightValue}, ${entry.darkValue});`);
+					lines.push(`${i}  ${entry.cssVar}: light-dark(${entry.lightValue}, ${entry.darkValue});`);
 				}
 			}
 		}
-		lines.push('}');
+		lines.push(`${i}}`);
+		if (useLayer) lines.push('}');
 		lines.push('');
 	}
 
@@ -258,22 +275,26 @@ function generateColorsCSS(
 
 // ─── Generate spacing.css ─────────────────────────────────────────────────────
 
-function generateSpacingCSS(valuesExport: Record<string, unknown>): TransformResult | null {
+function generateSpacingCSS(valuesExport: Record<string, unknown>, bestPractices: boolean = true): TransformResult | null {
 	const entries = collectSpacingEntries(valuesExport);
 	if (entries.length === 0) return null;
 
+	const useLayer = bestPractices;
 	const lines: string[] = [
 		'/* spacing.css */',
-		'/* Auto-generated from Figma Variables — DO NOT EDIT */',
-		`/* Generated: ${new Date().toISOString()} */`,
-		'',
-		':root {'
+		...fileHeaderLines('/*', bestPractices).map((l) => l + ' */'),
+		''
 	];
 
+	if (useLayer) lines.push('@layer tokens {');
+	const indent = useLayer ? '  ' : '';
+
+	lines.push(`${indent}:root {`);
 	for (const { cssVar, pxValue } of entries) {
-		lines.push(`  ${cssVar}: ${pxValue};`);
+		lines.push(`${indent}  ${cssVar}: ${pxValue};`);
 	}
-	lines.push('}');
+	lines.push(`${indent}}`);
+	if (useLayer) lines.push('}');
 	lines.push('');
 
 	return {

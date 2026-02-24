@@ -24,6 +24,7 @@ export const ALL_KEYS: DropZoneKey[] = [
 	'darkColors',
 	'values',
 	'typography',
+	'additionalThemes',
 	'referenceColorsWeb',
 	'referenceTypographyWeb',
 	'referenceColorsSwift',
@@ -194,6 +195,20 @@ class FileStoreClass {
 			dragging: false,
 			restored: false,
 			warning: null
+		},
+		additionalThemes: {
+			label: 'Additional Themes',
+			accept: 'application/json,.json',
+			hint: 'Extra theme JSONs (e.g. high-contrast, brand) — same format as light/dark',
+			ext: 'json',
+			platforms: ['web', 'android', 'ios'],
+			required: false,
+			file: null,
+			files: [],
+			multiFile: true,
+			dragging: false,
+			restored: false,
+			warning: null
 		}
 	});
 
@@ -226,6 +241,7 @@ class FileStoreClass {
 			'darkColors',
 			'values',
 			...(wantTypo ? (['typography'] as DropZoneKey[]) : []),
+			...(wantColors ? (['additionalThemes'] as DropZoneKey[]) : []),
 			...webKeys,
 			...iosKeys,
 			...androidKeys
@@ -239,7 +255,15 @@ class FileStoreClass {
 	}
 
 	get canGenerate() {
-		return this.requiredFilled === 3 && !this.loading && this.selectedOutputs.length > 0;
+		const hasRequiredWarnings = (['lightColors', 'darkColors', 'values'] as DropZoneKey[]).some(
+			(k) => this.slots[k].warning
+		);
+		return (
+			this.requiredFilled === 3 &&
+			!this.loading &&
+			this.selectedOutputs.length > 0 &&
+			!hasRequiredWarnings
+		);
 	}
 
 	get visibleFilled() {
@@ -286,13 +310,16 @@ class FileStoreClass {
 
 	async assignFile(key: DropZoneKey, file: File) {
 		const slot = this.slots[key];
-		if (REF_KEYS.includes(key) && !slot.multiFile) {
-			const expectedExt = `.${slot.ext}`;
+		if (REF_KEYS.includes(key)) {
+			const acceptedExts = slot.accept
+				.split(',')
+				.filter((s) => s.startsWith('.'))
+				.map((s) => s.toLowerCase());
 			const fileExt = file.name.includes('.')
 				? `.${file.name.split('.').pop()!.toLowerCase()}`
 				: '';
-			if (fileExt && fileExt !== expectedExt && fileExt !== '.txt') {
-				toast.error(`Expected a ${expectedExt} file for ${slot.label}, got "${file.name}"`);
+			if (fileExt && acceptedExts.length > 0 && !acceptedExts.includes(fileExt) && fileExt !== '.txt') {
+				toast.error(`Expected ${acceptedExts.join(', ')} for ${slot.label}, got "${file.name}"`);
 				return;
 			}
 		}
@@ -319,7 +346,8 @@ class FileStoreClass {
 				const parsed = JSON.parse(content);
 				this.swatches = parseSwatches(parsed);
 				this.dependencyMap = buildDependencyMap(parsed);
-			} catch {
+			} catch (err) {
+				console.warn('[file-store] Failed to parse lightColors for swatches:', err);
 				this.swatches = [];
 				this.dependencyMap = [];
 			}
@@ -349,7 +377,8 @@ class FileStoreClass {
 							validFiles.push(new File([content], name, { type: 'text/plain' }));
 						}
 					}
-				} catch {
+				} catch (err) {
+					console.error('[file-store] ZIP extraction failed for', f.name, err);
 					toast.error(`Could not extract ${f.name}`);
 				}
 				continue;
@@ -370,7 +399,12 @@ class FileStoreClass {
 
 		const allContents: string[] = [];
 		for (const f of validFiles) {
-			try { allContents.push(await f.text()); } catch { /* skip unreadable */ }
+			try {
+				allContents.push(await f.text());
+			} catch (err) {
+				console.warn('[file-store] Could not read file', f.name, err);
+				toast.error(`Could not read "${f.name}" — skipped`);
+			}
 		}
 		const combinedContent = allContents.join('\n');
 		slot.warning = null;
@@ -518,7 +552,8 @@ class FileStoreClass {
 			const parsed = JSON.parse(slotEntries[0].content);
 			this.swatches = parseSwatches(parsed);
 			this.dependencyMap = buildDependencyMap(parsed);
-		} catch {
+		} catch (err) {
+			console.warn('[file-store] Failed to parse token data for swatches:', err);
 			this.swatches = [];
 			this.dependencyMap = [];
 		}

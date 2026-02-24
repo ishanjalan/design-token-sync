@@ -4,6 +4,7 @@ exports[`Border snapshots > all platforms > Borders.kt 1`] = `
 "// Borders.kt
 // Auto-generated from Figma Variables — DO NOT EDIT
 // Generated: [TIMESTAMP]
+// Mode: best-practices
 
 package com.example.design
 
@@ -22,6 +23,7 @@ exports[`Border snapshots > all platforms > Borders.scss 1`] = `
 "// Borders.scss
 // Auto-generated from Figma Variables — DO NOT EDIT
 // Generated: [TIMESTAMP]
+// Mode: best-practices
 
 $border-border-thin: 1px solid #cccccc;
 
@@ -36,6 +38,7 @@ exports[`Border snapshots > all platforms > Borders.swift 1`] = `
 "// Borders.swift
 // Auto-generated from Figma Variables — DO NOT EDIT
 // Generated: [TIMESTAMP]
+// Mode: best-practices
 
 import SwiftUI
 
@@ -51,10 +54,11 @@ public extension BorderToken {
 "
 `;
 
-exports[`CSS snapshots > media-query structure > colors.css-media-query 1`] = `
+exports[`CSS snapshots > media-query structure (match-existing) > colors.css-media-query 1`] = `
 "/* colors.css */
 /* Auto-generated from Figma Variables — DO NOT EDIT */
 /* Generated: [TIMESTAMP]
+/* Mode: match-existing */
 
 :root {
   /* Fill */
@@ -72,10 +76,11 @@ exports[`CSS snapshots > media-query structure > colors.css-media-query 1`] = `
 "
 `;
 
-exports[`CSS snapshots > media-query structure > primitives.css-media-query 1`] = `
+exports[`CSS snapshots > media-query structure (match-existing) > primitives.css-media-query 1`] = `
 "/* primitives.css */
 /* Auto-generated from Figma Variables — DO NOT EDIT */
 /* Generated: [TIMESTAMP]
+/* Mode: match-existing */
 
 :root {
   /* grey */
@@ -87,48 +92,52 @@ exports[`CSS snapshots > media-query structure > primitives.css-media-query 1`] 
 "
 `;
 
-exports[`CSS snapshots > modern structure > colors.css-modern 1`] = `
+exports[`CSS snapshots > modern structure (best practices) > colors.css-modern 1`] = `
 "/* colors.css */
 /* Auto-generated from Figma Variables — DO NOT EDIT */
 /* Generated: [TIMESTAMP]
+/* Mode: best-practices */
 
-:root {
-  color-scheme: light dark;
+@layer tokens {
+  :root {
+    color-scheme: light dark;
 
-  /* Fill */
-  --fill-static-white: var(--grey-0);
-  /* Text */
-  --text-primary: light-dark(var(--grey-750), var(--grey-50));
+    /* Fill */
+    --fill-static-white: var(--grey-0);
+    /* Text */
+    --text-primary: light-dark(var(--grey-750), var(--grey-50));
+  }
 }
 
 "
 `;
 
-exports[`CSS snapshots > modern structure > primitives.css-modern 1`] = `
+exports[`CSS snapshots > modern structure (best practices) > primitives.css-modern 1`] = `
 "/* primitives.css */
 /* Auto-generated from Figma Variables — DO NOT EDIT */
 /* Generated: [TIMESTAMP]
+/* Mode: best-practices */
 
-:root {
-  /* grey */
-  --grey-0: #ffffff;
-  --grey-50: #f5f5f5;
-  --grey-750: #1d1d1d;
+@layer tokens {
+  :root {
+    /* grey */
+    --grey-0: #ffffff;
+    --grey-50: #f5f5f5;
+    --grey-750: #1d1d1d;
+  }
 }
 
 "
 `;
 
-exports[`Kotlin snapshots > default conventions > Colors.kt 1`] = `
-"// Colors.kt
+exports[`Kotlin snapshots > default conventions > Color.kt 1`] = `
+"// Color.kt
 // Auto-generated from Figma Variables — DO NOT EDIT
 // Generated: [TIMESTAMP]
+// Mode: best-practices
 
 package com.example.design
 
-import androidx.compose.material3.ColorScheme
-import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.ui.graphics.Color
 
 // Primitive color palette
@@ -138,6 +147,22 @@ object Primitives {
     val grey50 = Color(0xFFF5F5F5)
     val grey750 = Color(0xFF1D1D1D)
 }
+
+"
+`;
+
+exports[`Kotlin snapshots > default conventions > Colors.kt 1`] = `
+"// Colors.kt
+// Auto-generated from Figma Variables — DO NOT EDIT
+// Generated: [TIMESTAMP]
+// Mode: best-practices
+
+package com.example.design
+
+import androidx.compose.material3.ColorScheme
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
+import androidx.compose.ui.graphics.Color
 
 // Light theme semantic tokens
 object LightColorTokens {
@@ -176,12 +201,13 @@ fun darkColors(): ColorScheme = darkColorScheme(
 "
 `;
 
-exports[`SCSS snapshots > inline structure > Colors.scss-inline 1`] = `
+exports[`SCSS snapshots > inline structure (match-existing) > Colors.scss-inline 1`] = `
 "@use './Primitives' as *;
 
 // Colors.scss
 // Auto-generated from Figma Variables — DO NOT EDIT
 // Generated: [TIMESTAMP]
+// Mode: match-existing
 
 // Fill colors
 $fill-static-white: var(--fill-static-white, $grey-0);
@@ -192,10 +218,11 @@ $text-primary: var(--text-primary, light-dark($grey-750, $grey-50));
 "
 `;
 
-exports[`SCSS snapshots > inline structure > Primitives.scss-inline 1`] = `
+exports[`SCSS snapshots > inline structure (match-existing) > Primitives.scss-inline 1`] = `
 "// Primitives.scss
 // Auto-generated from Figma Variables — DO NOT EDIT
 // Generated: [TIMESTAMP]
+// Mode: match-existing
 
 // grey
 $grey-0: #ffffff;
@@ -205,12 +232,13 @@ $grey-750: #1d1d1d;
 "
 `;
 
-exports[`SCSS snapshots > media-query structure > Colors.scss-media-query 1`] = `
+exports[`SCSS snapshots > media-query structure (match-existing) > Colors.scss-media-query 1`] = `
 "@use './Primitives' as *;
 
 // Colors.scss
 // Auto-generated from Figma Variables — DO NOT EDIT
 // Generated: [TIMESTAMP]
+// Mode: match-existing
 
 :root {
   // Fill colors
@@ -237,10 +265,11 @@ $text-primary: var(--text-primary);
 "
 `;
 
-exports[`SCSS snapshots > media-query structure > Primitives.scss-media-query 1`] = `
+exports[`SCSS snapshots > media-query structure (match-existing) > Primitives.scss-media-query 1`] = `
 "// Primitives.scss
 // Auto-generated from Figma Variables — DO NOT EDIT
 // Generated: [TIMESTAMP]
+// Mode: match-existing
 
 // grey
 $grey-0: #ffffff;
@@ -256,32 +285,35 @@ exports[`SCSS snapshots > modern structure (best practices) > Colors.scss-modern
 // Colors.scss
 // Auto-generated from Figma Variables — DO NOT EDIT
 // Generated: [TIMESTAMP]
+// Mode: best-practices
 
-// @property typed declarations — enables CSS transitions on color tokens
-// and provides browser DevTools type info. Requires: color-scheme: light dark.
-// Fill colors
-@property --fill-static-white {
-  syntax: '<color>';
-  inherits: true;
-  initial-value: transparent;
-}
-
-// Text colors
-@property --text-primary {
-  syntax: '<color>';
-  inherits: true;
-  initial-value: transparent;
-}
-
-:root {
-  color-scheme: light dark;
-
+@layer tokens {
+  // @property typed declarations — enables CSS transitions on color tokens
+  // and provides browser DevTools type info. Requires: color-scheme: light dark.
   // Fill colors
-  --fill-static-white: #{$grey-0};
+  @property --fill-static-white {
+    syntax: '<color>';
+    inherits: true;
+    initial-value: transparent;
+  }
 
   // Text colors
-  --text-primary: light-dark(#{$grey-750}, #{$grey-50});
+  @property --text-primary {
+    syntax: '<color>';
+    inherits: true;
+    initial-value: transparent;
+  }
 
+  :root {
+    color-scheme: light dark;
+
+    // Fill colors
+    --fill-static-white: #{$grey-0};
+
+    // Text colors
+    --text-primary: light-dark(#{$grey-750}, #{$grey-50});
+
+  }
 }
 
 // SCSS variable aliases — reference in .scss files; compile to var(--token-name)
@@ -298,6 +330,7 @@ exports[`SCSS snapshots > modern structure (best practices) > Primitives.scss-mo
 "// Primitives.scss
 // Auto-generated from Figma Variables — DO NOT EDIT
 // Generated: [TIMESTAMP]
+// Mode: best-practices
 
 // grey
 $grey-0: #ffffff;
@@ -311,6 +344,7 @@ exports[`Shadow snapshots > all platforms > Shadows.kt 1`] = `
 "// Shadows.kt
 // Auto-generated from Figma Variables — DO NOT EDIT
 // Generated: [TIMESTAMP]
+// Mode: best-practices
 
 package com.example.design
 
@@ -337,6 +371,7 @@ exports[`Shadow snapshots > all platforms > Shadows.scss 1`] = `
 "// Shadows.scss
 // Auto-generated from Figma Variables — DO NOT EDIT
 // Generated: [TIMESTAMP]
+// Mode: best-practices
 
 $shadow-elevation-large: 0px 10px 24px -4px #00000033;
 $shadow-elevation-small: 0px 1px 3px 0px #0000001f;
@@ -353,6 +388,7 @@ exports[`Shadow snapshots > all platforms > Shadows.swift 1`] = `
 "// Shadows.swift
 // Auto-generated from Figma Variables — DO NOT EDIT
 // Generated: [TIMESTAMP]
+// Mode: best-practices
 
 import SwiftUI
 
@@ -395,6 +431,7 @@ exports[`Spacing snapshots > SCSS + TS > Spacing.scss 1`] = `
 "// Spacing.scss
 // Auto-generated from Figma Variables — DO NOT EDIT
 // Generated: [TIMESTAMP]
+// Mode: best-practices
 
 // Spacing scale — SCSS variables
 $spacing-4: 4px;
@@ -415,6 +452,7 @@ exports[`Spacing snapshots > SCSS + TS > Spacing.ts 1`] = `
 "// Spacing.ts
 // Auto-generated from Figma Variables — DO NOT EDIT
 // Generated: [TIMESTAMP]
+// Mode: best-practices
 
 // Spacing scale (px)
 export const SPACING_4 = '4px' as const;
@@ -428,6 +466,7 @@ exports[`Spacing snapshots > with type annotations > Spacing.ts-typed 1`] = `
 "// Spacing.ts
 // Auto-generated from Figma Variables — DO NOT EDIT
 // Generated: [TIMESTAMP]
+// Mode: best-practices
 
 // Spacing scale (px)
 export const SPACING_4: string = '4px' as const;
@@ -441,6 +480,7 @@ exports[`Swift snapshots > default conventions > Colors.swift 1`] = `
 "// Colors.swift
 // Auto-generated from Figma Variables — DO NOT EDIT
 // Generated: [TIMESTAMP]
+// Mode: best-practices
 
 import SwiftUI
 
@@ -510,6 +550,7 @@ exports[`TS snapshots > best practices > Colors.ts-bp 1`] = `
 // Colors.ts
 // Auto-generated from Figma Variables — DO NOT EDIT
 // Generated: [TIMESTAMP]
+// Mode: best-practices
 
 // Fill colors
 export const FILL_STATIC_WHITE: string = \`var(--fill-static-white, \${PRIMITIVES.GREY_0})\` as const;
@@ -524,6 +565,7 @@ exports[`TS snapshots > best practices > Primitives.ts-bp 1`] = `
 "// Primitives.ts
 // Auto-generated from Figma Variables — DO NOT EDIT
 // Generated: [TIMESTAMP]
+// Mode: best-practices
 
 // Grey color family
 export const GREY_0: string = '#ffffff' as const;
@@ -539,6 +581,7 @@ exports[`TS snapshots > detected conventions > Colors.ts-detected 1`] = `
 // Colors.ts
 // Auto-generated from Figma Variables — DO NOT EDIT
 // Generated: [TIMESTAMP]
+// Mode: best-practices
 
 // Fill colors
 export const FILL_STATIC_WHITE = \`var(--fill-static-white, \${PRIMITIVES.GREY_0})\` as const;
@@ -553,6 +596,7 @@ exports[`TS snapshots > detected conventions > Primitives.ts-detected 1`] = `
 "// Primitives.ts
 // Auto-generated from Figma Variables — DO NOT EDIT
 // Generated: [TIMESTAMP]
+// Mode: best-practices
 
 // Grey color family
 export const GREY_0 = '#ffffff' as const;

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Check, X, RotateCcw, ChevronRight, ChevronDown, AlertTriangle, RefreshCw, Trash2, Save, FolderOpen, Upload } from 'lucide-svelte';
+	import { Check, X, RotateCcw, ChevronRight, ChevronDown, AlertTriangle, RefreshCw, Trash2, Upload } from 'lucide-svelte';
 	import type { Platform, DropZoneKey, FileSlot, OutputCategory } from '$lib/types.js';
 	import type { FileInsight } from '$lib/file-validation.js';
 
@@ -37,8 +37,6 @@
 		onBulkDrop: (e: DragEvent) => void;
 		selectedOutputs: OutputCategory[];
 		onToggleOutput: (cat: OutputCategory) => void;
-		onExportConfig: () => void;
-		onImportConfig: (e: Event) => void;
 		onClearAll: () => void;
 		onGenerate: () => void;
 		storedTokenVersion: number | null;
@@ -57,7 +55,7 @@
 		onDragEnter, onDragOver, onDragLeave, onDrop, onFileInput, onClearFile,
 		onBulkDragEnter, onBulkDragOver, onBulkDragLeave, onBulkDrop,
 		selectedOutputs, onToggleOutput,
-		onExportConfig, onImportConfig, onClearAll, onGenerate,
+		onClearAll, onGenerate,
 		storedTokenVersion, storedTokenPushedAt, storedTokenVersions, storedTokensLoading,
 		tokenChangeSummary,
 		onRefreshStoredTokens, onLoadTokenVersion
@@ -103,11 +101,6 @@
 	<div class="panel-header">
 		<span class="panel-title">Token files</span>
 		<div class="panel-actions">
-			<button class="panel-icon-btn" onclick={onExportConfig} title="Export config" aria-label="Export config"><Save size={12} strokeWidth={2} /></button>
-			<label class="panel-icon-btn" for="import-config-input" title="Import config" aria-label="Import config">
-				<FolderOpen size={12} strokeWidth={2} />
-				<input id="import-config-input" type="file" accept=".json,application/json" class="sr-only" onchange={onImportConfig} />
-			</label>
 			<button class="panel-icon-btn" onclick={onClearAll} title="Clear all" aria-label="Clear all"><Trash2 size={12} strokeWidth={2} /></button>
 		</div>
 	</div>
@@ -181,7 +174,7 @@
 					ondragleave={() => onDragLeave(key)}
 					ondrop={(e) => onDrop(key, e)}
 				>
-					<input type="file" accept={slot.accept} class="sr-only" onchange={(e) => onFileInput(key, e)} />
+					<input type="file" accept={slot.accept} class="sr-only" multiple={slot.multiFile} onchange={(e) => onFileInput(key, e)} />
 					{#if filled}
 						<span class="ext-dot" style="background-color: {extColor(slot.ext)}" title=".{slot.ext}"></span>
 					{:else}
@@ -365,7 +358,7 @@
 					ondragleave={() => onDragLeave(key)}
 					ondrop={(e) => onDrop(key, e)}
 				>
-					<input type="file" accept={slot.accept} class="sr-only" onchange={(e) => onFileInput(key, e)} />
+					<input type="file" accept={slot.accept} class="sr-only" multiple={slot.multiFile} onchange={(e) => onFileInput(key, e)} />
 					{#if filled}
 						<span class="ext-dot" style="background-color: {extColor(slot.ext)}" title=".{slot.ext}"></span>
 					{:else}

@@ -31,7 +31,8 @@ import {
 	createNewDetector,
 	newTokenComment,
 	detectSwiftBugs,
-	bugWarningBlock
+	bugWarningBlock,
+	fileHeaderLines
 } from './shared.js';
 
 interface PrimitiveEntry {
@@ -73,7 +74,7 @@ export function transformToSwift(
 	const bugWarnings = referenceSwift && !bestPractices ? detectSwiftBugs(referenceSwift) : [];
 	const primitiveMap = buildPrimitiveMap(lightColors, darkColors, conventions);
 	const semanticEntries = buildSemanticEntries(lightColors, darkColors, primitiveMap, conventions);
-	const content = generateSwift(primitiveMap, semanticEntries, conventions, renames, isNew, bugWarnings);
+	const content = generateSwift(primitiveMap, semanticEntries, conventions, renames, isNew, bugWarnings, bestPractices);
 	return { filename: 'Colors.swift', content, format: 'swift', platform: 'ios' };
 }
 
@@ -266,7 +267,8 @@ function generateSwift(
 	conventions: DetectedSwiftConventions,
 	renames: Map<string, string> = new Map(),
 	isNew: (name: string) => boolean = () => false,
-	bugWarnings: string[] = []
+	bugWarnings: string[] = [],
+	bestPractices: boolean = true
 ): string {
 	const ind = conventions.indent;
 	const isEnumMode = conventions.containerStyle === 'enum';
@@ -276,8 +278,7 @@ function generateSwift(
 	const lines: string[] = [];
 
 	lines.push('// Colors.swift');
-	lines.push('// Auto-generated from Figma Variables — DO NOT EDIT');
-	lines.push(`// Generated: ${new Date().toISOString()}`);
+	lines.push(...fileHeaderLines('//', bestPractices));
 	lines.push('');
 
 	lines.push(...bugWarningBlock(bugWarnings, '//'));

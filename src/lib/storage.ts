@@ -5,13 +5,12 @@
  *   tokenSync:ref:{slotKey}  → { name, content, savedAt }
  *   tokenSync:result         → last GenerateResponse JSON
  *   tokenSync:platforms      → Platform[] JSON
- *   tokenSync:history        → HistoryEntry[] JSON (last 5)
  *   tokenSync:notifyUrl      → Google Chat webhook URL
  *   tokenSync:githubPat      → GitHub PAT
  *   tokenSync:githubRepos    → GithubConfigs JSON
  */
 
-import type { Platform, HistoryEntry, GithubConfigs } from '$lib/types.js';
+import type { Platform, GithubConfigs } from '$lib/types.js';
 
 const PREFIX = 'tokenSync';
 const STORAGE_VERSION = 4;
@@ -124,30 +123,6 @@ export function loadPlatforms(): Platform[] | null {
 		return JSON.parse(raw) as Platform[];
 	} catch {
 		return null;
-	}
-}
-
-// ─── History ──────────────────────────────────────────────────────────────────
-
-const HISTORY_MAX = 5;
-
-export function saveToHistory(entry: HistoryEntry): void {
-	try {
-		const existing = loadHistory();
-		const updated = [entry, ...existing].slice(0, HISTORY_MAX);
-		localStorage.setItem(`${PREFIX}:history`, JSON.stringify(updated));
-	} catch {
-		// ignore
-	}
-}
-
-export function loadHistory(): HistoryEntry[] {
-	try {
-		const raw = localStorage.getItem(`${PREFIX}:history`);
-		if (!raw) return [];
-		return JSON.parse(raw) as HistoryEntry[];
-	} catch {
-		return [];
 	}
 }
 

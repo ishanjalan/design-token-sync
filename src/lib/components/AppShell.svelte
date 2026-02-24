@@ -1,7 +1,7 @@
 <script lang="ts">
 	import '$lib/styles/shared.css';
 
-	type SidePanelId = 'import' | 'files' | 'history' | 'settings' | 'help' | null;
+	type SidePanelId = 'import' | 'files' | 'settings' | 'help' | 'quality' | null;
 
 	interface Props {
 		activePanel: SidePanelId;
@@ -55,7 +55,7 @@
 			</div>
 		{/if}
 
-		{#if activePanel && (!welcomeMode || activePanel === 'import' || activePanel === 'settings' || activePanel === 'help')}
+		{#if activePanel && (!welcomeMode || activePanel === 'import' || activePanel === 'settings' || activePanel === 'help' || activePanel === 'quality')}
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
 			<!-- svelte-ignore a11y_click_events_have_key_events -->
 			<div class="shell-overlay" onclick={onClosePanel}></div>

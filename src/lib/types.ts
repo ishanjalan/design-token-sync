@@ -205,6 +205,9 @@ export interface GenerationStats {
 	shadowTokens: number;
 	borderTokens: number;
 	opacityTokens: number;
+	gradientTokens?: number;
+	radiusTokens?: number;
+	motionTokens?: number;
 }
 
 // ─── Generated File ───────────────────────────────────────────────────────────
@@ -233,16 +236,6 @@ export interface GenerateResponse {
 	warnings?: GenerateWarning[];
 }
 
-// ─── History Entry ────────────────────────────────────────────────────────────
-
-export interface HistoryEntry {
-	id: string;
-	generatedAt: string;
-	platforms: Platform[];
-	stats: GenerationStats;
-	files: GeneratedFile[];
-	prUrls?: string[];
-}
 
 // ─── GitHub Config ────────────────────────────────────────────────────────────
 
@@ -262,6 +255,7 @@ export type DropZoneKey =
 	| 'darkColors'
 	| 'values'
 	| 'typography'
+	| 'additionalThemes'
 	| 'referenceColorsWeb'
 	| 'referenceTypographyWeb'
 	| 'referenceColorsSwift'

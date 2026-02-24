@@ -22,7 +22,8 @@ import {
 	capitalize,
 	orderCategories,
 	renameComment,
-	newTokenComment
+	newTokenComment,
+	fileHeaderLines
 } from './shared.js';
 
 // Re-use the same internal helpers by importing from the scss transformer's private types
@@ -52,7 +53,8 @@ export function transformToTS(
 	conventions: DetectedConventions,
 	primitives?: Record<string, unknown>,
 	renames: Map<string, string> = new Map(),
-	isNew: (name: string) => boolean = () => false
+	isNew: (name: string) => boolean = () => false,
+	bestPractices: boolean = true
 ): TransformResult[] {
 	const primitiveMap = primitives
 		? buildPrimitiveMapFromExport(primitives, conventions)
@@ -60,7 +62,7 @@ export function transformToTS(
 
 	const semanticEntries = buildSemanticEntries(lightColors, darkColors, primitiveMap, conventions);
 
-	return [generatePrimitivesTs(primitiveMap, conventions, renames, isNew), generateColorsTs(semanticEntries, conventions, isNew)];
+	return [generatePrimitivesTs(primitiveMap, conventions, renames, isNew, bestPractices), generateColorsTs(semanticEntries, conventions, isNew, bestPractices)];
 }
 
 // ─── Step 1a: Primitive Map from dedicated primitives export ──────────────────
@@ -169,12 +171,12 @@ function generatePrimitivesTs(
 	primitiveMap: Map<string, PrimitiveEntry>,
 	conventions: DetectedConventions,
 	renames: Map<string, string> = new Map(),
-	isNew: (name: string) => boolean = () => false
+	isNew: (name: string) => boolean = () => false,
+	bestPractices: boolean = true
 ): TransformResult {
 	const lines: string[] = [];
 	lines.push('// Primitives.ts');
-	lines.push('// Auto-generated from Figma Variables — DO NOT EDIT');
-	lines.push(`// Generated: ${new Date().toISOString()}`);
+	lines.push(...fileHeaderLines('//', bestPractices));
 	lines.push('');
 
 	const byFamily = new Map<string, PrimitiveEntry[]>();
@@ -227,15 +229,15 @@ function generatePrimitivesTs(
 function generateColorsTs(
 	entries: SemanticEntry[],
 	conventions: DetectedConventions,
-	isNew: (name: string) => boolean = () => false
+	isNew: (name: string) => boolean = () => false,
+	bestPractices: boolean = true
 ): TransformResult {
 	const lines: string[] = [];
 
 	lines.push(`import * as PRIMITIVES from './Primitives';`);
 	lines.push('');
 	lines.push('// Colors.ts');
-	lines.push('// Auto-generated from Figma Variables — DO NOT EDIT');
-	lines.push(`// Generated: ${new Date().toISOString()}`);
+	lines.push(...fileHeaderLines('//', bestPractices));
 	lines.push('');
 
 	const sepChar = conventions.scssSeparator === 'underscore' ? '_' : '-';

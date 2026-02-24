@@ -5,6 +5,14 @@
 import { describe, it, expect } from 'vitest';
 import { transformToKotlin, detectKotlinConventions } from './kotlin.js';
 import type { FigmaColorExport } from '$lib/types.js';
+import type { TransformResult } from '$lib/types.js';
+
+function primContent(r: TransformResult[]): string {
+	return r.find((x) => x.filename === 'Color.kt')?.content ?? r[0]?.content ?? '';
+}
+function semContent(r: TransformResult[]): string {
+	return r.find((x) => x.filename === 'Colors.kt')?.content ?? '';
+}
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -200,16 +208,17 @@ object AppColors {
 // ─── transformToKotlin ────────────────────────────────────────────────────────
 
 describe('transformToKotlin — output structure', () => {
-	it('returns filename Colors.kt, format kotlin, platform android', () => {
+	it('returns filename Color.kt (primitives) and Colors.kt (semantics), format kotlin, platform android', () => {
 		const r = transformToKotlin(lightColors, darkColors);
-		expect(r[0].filename).toBe('Colors.kt');
+		expect(r.some((x) => x.filename === 'Color.kt')).toBe(true);
+		expect(r.some((x) => x.filename === 'Colors.kt')).toBe(true);
 		expect(r[0].format).toBe('kotlin');
 		expect(r[0].platform).toBe('android');
 	});
 
 	it('includes file header, package placeholder, and import', () => {
-		const { content } = transformToKotlin(lightColors, darkColors)[0];
-		expect(content).toContain('// Colors.kt');
+		const content = primContent(transformToKotlin(lightColors, darkColors));
+		expect(content).toContain('// Color.kt');
 		expect(content).toContain('// Auto-generated from Figma Variables');
 		expect(content).toContain('package com.example.design');
 		expect(content).toContain('import androidx.compose.ui.graphics.Color');
@@ -218,18 +227,18 @@ describe('transformToKotlin — output structure', () => {
 
 describe('transformToKotlin — Primitives object', () => {
 	it('outputs object Primitives block', () => {
-		const { content } = transformToKotlin(lightColors, darkColors)[0];
+		const content = primContent(transformToKotlin(lightColors, darkColors));
 		expect(content).toContain('object Primitives {');
 	});
 
 	it('outputs 0xFFRRGGBB format for opaque colors', () => {
-		const { content } = transformToKotlin(lightColors, darkColors)[0];
+		const content = primContent(transformToKotlin(lightColors, darkColors));
 		// Grey750 = #1D1D1D → 0xFF1D1D1D
 		expect(content).toContain('Color(0xFF1D1D1D)');
 	});
 
 	it('uses 0xAARRGGBB hex format for alpha colors', () => {
-		const { content } = transformToKotlin(lightColorsAlpha, darkColorsAlpha)[0];
+		const content = primContent(transformToKotlin(lightColorsAlpha, darkColorsAlpha));
 		// 50% alpha = 0x80, rgb(29,29,29) = 1D1D1D → Color(0x801D1D1D)
 		expect(content).toMatch(/Color\(0x80[0-9A-F]{6}\)/);
 		expect(content).not.toContain('red =');
@@ -237,12 +246,12 @@ describe('transformToKotlin — Primitives object', () => {
 	});
 
 	it('groups primitives by family', () => {
-		const { content } = transformToKotlin(lightColors, darkColors)[0];
+		const content = primContent(transformToKotlin(lightColors, darkColors));
 		expect(content).toContain('// Grey');
 	});
 
 	it('sorts by sort key within a family', () => {
-		const { content } = transformToKotlin(lightColors, darkColors)[0];
+		const content = primContent(transformToKotlin(lightColors, darkColors));
 		// default convention is camelCase
 		const idx0 = content.indexOf('grey0');
 		const idx50 = content.indexOf('grey50');
@@ -252,7 +261,7 @@ describe('transformToKotlin — Primitives object', () => {
 	});
 
 	it('uses localeCompare tie-breaker when sortKeys are equal', () => {
-		const { content } = transformToKotlin(lightColorsWithSortTie, darkColorsWithSortTie)[0];
+		const content = primContent(transformToKotlin(lightColorsWithSortTie, darkColorsWithSortTie));
 		// camelCase default: grey0 before grey0Warm
 		const idx0 = content.indexOf('val grey0 ');
 		const idxWarm = content.indexOf('grey0Warm');
@@ -263,25 +272,25 @@ describe('transformToKotlin — Primitives object', () => {
 
 describe('transformToKotlin — Light/DarkColorTokens', () => {
 	it('outputs LightColorTokens and DarkColorTokens objects', () => {
-		const { content } = transformToKotlin(lightColors, darkColors)[0];
+		const content = semContent(transformToKotlin(lightColors, darkColors));
 		expect(content).toContain('object LightColorTokens {');
 		expect(content).toContain('object DarkColorTokens {');
 	});
 
 	it('light references correct primitive', () => {
-		const { content } = transformToKotlin(lightColors, darkColors)[0];
+		const content = semContent(transformToKotlin(lightColors, darkColors));
 		// textPrimary in light → grey750 (camelCase default)
 		expect(content).toMatch(/LightColorTokens[\s\S]*?textPrimary = Primitives\.grey750/);
 	});
 
 	it('dark references correct primitive', () => {
-		const { content } = transformToKotlin(lightColors, darkColors)[0];
+		const content = semContent(transformToKotlin(lightColors, darkColors));
 		// textPrimary in dark → grey50 (camelCase default)
 		expect(content).toMatch(/DarkColorTokens[\s\S]*?textPrimary = Primitives\.grey50/);
 	});
 
 	it('Static tokens use same primitive in both light and dark', () => {
-		const { content } = transformToKotlin(lightColors, darkColors)[0];
+		const content = semContent(transformToKotlin(lightColors, darkColors));
 		// Fill/Static/white references grey0 in both
 		const lightSection = content.slice(content.indexOf('LightColorTokens'));
 		const darkSection = content.slice(content.indexOf('DarkColorTokens'));
@@ -291,31 +300,31 @@ describe('transformToKotlin — Light/DarkColorTokens', () => {
 
 	it('falls back to light primitive when dark aliases non-Colour path (unknown primitive)', () => {
 		// darkColorsNonColourAlias has Spacing/4 as the alias → not in primitive map → ?? lightPrim
-		const { content } = transformToKotlin(lightColors, darkColorsNonColourAlias)[0];
+		const content = semContent(transformToKotlin(lightColors, darkColorsNonColourAlias));
 		// Both dark and light textPrimary should use grey750 (light fallback)
 		expect(content).toMatch(/DarkColorTokens[\s\S]*?textPrimary = Primitives\.grey750/);
 	});
 
 	it('resolves dark alias from its own primitive map entry', () => {
 		// dark references Colour/Blue/900 which gets added as a primitive since it has a Colour/ path
-		const { content } = transformToKotlin(lightColors, darkColorsUnknownPrimitive)[0];
+		const content = semContent(transformToKotlin(lightColors, darkColorsUnknownPrimitive));
 		// dark text/primary comes from blue900 (collected from dark)
 		expect(content).toMatch(/DarkColorTokens[\s\S]*?textPrimary = Primitives\.blue900/);
 	});
 
 	it('skips tokens with no aliasData', () => {
-		const { content } = transformToKotlin(lightColorsNoAlias, darkColors)[0];
+		const content = primContent(transformToKotlin(lightColorsNoAlias, darkColors));
 		expect(content).not.toContain('noAlias');
 	});
 
 	it('handles non-object intermediate path in dark (getTokenAtPath returns null → use light)', () => {
-		const { content } = transformToKotlin(lightColors, darkColorsNonObjectPath)[0];
+		const content = semContent(transformToKotlin(lightColors, darkColorsNonObjectPath));
 		// dark returns null at path → dark is same as light
 		expect(content).toMatch(/DarkColorTokens[\s\S]*?textPrimary = Primitives\.grey750/);
 	});
 
 	it('handles non-color node at exact path in dark (getTokenAtPath returns null → use light)', () => {
-		const { content } = transformToKotlin(lightColors, darkColorsNonColorAtPath)[0];
+		const content = semContent(transformToKotlin(lightColors, darkColorsNonColorAtPath));
 		expect(content).toMatch(/DarkColorTokens[\s\S]*?textPrimary = Primitives\.grey750/);
 	});
 });
@@ -323,10 +332,12 @@ describe('transformToKotlin — Light/DarkColorTokens', () => {
 describe('transformToKotlin — convention: PascalCase', () => {
 	it('generates PascalCase val names when reference uses PascalCase', () => {
 		const ref = `object Colors {\n  val TextPrimary = Primitives.Grey750\n}`;
-		const { content } = transformToKotlin(lightColors, darkColors, ref, false)[0];
-		expect(content).toContain('val Grey750');
-		expect(content).toContain('val TextPrimary = ColorsPrimitives.Grey750');
-		expect(content).not.toMatch(/\bval grey750\b/);
+		const r = transformToKotlin(lightColors, darkColors, ref, false);
+		const prim = primContent(r);
+		const sem = semContent(r);
+		expect(prim).toContain('val Grey750');
+		expect(sem).toContain('val TextPrimary = ColorsPrimitives.Grey750');
+		expect(prim).not.toMatch(/\bval grey750\b/);
 	});
 });
 
@@ -338,7 +349,7 @@ describe('transformToKotlin — Standard path stripping', () => {
 		const dark: FigmaColorExport = {
 			Fill: { Standard: { white: colorToken('#ffffff', 'Colour/Grey/0') } }
 		};
-		const { content } = transformToKotlin(light, dark)[0];
+		const content = semContent(transformToKotlin(light, dark));
 		expect(content).toContain('fillWhite');
 		expect(content).not.toContain('fillStandard');
 	});
@@ -352,15 +363,16 @@ describe('transformToKotlin — digit-leading family name (topSegment fallback)'
 		const dark: FigmaColorExport = {
 			Text: { primary: colorToken('#f5f5f5', 'Colour/750/Cool') }
 		};
-		const { content } = transformToKotlin(light, dark)[0];
-		expect(content).toContain('Colors.kt');
+		const r = transformToKotlin(light, dark);
+		expect(r.some((x) => x.filename === 'Colors.kt')).toBe(true);
 	});
 });
 
 describe('transformToKotlin — no semantic tokens', () => {
 	it('omits LightColorTokens and DarkColorTokens when no semantic entries', () => {
 		const empty: FigmaColorExport = {};
-		const { content } = transformToKotlin(empty, empty)[0];
+		const r = transformToKotlin(empty, empty);
+		const content = primContent(r);
 		expect(content).not.toContain('LightColorTokens');
 		expect(content).not.toContain('DarkColorTokens');
 	});
@@ -507,5 +519,62 @@ describe('transformToKotlin — multi-file output', () => {
 			expect(r.platform).toBe('android');
 			expect(r.format).toBe('kotlin');
 		}
+	});
+});
+
+// ─── Scope filtering ─────────────────────────────────────────────────────────
+
+describe('transformToKotlin — scope filtering', () => {
+	it('generates only primitives when scope.generatePrimitives=true, generateSemantics=false', () => {
+		const r = transformToKotlin(lightColors, darkColors, undefined, true, {
+			generatePrimitives: true,
+			generateSemantics: false
+		});
+		expect(r).toHaveLength(1);
+		expect(r[0].filename).toBe('Color.kt');
+		expect(r[0].content).toContain('object Primitives');
+		expect(r[0].content).not.toContain('LightColorTokens');
+	});
+
+	it('generates only semantics when scope.generateSemantics=true, generatePrimitives=false', () => {
+		const r = transformToKotlin(lightColors, darkColors, undefined, true, {
+			generatePrimitives: false,
+			generateSemantics: true
+		});
+		expect(r).toHaveLength(1);
+		expect(r[0].filename).toBe('Colors.kt');
+		expect(r[0].content).toContain('LightColorTokens');
+		expect(r[0].content).not.toContain('object Primitives');
+	});
+
+	it('generates both files when scope has both true', () => {
+		const r = transformToKotlin(lightColors, darkColors, undefined, true, {
+			generatePrimitives: true,
+			generateSemantics: true
+		});
+		expect(r.length).toBeGreaterThanOrEqual(2);
+		expect(r.some((x) => x.filename === 'Color.kt')).toBe(true);
+		expect(r.some((x) => x.filename === 'Colors.kt')).toBe(true);
+	});
+
+	it('falls back to primitives when both are false', () => {
+		const r = transformToKotlin(lightColors, darkColors, undefined, true, {
+			generatePrimitives: false,
+			generateSemantics: false
+		});
+		expect(r.length).toBeGreaterThanOrEqual(1);
+		expect(r[0].filename).toBe('Color.kt');
+	});
+
+	it('primitives-only reference produces only Color.kt with no semantic objects', () => {
+		const ref = `package com.example\nimport androidx.compose.ui.graphics.Color\nobject Primitives {\n    val grey750 = Color(0xFF1D1D1D)\n}`;
+		const r = transformToKotlin(lightColors, darkColors, ref, false, {
+			generatePrimitives: true,
+			generateSemantics: false
+		});
+		expect(r).toHaveLength(1);
+		expect(r[0].filename).toBe('Color.kt');
+		expect(r[0].content).not.toContain('LightColorTokens');
+		expect(r[0].content).not.toContain('DarkColorTokens');
 	});
 });

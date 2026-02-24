@@ -9,11 +9,12 @@ function escapeHtml(str: string): string {
 export function buildSearchHighlight(
 	content: string,
 	query: string
-): { html: string; count: number } {
-	if (!query.trim()) return { html: escapeHtml(content), count: 0 };
+): { html: string; count: number; matchLines: number[] } {
+	if (!query.trim()) return { html: escapeHtml(content), count: 0, matchLines: [] };
 	let count = 0;
 	const re = new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
 	const parts: string[] = [];
+	const matchLineSet = new Set<number>();
 	let lastIdx = 0;
 	let match: RegExpExecArray | null;
 	while ((match = re.exec(content)) !== null) {
@@ -21,7 +22,9 @@ export function buildSearchHighlight(
 		parts.push(`<mark class="search-mark">${escapeHtml(match[0])}</mark>`);
 		lastIdx = match.index + match[0].length;
 		count++;
+		const lineNum = content.slice(0, match.index).split('\n').length;
+		matchLineSet.add(lineNum);
 	}
 	parts.push(escapeHtml(content.slice(lastIdx)));
-	return { html: parts.join(''), count };
+	return { html: parts.join(''), count, matchLines: Array.from(matchLineSet) };
 }

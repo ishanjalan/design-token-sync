@@ -18,6 +18,7 @@
 		onToggleOutput: (cat: OutputCategory) => void;
 		canGenerate: boolean;
 		loading: boolean;
+		progressStatus?: string | null;
 		needsRegeneration?: boolean;
 		appColorMode: 'dark' | 'light';
 		tokensAutoLoaded?: boolean;
@@ -34,6 +35,7 @@
 		onToggleOutput,
 		canGenerate,
 		loading,
+		progressStatus = null,
 		needsRegeneration = false,
 		appColorMode,
 		tokensAutoLoaded = false,
@@ -99,9 +101,9 @@
 				disabled={!canGenerate}
 				onclick={onGenerate}
 			>
-				{#if loading}
-					<span class="btn-spinner"></span>
-					Generating…
+			{#if loading}
+				<span class="btn-spinner"></span>
+				{progressStatus ?? 'Generating…'}
 				{:else if needsRegeneration}
 					Regenerate
 					<span class="btn-arrow"><RefreshCw size={12} strokeWidth={2} /></span>

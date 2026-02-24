@@ -27,7 +27,7 @@ export const THEME_PAIRS: Record<string, ThemeId> = {
 	'night-owl': 'github-light'
 };
 
-export type SidePanelId = 'import' | 'files' | 'history' | 'settings' | 'help' | null;
+export type SidePanelId = 'import' | 'files' | 'settings' | 'help' | 'quality' | null;
 
 class UiStoreClass {
 	selectedTheme = $state<ThemeId>('github-dark-dimmed');
@@ -35,7 +35,6 @@ class UiStoreClass {
 	appColorMode = $state<'dark' | 'light'>('dark');
 	searchQuery = $state('');
 	searchInputEl = $state<HTMLInputElement | null>(null);
-	showHistory = $state(false);
 	showSwatches = $state(false);
 	swatchTab = $state<'all' | 'changes'>('all');
 	highlightedLines = $state<{ start: number; end: number } | null>(null);
@@ -78,7 +77,7 @@ class UiStoreClass {
 		if (browser) localStorage.setItem('tokensmith:theme', id);
 	}
 
-	handleRailSelect(id: 'import' | 'files' | 'history' | 'settings' | 'help') {
+	handleRailSelect(id: 'import' | 'files' | 'settings' | 'help' | 'quality') {
 		this.activePanel = this.activePanel === id ? null : id;
 	}
 

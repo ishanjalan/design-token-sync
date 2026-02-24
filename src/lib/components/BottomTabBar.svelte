@@ -1,21 +1,21 @@
 <script lang="ts">
-	import { Upload, Files, History, Settings, HelpCircle } from 'lucide-svelte';
+	import { Upload, Files, Settings, HelpCircle, ShieldCheck } from 'lucide-svelte';
 
-	type PanelId = 'import' | 'files' | 'history' | 'settings' | 'help';
+	type PanelId = 'import' | 'files' | 'settings' | 'help' | 'quality';
 
 	interface Props {
 		active: PanelId | null;
 		hasOutput: boolean;
-		historyCount: number;
+		qualityIssueCount?: number;
 		onSelect: (id: PanelId) => void;
 	}
 
-	let { active, hasOutput, historyCount, onSelect }: Props = $props();
+	let { active, hasOutput, qualityIssueCount = 0, onSelect }: Props = $props();
 
 	const ITEMS: { id: PanelId; label: string; icon: string; needsOutput?: boolean }[] = [
 		{ id: 'import', label: 'Import', icon: 'upload' },
 		{ id: 'files', label: 'Files', icon: 'files', needsOutput: true },
-		{ id: 'history', label: 'History', icon: 'history' },
+		{ id: 'quality', label: 'Quality', icon: 'shield-check', needsOutput: true },
 		{ id: 'settings', label: 'Settings', icon: 'settings' },
 		{ id: 'help', label: 'Help', icon: 'help' }
 	];
@@ -37,16 +37,16 @@
 						<Upload size={18} strokeWidth={1.75} />
 					{:else if item.icon === 'files'}
 						<Files size={18} strokeWidth={1.75} />
-					{:else if item.icon === 'history'}
-						<History size={18} strokeWidth={1.75} />
 					{:else if item.icon === 'settings'}
 						<Settings size={18} strokeWidth={1.75} />
-					{:else if item.icon === 'help'}
-						<HelpCircle size={18} strokeWidth={1.75} />
-					{/if}
-					{#if item.icon === 'history' && historyCount > 0}
-						<span class="tab-badge">{historyCount > 9 ? '9+' : historyCount}</span>
-					{/if}
+				{:else if item.icon === 'shield-check'}
+					<ShieldCheck size={18} strokeWidth={1.75} />
+				{:else if item.icon === 'help'}
+					<HelpCircle size={18} strokeWidth={1.75} />
+				{/if}
+				{#if item.icon === 'shield-check' && qualityIssueCount > 0}
+					<span class="tab-badge tab-badge--warn">{qualityIssueCount > 9 ? '9+' : qualityIssueCount}</span>
+				{/if}
 				</span>
 				<span class="tab-label">{item.label}</span>
 			</button>
@@ -121,5 +121,9 @@
 		border-radius: var(--borderRadius-full);
 		padding: 0 3px;
 		line-height: 1;
+	}
+
+	.tab-badge--warn {
+		background: var(--bgColor-attention-emphasis, #d29922);
 	}
 </style>

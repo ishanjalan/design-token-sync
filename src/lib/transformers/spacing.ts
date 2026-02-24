@@ -13,7 +13,7 @@
 import type { TransformResult } from '$lib/types.js';
 import type { DetectedConventions } from '$lib/types.js';
 import { scssVarToTsName } from '$lib/transformers/naming.js';
-import { collectSpacingEntries } from './shared.js';
+import { collectSpacingEntries, fileHeaderLines } from './shared.js';
 
 interface SpacingEntry {
 	scssVar: string;
@@ -56,8 +56,7 @@ function buildEntries(
 function generateSpacingScss(entries: SpacingEntry[]): TransformResult {
 	const lines: string[] = [];
 	lines.push('// Spacing.scss');
-	lines.push('// Auto-generated from Figma Variables — DO NOT EDIT');
-	lines.push(`// Generated: ${new Date().toISOString()}`);
+	lines.push(...fileHeaderLines('//', true));
 	lines.push('');
 	lines.push('// Spacing scale — SCSS variables');
 	for (const { scssVar, value } of entries) {
@@ -86,8 +85,7 @@ function generateSpacingScss(entries: SpacingEntry[]): TransformResult {
 function generateSpacingTs(entries: SpacingEntry[], hasTypeAnnotations: boolean): TransformResult {
 	const lines: string[] = [];
 	lines.push('// Spacing.ts');
-	lines.push('// Auto-generated from Figma Variables — DO NOT EDIT');
-	lines.push(`// Generated: ${new Date().toISOString()}`);
+	lines.push(...fileHeaderLines('//', true));
 	lines.push('');
 	lines.push('// Spacing scale (px)');
 	const typeAnnotation = hasTypeAnnotations ? ': string' : '';

@@ -3,19 +3,15 @@
 	import { updated } from '$app/stores';
 	import { onMount } from 'svelte';
 	import { Toaster, toast } from 'svelte-sonner';
-	import type {
-		Platform,
-		HistoryEntry,
-		GenerateResponse,
-		DropZoneKey
-	} from '$lib/types.js';
-	import {
-		type DiffLine,
-		type ChangelogContext,
-		diffChangeIndices,
-		generateChangelog,
-		computeBlameMap
-	} from '$lib/diff-utils.js';
+	import type { Platform, DropZoneKey } from '$lib/types.js';
+	import { type DiffLine, diffChangeIndices, generateChangelog, computeBlameMap } from '$lib/diff-utils.js';
+
+	import { formatFileSize, langLabel, platformColor, formatTime, timeAgo } from '$lib/page/format-helpers.js';
+	import { extractSections, computeFoldRanges, extractDiffColor, computeHunkHeaders, nearestContext } from '$lib/page/code-helpers.js';
+	import { generate as doGenerate, buildChangelogCtx } from '$lib/page/generation.js';
+	import { downloadZip as doDownloadZip, copyToClipboard as doCopyToClipboard } from '$lib/page/download.js';
+	import { sendPRs as doSendPRs, retryPr as doRetryPr } from '$lib/page/github-pr.js';
+	import { onFigmaFetch as doFigmaFetch, pollFigmaWebhook as doPollFigmaWebhook, notifyTokenUpdate as doNotifyTokenUpdate } from '$lib/page/figma-sync.js';
 
 	import AppShell from '$lib/components/AppShell.svelte';
 	import ActivityRail from '$lib/components/ActivityRail.svelte';
@@ -26,15 +22,18 @@
 	import EditorPane from '$lib/components/EditorPane.svelte';
 	import StatusBar from '$lib/components/StatusBar.svelte';
 	import SettingsPanel from '$lib/components/SettingsPanel.svelte';
-	import HistoryPanel from '$lib/components/HistoryPanel.svelte';
 	import HelpPanel from '$lib/components/HelpPanel.svelte';
+	import QualityPanel from '$lib/components/QualityPanel.svelte';
+	import { analyzeReferenceFiles, type BestPracticeAdvice } from '$lib/best-practices-advisor.js';
+	import { detectRefCompleteness, type RefCompletenessWarning } from '$lib/ref-completeness.js';
+	import { AlertTriangle } from 'lucide-svelte';
 
 	import { fileStore, REF_KEYS } from '$lib/stores/file-store.svelte.js';
 	import { genStore } from '$lib/stores/generation-store.svelte.js';
 	import { uiStore, THEMES } from '$lib/stores/ui-store.svelte.js';
 	import { settingsStore } from '$lib/stores/settings-store.svelte.js';
 	import { tokenStore, setGenStoreRef } from '$lib/stores/token-store-client.svelte.js';
-	import { historyStore } from '$lib/stores/history-store.svelte.js';
+
 
 	setGenStoreRef(() => genStore.result);
 
@@ -76,11 +75,10 @@
 		genStore.init();
 		uiStore.init();
 		settingsStore.init();
-		historyStore.init();
 		tokenStore.loadStoredTokens().then((loaded) => {
 			tokenStore.loadStoredVersions();
 			if (loaded && settingsStore.autoGenerate && fileStore.canGenerate) {
-				setTimeout(generate, 100);
+				setTimeout(doGenerateNow, 100);
 			}
 		});
 	});
@@ -108,6 +106,48 @@
 			}
 		}
 	});
+
+	// ─── Quality Analysis ────────────────────────────────────────────────────────
+
+	let qualityAdvice = $state<BestPracticeAdvice[]>([]);
+
+	function runQualityAnalysis() {
+		const refContent: Record<string, string> = {};
+		for (const key of REF_KEYS) {
+			const slot = fileStore.slots[key];
+			if (slot?.files?.length) {
+				for (const f of slot.files) {
+					const r = new FileReader();
+					r.onload = () => {
+						refContent[f.name] = r.result as string;
+						qualityAdvice = analyzeReferenceFiles(refContent, fileStore.selectedPlatforms);
+					};
+					r.readAsText(f);
+				}
+			} else if (slot?.file) {
+				const f = slot.file;
+				const r = new FileReader();
+				r.onload = () => {
+					refContent[f.name] = r.result as string;
+					qualityAdvice = analyzeReferenceFiles(refContent, fileStore.selectedPlatforms);
+				};
+				r.readAsText(f);
+			}
+		}
+		if (REF_KEYS.every((k) => !fileStore.slots[k]?.file && !fileStore.slots[k]?.files?.length)) {
+			qualityAdvice = analyzeReferenceFiles({}, fileStore.selectedPlatforms);
+		}
+	}
+
+	$effect(() => {
+		if (genStore.result) {
+			runQualityAnalysis();
+		}
+	});
+
+	const qualityIssueCount = $derived(
+		(genStore.result?.warnings?.filter((w) => w.type === 'cycle').length ?? 0) + qualityAdvice.length
+	);
 
 	// ─── Syntax highlighting effects ─────────────────────────────────────────────
 
@@ -143,18 +183,6 @@
 	});
 
 	// ─── Fold / Blame effect ─────────────────────────────────────────────────────
-
-	function computeFoldRanges(content: string): { start: number; end: number; label: string }[] {
-		const sections = extractSections(content);
-		const ranges: { start: number; end: number; label: string }[] = [];
-		const totalLines = content.split('\n').length;
-		for (let i = 0; i < sections.length; i++) {
-			const start = sections[i].line;
-			const end = i + 1 < sections.length ? sections[i + 1].line - 1 : totalLines;
-			ranges.push({ start, end, label: sections[i].label });
-		}
-		return ranges;
-	}
 
 	$effect(() => {
 		if (!genStore.highlights || !genStore.result?.files) return;
@@ -237,43 +265,6 @@
 		uiStore.currentBreadcrumb = active ? active.label : '';
 	}
 
-	// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-	function formatFileSize(bytes: number): string {
-		if (bytes < 1024) return `${bytes} B`;
-		return `${(bytes / 1024).toFixed(1)} KB`;
-	}
-
-	function langLabel(format: string): string {
-		switch (format) {
-			case 'scss': return 'SCSS';
-			case 'typescript': return 'TypeScript';
-			case 'swift': return 'Swift';
-			case 'kotlin': return 'Kotlin';
-			case 'css': return 'CSS';
-			default: return format;
-		}
-	}
-
-	function platformColor(platform: Platform): string {
-		return PLATFORMS.find((p) => p.id === platform)?.color ?? 'var(--fgColor-disabled)';
-	}
-
-	function formatTime(d: Date): string {
-		return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-	}
-
-	function timeAgo(d: Date): string {
-		const secs = Math.floor((Date.now() - d.getTime()) / 1000);
-		if (secs < 60) return `${secs}s ago`;
-		if (secs < 3600) return `${Math.floor(secs / 60)}m ago`;
-		return `${Math.floor(secs / 3600)}h ago`;
-	}
-
-	function buildChangelogCtx(): ChangelogContext {
-		return { files: genStore.result?.files ?? [], platforms: genStore.result?.platforms ?? [], platformLabels: PLATFORMS, diffs: genStore.diffs, deprecations: genStore.deprecations, modifications: genStore.modifications, renames: genStore.renames, familyRenames: genStore.familyRenames, tokenCoverage: genStore.tokenCoverage, platformMismatches: genStore.platformMismatches, impactedTokens: genStore.impactedTokens };
-	}
-
 	// ─── Navigation ──────────────────────────────────────────────────────────────
 
 	function handleTabKeydown(e: KeyboardEvent) {
@@ -304,260 +295,116 @@
 		}
 	}
 
-	function extractSections(content: string): { label: string; line: number }[] {
-		const sections: { label: string; line: number }[] = [];
-		const lines = content.split('\n');
-		for (let i = 0; i < lines.length; i++) {
-			const line = lines[i].trim();
-			const markMatch = line.match(/\/\/\s*MARK:\s*-?\s*(.+)/);
-			if (markMatch) { sections.push({ label: markMatch[1].trim(), line: i + 1 }); continue; }
-			const sectionMatch = line.match(/^\/\/\s*(Primitive|Semantic|Light|Dark|Material|Typography|Spacing|CSS custom|SCSS|@property|:root)\b.*$/i);
-			if (sectionMatch) { sections.push({ label: line.replace(/^\/\/\s*/, '').slice(0, 50), line: i + 1 }); continue; }
-			const objectMatch = line.match(/^(?:object|public extension|public struct|export interface|@mixin)\s+(\S+)/);
-			if (objectMatch) sections.push({ label: objectMatch[0].slice(0, 50), line: i + 1 });
-		}
-		return sections;
-	}
+	// ─── Generate (delegates to extracted module) ────────────────────────────────
 
-	function extractDiffColor(text: string): string | null {
-		const m = text.match(/#([0-9a-fA-F]{6,8}|[0-9a-fA-F]{3})(?![0-9a-fA-F])/) ?? text.match(/0x([0-9a-fA-F]{6,8})(?![0-9a-fA-F])/i);
-		if (!m) return null;
-		const raw = m[1];
-		if (raw.length === 3) return `#${raw[0]}${raw[0]}${raw[1]}${raw[1]}${raw[2]}${raw[2]}`;
-		if (raw.length === 8 && text.includes('0x')) return `#${raw.slice(2, 8)}`;
-		return `#${raw.slice(0, 6)}`;
-	}
+	const REF_KEYS_FOR_GEN: DropZoneKey[] = ['referenceColorsWeb', 'referenceTypographyWeb', 'referenceColorsSwift', 'referenceColorsKotlin', 'referenceTypographySwift', 'referenceTypographyKotlin'];
 
-	function computeHunkHeaders(lines: DiffLine[]): Set<number> {
-		// eslint-disable-next-line svelte/prefer-svelte-reactivity
-		const hunks = new Set<number>();
-		for (let i = 0; i < lines.length; i++) {
-			if (lines[i].type === 'equal') continue;
-			if (i === 0 || lines[i - 1].type === 'equal') hunks.add(i);
-		}
-		return hunks;
-	}
-
-	function nearestContext(lines: DiffLine[], idx: number): string {
-		for (let i = idx - 1; i >= 0; i--) {
-			const t = lines[i].text.trim();
-			if (t.startsWith('//') && t.length > 3) return t;
-			if (/^(export|object|public |@mixin|:root|\$\w)/.test(t)) return t.slice(0, 60);
-		}
-		return '';
-	}
-
-	// ─── Generate ────────────────────────────────────────────────────────────────
+	let confirmWarnings = $state<string[]>([]);
+	let showConfirmDialog = $state(false);
 
 	async function generate() {
-		if (!fileStore.canGenerate) return;
-		fileStore.loading = true;
-		genStore.resetForGeneration();
-		fileStore.needsRegeneration = false;
-		tokenStore.tokensAutoLoaded = false;
-		tokenStore.tokensUpdatedBanner = null;
-		try {
-			const fd = new FormData();
-			fd.append('lightColors', fileStore.slots.lightColors.file!);
-			fd.append('darkColors', fileStore.slots.darkColors.file!);
-			fd.append('values', fileStore.slots.values.file!);
-			fd.append('platforms', JSON.stringify(fileStore.selectedPlatforms));
-			fd.append('outputs', JSON.stringify(fileStore.selectedOutputs));
-			if (fileStore.slots.typography.file) fd.append('typography', fileStore.slots.typography.file);
-			const refKeys: DropZoneKey[] = ['referenceColorsWeb', 'referenceTypographyWeb', 'referenceColorsSwift', 'referenceColorsKotlin', 'referenceTypographySwift', 'referenceTypographyKotlin'];
-			for (const key of refKeys) {
-				const slot = fileStore.slots[key];
-				if (slot.files.length > 0) {
-					for (const f of slot.files) fd.append(key, f);
-				} else if (slot.file) {
-					fd.append(key, slot.file);
+		const warnings: string[] = [];
+		const refContents: Record<string, string | undefined> = {};
+		for (const key of REF_KEYS) {
+			const slot = fileStore.slots[key];
+			if (slot.files.length > 0) {
+				const texts: string[] = [];
+				for (const f of slot.files) {
+					try { texts.push(await f.text()); } catch { /* skip */ }
 				}
+				refContents[key] = texts.join('\n');
+			} else if (slot.file) {
+				try { refContents[key] = await slot.file.text(); } catch { /* skip */ }
 			}
-			const res = await fetch('/api/generate', { method: 'POST', body: fd });
-			if (!res.ok) { const text = await res.text(); throw new Error(text || `HTTP ${res.status}`); }
-			let parsed: GenerateResponse;
-			try { parsed = await res.json(); } catch { throw new Error('Server returned invalid JSON'); }
-			if (!parsed?.files?.length) throw new Error('No files were generated');
-			genStore.applyResult(parsed);
-			uiStore.searchQuery = '';
-			uiStore.showHistory = false;
-			const entry: HistoryEntry = { id: Date.now().toString(), generatedAt: new Date().toISOString(), platforms: parsed.platforms, stats: parsed.stats, files: parsed.files };
-			historyStore.addEntry(entry);
-			toast.success(`${parsed.files.length} files generated`);
-			uiStore.activePanel = 'files';
-		} catch (e) {
-			genStore.errorMsg = e instanceof Error ? e.message : 'Generation failed';
-			toast.error(genStore.errorMsg ?? 'Generation failed');
-		} finally { fileStore.loading = false; }
+		}
+		const completenessWarnings = detectRefCompleteness(refContents);
+		for (const w of completenessWarnings) warnings.push(w.message);
+
+		for (const key of REF_KEYS) {
+			const slot = fileStore.slots[key];
+			if (slot.file && !fileStore.visibleKeys.includes(key)) {
+				warnings.push(`${slot.label} uploaded but ${slot.platforms.join('/')} is not selected — it will be ignored.`);
+			}
+		}
+
+		if (warnings.length > 0) {
+			confirmWarnings = warnings;
+			showConfirmDialog = true;
+			return;
+		}
+
+		await doGenerateNow();
 	}
 
-	// ─── Clear all ───────────────────────────────────────────────────────────────
+	async function doGenerateNow() {
+		showConfirmDialog = false;
+		await doGenerate(
+			{ fileStore: fileStore as any, genStore: genStore as any, tokenStore: tokenStore as any, uiStore: uiStore as any },
+			REF_KEYS_FOR_GEN,
+			toast
+		);
+	}
+
+	function backToHome() {
+		genStore.result = null;
+		genStore.activeTab = '';
+	}
 
 	function clearAll() {
 		fileStore.resetSlots();
 		genStore.resetAll();
 		uiStore.searchQuery = '';
-		uiStore.showHistory = false;
 		uiStore.showSwatches = false;
 		uiStore.diffNavIndex = {};
-		historyStore.history = [];
 		settingsStore.prResults = [];
 		toast.success('All files cleared');
 	}
 
-	// ─── Download / Copy ─────────────────────────────────────────────────────────
+	// ─── Download / Copy (delegates to extracted modules) ────────────────────────
 
-	async function downloadZip() {
-		if (!genStore.result?.files.length) return;
-		const { zipSync, strToU8 } = await import('fflate');
-		const zipped = zipSync(
-			Object.fromEntries(genStore.result.files.map((f) => [f.filename, strToU8(f.content)]))
-		);
-		const blob = new Blob([zipped.buffer as ArrayBuffer], { type: 'application/zip' });
-		const url = URL.createObjectURL(blob);
-		const a = document.createElement('a'); a.href = url; a.download = `tokensmith-${new Date().toISOString().slice(0, 10)}.zip`; a.click();
-		URL.revokeObjectURL(url); toast.success('ZIP downloaded');
-	}
+	async function downloadZip() { await doDownloadZip(genStore.result?.files ?? [], toast); }
+	async function copyToClipboard(content: string) { await doCopyToClipboard(content, toast); }
 
-	async function copyToClipboard(content: string) {
-		try { await navigator.clipboard.writeText(content); toast.success('Copied to clipboard'); }
-		catch { toast.error('Copy failed'); }
-	}
-
-	// ─── Config import/export ────────────────────────────────────────────────────
-
-	async function exportConfig() {
-		const refData: Record<string, { name: string; content: string }> = {};
-		for (const key of REF_KEYS) { if (fileStore.slots[key].file) { const content = await fileStore.slots[key].file!.text(); refData[key] = { name: fileStore.slots[key].file!.name, content }; } }
-		const config = { version: 1, platforms: fileStore.selectedPlatforms, referenceFiles: refData };
-		const blob = new Blob([JSON.stringify(config, null, 2)], { type: 'application/json' });
-		const url = URL.createObjectURL(blob);
-		const a = document.createElement('a'); a.href = url; a.download = 'tokensmith-config.json'; a.click();
-		URL.revokeObjectURL(url); toast.success('Config exported');
-	}
-
-	function importConfigFile(e: Event) {
-		const input = e.target as HTMLInputElement;
-		const file = input.files?.[0]; if (!file) return;
-		file.text().then((text) => {
-			try {
-				const config = JSON.parse(text) as { version: number; platforms: Platform[]; referenceFiles: Record<string, { name: string; content: string }> };
-				if (config.platforms?.length) { fileStore.selectedPlatforms = config.platforms; if (browser) { import('$lib/storage.js').then(m => m.savePlatforms(fileStore.selectedPlatforms)); } }
-				for (const [key, data] of Object.entries(config.referenceFiles ?? {})) {
-					if (!REF_KEYS.includes(key as DropZoneKey)) continue;
-					const synthetic = new File([data.content], data.name, { type: 'text/plain' });
-					fileStore.slots[key as DropZoneKey].file = synthetic; fileStore.slots[key as DropZoneKey].restored = true;
-					import('$lib/storage.js').then(m => m.saveRefFile(key, data.name, data.content));
-					import('$lib/file-validation.js').then(m => { fileStore.fileInsights[key as DropZoneKey] = m.computeInsight(key as DropZoneKey, data.content); });
-					import('$lib/convention-hints.js').then(m => { fileStore.conventionHints[key as DropZoneKey] = m.computeConventionHints(key as DropZoneKey, data.content); });
-					import('$lib/pre-validation.js').then(m => { fileStore.validations[key as DropZoneKey] = m.computeValidation(key as DropZoneKey, data.content); });
-				}
-				toast.success('Config imported');
-			} catch { toast.error('Invalid config file'); }
-		});
-		input.value = '';
-	}
-
-	// ─── History ─────────────────────────────────────────────────────────────────
-
-	function restoreHistory(entry: HistoryEntry) {
-		genStore.result = { success: true, platforms: entry.platforms, stats: entry.stats, files: entry.files };
-		genStore.lastGeneratedAt = new Date(entry.generatedAt);
-		if (genStore.result.files.length) genStore.activeTab = genStore.result.files[0].filename;
-		genStore.highlights = {}; genStore.diffs = {}; genStore.viewModes = {};
-		uiStore.searchQuery = ''; uiStore.showHistory = false;
-		toast.success('Previous generation restored');
-	}
-
-	// ─── Google Chat ─────────────────────────────────────────────────────────────
+	// ─── Google Chat (delegates to extracted module) ─────────────────────────────
 
 	async function notifyTokenUpdate(change: { version: number; added: number; removed: number; summary: string }) {
-		try {
-			const payload: Record<string, unknown> = {
-				platforms: fileStore.selectedPlatforms,
-				version: change.version,
-				tokenChanges: { added: change.added, removed: change.removed, summary: change.summary },
-				generatedAt: new Date().toISOString()
-			};
-			if (settingsStore.chatWebhookUrl) payload.webhookUrl = settingsStore.chatWebhookUrl;
-			const r = await fetch('/api/notify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-			if (!r.ok) { const text = await r.text(); toast.error(`Google Chat: ${text}`); }
-			else toast.success('Google Chat notified');
-		} catch { toast.error('Google Chat notification failed'); }
+		await doNotifyTokenUpdate(change, fileStore.selectedPlatforms, settingsStore.chatWebhookUrl, toast);
 	}
 
-	// ─── GitHub PR ───────────────────────────────────────────────────────────────
+	// ─── GitHub PR (delegates to extracted module) ───────────────────────────────
 
 	async function sendPRs() {
-		if (!genStore.result?.files.length) return;
-		if (!settingsStore.githubPat) { toast.warning('Add your GitHub PAT in Settings first', { duration: 8000 }); uiStore.activePanel = 'settings'; return; }
-		settingsStore.sendingPrs = true; settingsStore.prResults = [];
-		try {
-			// eslint-disable-next-line svelte/prefer-svelte-reactivity
-		const grouped = new Map<string, { platforms: string[]; owner: string; repo: string; baseBranch: string; targetDir: string; files: { filename: string; content: string }[] }>();
-			for (const platform of genStore.result.platforms) {
-				const cfg = settingsStore.githubRepos[platform]; if (!cfg?.owner || !cfg?.repo) continue;
-				const repoKey = `${cfg.owner}/${cfg.repo}`;
-				const existing = grouped.get(repoKey);
-				const platFiles = genStore.result.files.filter((f) => f.platform === platform).map((f) => ({ filename: f.filename, content: f.content }));
-				if (existing) { existing.platforms.push(platform); existing.files.push(...platFiles); }
-				else { grouped.set(repoKey, { platforms: [platform], owner: cfg.owner, repo: cfg.repo, baseBranch: cfg.branch || 'main', targetDir: cfg.dir || '', files: platFiles }); }
+		await doSendPRs(
+			genStore.result,
+			settingsStore.githubPat,
+			settingsStore.githubRepos as any,
+			buildChangelogCtx(genStore as any, PLATFORMS) as any,
+			toast as any,
+			{
+				setSendingPrs: (v) => (settingsStore.sendingPrs = v),
+				setPrResults: (v) => (settingsStore.prResults = v as any),
+				openSettings: () => (uiStore.activePanel = 'settings')
 			}
-			const repos = Array.from(grouped.values()).map((g) => ({ platform: g.platforms.join('+'), owner: g.owner, repo: g.repo, baseBranch: g.baseBranch, targetDir: g.targetDir, files: g.files }));
-			if (repos.length === 0) { toast.error('Configure repo settings for at least one platform'); uiStore.activePanel = 'settings'; return; }
-			const changelog = generateChangelog(buildChangelogCtx());
-			const res = await fetch('/api/github/pr', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: settingsStore.githubPat, repos, description: changelog }) });
-			if (!res.ok) { const text = await res.text().catch(() => ''); throw new Error(text || `HTTP ${res.status}`); }
-			let data: { prs: { platform: string; url: string }[]; errors: string[] };
-			try { data = await res.json(); } catch { throw new Error('Server returned invalid JSON'); }
-			const successResults = (data.prs ?? []).map((p) => ({ ...p, status: 'success' as const }));
-			const failedResults = (data.errors ?? []).map((errMsg) => { const platformMatch = errMsg.match(/^(\w+)\s*\(/); return { platform: platformMatch?.[1] ?? 'unknown', url: '', status: 'failed' as const, error: errMsg }; });
-			settingsStore.prResults = [...successResults, ...failedResults];
-			if (successResults.length > 0) {
-				toast.success(`${successResults.length} PR${successResults.length > 1 ? 's' : ''} created`);
-				historyStore.storePrUrls(successResults.map((p) => p.url));
-			}
-			if (failedResults.length > 0) toast.error(`${failedResults.length} PR${failedResults.length > 1 ? 's' : ''} failed`);
-		} catch (e) { toast.error(`PR creation failed: ${e instanceof Error ? e.message : String(e)}`); }
-		finally { settingsStore.sendingPrs = false; }
+		);
 	}
 
 	async function retryPr(platform: string) {
-		if (!genStore.result?.files.length || !settingsStore.githubPat) return;
-		const cfg = settingsStore.githubRepos[platform as Platform]; if (!cfg?.owner || !cfg?.repo) { toast.error(`No repo configured for ${platform}`); return; }
-		const files = genStore.result.files.filter((f) => f.platform === platform).map((f) => ({ filename: f.filename, content: f.content }));
-		if (!files.length) return;
-		const idx = settingsStore.prResults.findIndex((p) => p.platform === platform);
-		if (idx >= 0) settingsStore.prResults[idx] = { ...settingsStore.prResults[idx], status: 'success', error: undefined, url: '…' };
-		try {
-			const changelog = generateChangelog(buildChangelogCtx());
-			const res = await fetch('/api/github/pr', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: settingsStore.githubPat, repos: [{ platform, owner: cfg.owner, repo: cfg.repo, baseBranch: cfg.branch || 'main', targetDir: cfg.dir || '', files }], description: changelog }) });
-			if (!res.ok) throw new Error(await res.text().catch(() => `HTTP ${res.status}`));
-			const data: { prs: { platform: string; url: string }[]; errors: string[] } = await res.json();
-			if (data.prs?.length && idx >= 0) { settingsStore.prResults[idx] = { platform, url: data.prs[0].url, status: 'success' }; toast.success(`PR retried for ${platform}`); }
-			else if (data.errors?.length) throw new Error(data.errors[0]);
-		} catch (e) { if (idx >= 0) settingsStore.prResults[idx] = { platform, url: '', status: 'failed', error: e instanceof Error ? e.message : String(e) }; toast.error(`Retry failed for ${platform}`); }
+		await doRetryPr(
+			platform,
+			genStore.result,
+			settingsStore.githubPat,
+			settingsStore.githubRepos as any,
+			buildChangelogCtx(genStore as any, PLATFORMS) as any,
+			settingsStore.prResults as any,
+			toast,
+			(v) => (settingsStore.prResults = v as any)
+		);
 	}
 
-	// ─── Figma fetch ─────────────────────────────────────────────────────────────
+	// ─── Figma fetch (delegates to extracted module) ─────────────────────────────
 
 	async function onFigmaFetch() {
-		if (!settingsStore.figmaFileKey || !settingsStore.figmaPat || settingsStore.figmaFetching) return;
-		settingsStore.figmaFetching = true;
-		try {
-			const res = await fetch('/api/figma/variables', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fileKey: settingsStore.figmaFileKey, pat: settingsStore.figmaPat }) });
-			if (!res.ok) { toast.error(`Figma API error: ${await res.text()}`); return; }
-			const data = await res.json();
-			const entries: { key: DropZoneKey; content: string; name: string }[] = [
-				{ key: 'lightColors', content: JSON.stringify(data.lightColors, null, 2), name: 'Light.tokens.json' },
-				{ key: 'darkColors', content: JSON.stringify(data.darkColors, null, 2), name: 'Dark.tokens.json' },
-				{ key: 'values', content: JSON.stringify(data.values, null, 2), name: 'Value.tokens.json' }
-			];
-			if (data.typography && Object.keys(data.typography).length > 0) entries.push({ key: 'typography', content: JSON.stringify(data.typography, null, 2), name: 'typography.tokens.json' });
-			fileStore.applyTokenData(entries);
-			toast.success(`Fetched tokens from Figma`);
-		} catch (err) { toast.error(`Failed to fetch from Figma: ${err instanceof Error ? err.message : 'Unknown error'}`); }
-		finally { settingsStore.figmaFetching = false; }
+		await doFigmaFetch(settingsStore as any, (entries) => fileStore.applyTokenData(entries), toast);
 	}
 
 	// ─── Plugin sync polling ─────────────────────────────────────────────────────
@@ -567,7 +414,7 @@
 		const interval = setInterval(() => {
 			tokenStore.checkPluginSync(() => {
 				if (settingsStore.autoGenerate && fileStore.canGenerate) {
-					setTimeout(generate, 100);
+					setTimeout(doGenerateNow, 100);
 				}
 			});
 		}, 3_000);
@@ -583,7 +430,7 @@
 			tokenStore.pollTokenVersion((change) => {
 				notifyTokenUpdate(change).catch(() => {});
 				if (settingsStore.autoGenerate && fileStore.canGenerate) {
-					setTimeout(generate, 100);
+					setTimeout(doGenerateNow, 100);
 				}
 			});
 		}, 30_000);
@@ -592,18 +439,13 @@
 
 	// ─── Figma webhook polling ───────────────────────────────────────────────────
 
-	async function pollFigmaWebhook() {
-		if (!settingsStore.figmaWebhookPasscode) return;
-		try {
-			const res = await fetch(`/api/figma/webhook?passcode=${encodeURIComponent(settingsStore.figmaWebhookPasscode)}`);
-			if (res.ok) {
-				const data: { event: { file_name: string; timestamp: string; receivedAt: string } | null } = await res.json();
-				if (data.event && data.event.receivedAt !== settingsStore.figmaWebhookEvent?.receivedAt) { settingsStore.figmaWebhookEvent = data.event; settingsStore.figmaWebhookSeen = false; }
-			}
-		} catch { /* silent */ }
-	}
-
-	$effect(() => { if (!browser || !settingsStore.figmaWebhookPasscode) return; const interval = setInterval(pollFigmaWebhook, 30_000); pollFigmaWebhook(); return () => clearInterval(interval); });
+	$effect(() => {
+		if (!browser || !settingsStore.figmaWebhookPasscode) return;
+		const poll = () => doPollFigmaWebhook(settingsStore as any);
+		const interval = setInterval(poll, 30_000);
+		poll();
+		return () => clearInterval(interval);
+	});
 
 	// ─── Escape handler ──────────────────────────────────────────────────────────
 
@@ -629,6 +471,26 @@
 	<Toaster theme="dark" position="bottom-right" richColors />
 </div>
 
+{#if showConfirmDialog}
+	<div class="confirm-overlay" role="dialog" aria-modal="true" aria-label="Generation warnings">
+		<div class="confirm-dialog">
+			<div class="confirm-icon">
+				<AlertTriangle size={20} strokeWidth={2} />
+			</div>
+			<h3 class="confirm-title">Before generating</h3>
+			<ul class="confirm-list">
+				{#each confirmWarnings as w, i (i)}
+					<li>{w}</li>
+				{/each}
+			</ul>
+			<div class="confirm-actions">
+				<button class="confirm-btn confirm-btn--secondary" onclick={() => (showConfirmDialog = false)}>Fix issues</button>
+				<button class="confirm-btn confirm-btn--primary" onclick={doGenerateNow}>Generate anyway</button>
+			</div>
+		</div>
+	</div>
+{/if}
+
 <AppShell activePanel={uiStore.activePanel} bind:panelWidth={uiStore.panelWidth} welcomeMode={!genStore.result} onClosePanel={() => (uiStore.activePanel = null)}>
 	{#snippet header()}
 		<HeaderBar
@@ -638,6 +500,7 @@
 			onToggleOutput={(cat) => fileStore.toggleOutput(cat)}
 			canGenerate={fileStore.canGenerate}
 			loading={fileStore.loading}
+			progressStatus={genStore.progressStatus}
 			needsRegeneration={fileStore.needsRegeneration}
 			appColorMode={uiStore.appColorMode}
 			tokensAutoLoaded={tokenStore.tokensAutoLoaded}
@@ -659,7 +522,7 @@
 		<ActivityRail
 			active={uiStore.activePanel}
 			hasOutput={!!genStore.result}
-			historyCount={historyStore.history.length}
+			{qualityIssueCount}
 			onSelect={(id) => uiStore.handleRailSelect(id)}
 		/>
 	{/snippet}
@@ -692,8 +555,6 @@
 				onBulkDrop={(e) => fileStore.handleBulkDrop(e)}
 			selectedOutputs={fileStore.selectedOutputs}
 				onToggleOutput={(cat) => fileStore.toggleOutput(cat)}
-				onExportConfig={exportConfig}
-				onImportConfig={importConfigFile}
 				onClearAll={clearAll}
 				onGenerate={generate}
 				storedTokenVersion={tokenStore.storedTokenVersion}
@@ -712,13 +573,6 @@
 				modifications={genStore.modifications}
 				onTabSelect={(f) => (genStore.activeTab = f)}
 				onTabKeydown={handleTabKeydown}
-			/>
-		{:else if uiStore.activePanel === 'history'}
-			<HistoryPanel
-				history={historyStore.history}
-				{platformColor}
-				onRestore={restoreHistory}
-				onClose={() => (uiStore.activePanel = null)}
 			/>
 		{:else if uiStore.activePanel === 'settings'}
 			<SettingsPanel
@@ -741,6 +595,14 @@
 				onFigmaPatChange={(e) => settingsStore.onFigmaPatChange(e)}
 				{onFigmaFetch}
 				onFigmaPasscodeChange={(e) => settingsStore.onFigmaPasscodeChange(e)}
+			/>
+		{:else if uiStore.activePanel === 'quality'}
+			<QualityPanel
+				warnings={genStore.result?.warnings ?? []}
+				advice={qualityAdvice}
+				platforms={fileStore.selectedPlatforms}
+				onClose={() => (uiStore.activePanel = null)}
+				onRerun={runQualityAnalysis}
 			/>
 		{:else if uiStore.activePanel === 'help'}
 			<HelpPanel onClose={() => (uiStore.activePanel = null)} />
@@ -782,8 +644,6 @@
 			showSwatches={uiStore.showSwatches}
 			swatchComparisons={genStore.swatchComparisons}
 			swatchTab={uiStore.swatchTab}
-			showHistory={uiStore.showHistory}
-			history={historyStore.history}
 			prResults={settingsStore.prResults}
 			platformMismatches={genStore.platformMismatches}
 			themes={THEMES}
@@ -794,6 +654,7 @@
 			storedTokenPushedAt={tokenStore.storedTokenPushedAt}
 			tokensUpdatedBanner={tokenStore.tokensUpdatedBanner}
 			onRegenerate={generate}
+			onBackToHome={backToHome}
 			platforms={PLATFORMS}
 			onSelectPlatform={(id) => fileStore.selectPlatform(id)}
 			swatchCount={fileStore.swatches.length}
@@ -801,14 +662,14 @@
 			visibleKeysAll={fileStore.visibleKeys}
 			slots={fileStore.slots}
 			fileInsights={fileStore.fileInsights}
-			conventionHints={fileStore.conventionHints}
-			validations={fileStore.validations}
 			hasRefFiles={fileStore.hasRefFiles}
 			selectedOutputs={fileStore.selectedOutputs}
 			onToggleOutput={(cat) => fileStore.toggleOutput(cat)}
 			tokensInitialLoading={tokenStore.tokensInitialLoading}
 			canGenerate={fileStore.canGenerate}
 			loading={fileStore.loading}
+			progressStatus={genStore.progressStatus}
+			errorMsg={genStore.errorMsg}
 			onGenerate={generate}
 			onOpenImportPanel={() => (uiStore.activePanel = 'import')}
 			onOpenSettings={() => (uiStore.activePanel = 'settings')}
@@ -840,11 +701,9 @@
 			onDownloadZip={downloadZip}
 			onCopyFile={() => { if (genStore.activeFile) copyToClipboard(genStore.activeFile.content); }}
 			onSendPRs={sendPRs}
-			onCopyChangelog={() => copyToClipboard(generateChangelog(buildChangelogCtx()))}
+			onCopyChangelog={() => copyToClipboard(generateChangelog(buildChangelogCtx(genStore as any, PLATFORMS) as any))}
 			onToggleSwatches={() => (uiStore.showSwatches = !uiStore.showSwatches)}
 			onSwatchTabChange={(t) => (uiStore.swatchTab = t)}
-			onToggleHistory={() => (uiStore.showHistory = !uiStore.showHistory)}
-			onRestoreHistory={restoreHistory}
 			onDismissPrResults={() => (settingsStore.prResults = [])}
 			onRetryPr={retryPr}
 			onChangeTheme={(id) => uiStore.changeTheme(id)}
@@ -876,7 +735,7 @@
 		<BottomTabBar
 			active={uiStore.activePanel}
 			hasOutput={!!genStore.result}
-			historyCount={historyStore.history.length}
+			{qualityIssueCount}
 			onSelect={(id) => uiStore.handleRailSelect(id)}
 		/>
 	{/snippet}
@@ -1000,5 +859,99 @@
 	:global(.swatch-hex) {
 		font-family: var(--fontStack-monospace); font-size: 8px;
 		color: var(--fgColor-disabled); white-space: nowrap;
+	}
+
+	/* ─── Pre-generation confirmation dialog ──────────────────────────────────── */
+	.confirm-overlay {
+		position: fixed;
+		inset: 0;
+		z-index: 1000;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		background: rgba(0, 0, 0, 0.5);
+		backdrop-filter: blur(4px);
+	}
+
+	.confirm-dialog {
+		background: var(--bgColor-default);
+		border: 1px solid var(--borderColor-muted);
+		border-radius: 12px;
+		padding: 24px;
+		max-width: 440px;
+		width: 90%;
+		box-shadow: var(--shadow-floating-large);
+	}
+
+	.confirm-icon {
+		color: var(--fgColor-attention);
+		margin-bottom: 12px;
+	}
+
+	.confirm-title {
+		font-size: 14px;
+		font-weight: 600;
+		color: var(--fgColor-default);
+		margin-bottom: 12px;
+	}
+
+	.confirm-list {
+		list-style: none;
+		padding: 0;
+		margin: 0 0 20px;
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+	}
+
+	.confirm-list li {
+		font-size: 12px;
+		color: var(--fgColor-muted);
+		line-height: 1.5;
+		padding-left: 16px;
+		position: relative;
+	}
+
+	.confirm-list li::before {
+		content: '•';
+		position: absolute;
+		left: 0;
+		color: var(--fgColor-attention);
+	}
+
+	.confirm-actions {
+		display: flex;
+		gap: 8px;
+		justify-content: flex-end;
+	}
+
+	.confirm-btn {
+		padding: 7px 16px;
+		border-radius: var(--borderRadius-medium);
+		font-size: 12px;
+		font-weight: 600;
+		cursor: pointer;
+		border: 1px solid var(--borderColor-muted);
+		transition: background 100ms ease, border-color 100ms ease;
+	}
+
+	.confirm-btn--secondary {
+		background: var(--bgColor-default);
+		color: var(--fgColor-muted);
+	}
+
+	.confirm-btn--secondary:hover {
+		background: var(--control-bgColor-hover);
+		border-color: var(--borderColor-default);
+	}
+
+	.confirm-btn--primary {
+		background: var(--brand-color);
+		color: var(--fgColor-onEmphasis);
+		border-color: var(--brand-color);
+	}
+
+	.confirm-btn--primary:hover {
+		background: color-mix(in srgb, var(--brand-color) 85%, white);
 	}
 </style>

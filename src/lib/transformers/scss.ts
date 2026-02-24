@@ -14,7 +14,8 @@ import {
 	capitalize,
 	orderCategories,
 	renameComment,
-	newTokenComment
+	newTokenComment,
+	fileHeaderLines
 } from './shared.js';
 
 interface PrimitiveEntry {
@@ -55,7 +56,8 @@ export function transformToSCSS(
 	conventions: DetectedConventions = BEST_PRACTICE_WEB_CONVENTIONS,
 	primitives?: Record<string, unknown>,
 	renames: Map<string, string> = new Map(),
-	isNew: (name: string) => boolean = () => false
+	isNew: (name: string) => boolean = () => false,
+	bestPractices: boolean = true
 ): TransformResult[] {
 	const sep = conventions.scssSeparator === 'underscore' ? '_' : '-';
 	const primitiveMap = primitives
@@ -64,7 +66,7 @@ export function transformToSCSS(
 
 	const semanticTokens = buildSemanticEntries(lightColors, darkColors, primitiveMap, sep);
 
-	return [generatePrimitivesScss(primitiveMap, sep, renames, isNew), generateColorsScss(semanticTokens, conventions, isNew)];
+	return [generatePrimitivesScss(primitiveMap, sep, renames, isNew, bestPractices), generateColorsScss(semanticTokens, conventions, isNew, bestPractices)];
 }
 
 // ─── Step 1a: Build Primitive Map from a dedicated primitives export ──────────
@@ -167,12 +169,12 @@ function generatePrimitivesScss(
 	primitiveMap: PrimitiveMap,
 	_sep: string,
 	renames: Map<string, string> = new Map(),
-	isNew: (name: string) => boolean = () => false
+	isNew: (name: string) => boolean = () => false,
+	bestPractices: boolean = true
 ): TransformResult {
 	const lines: string[] = [];
 	lines.push('// Primitives.scss');
-	lines.push('// Auto-generated from Figma Variables — DO NOT EDIT');
-	lines.push(`// Generated: ${new Date().toISOString()}`);
+	lines.push(...fileHeaderLines('//', bestPractices));
 	lines.push('');
 
 	// Group by family, then sort
@@ -231,7 +233,8 @@ function generatePrimitivesScss(
 function generateColorsScss(
 	semanticTokens: SemanticToken[],
 	conventions: DetectedConventions,
-	isNew: (name: string) => boolean = () => false
+	isNew: (name: string) => boolean = () => false,
+	bestPractices: boolean = true
 ): TransformResult {
 	const lines: string[] = [];
 	const suffix = conventions.importSuffix ?? '';
@@ -244,8 +247,7 @@ function generateColorsScss(
 	}
 	lines.push('');
 	lines.push('// Colors.scss');
-	lines.push('// Auto-generated from Figma Variables — DO NOT EDIT');
-	lines.push(`// Generated: ${new Date().toISOString()}`);
+	lines.push(...fileHeaderLines('//', bestPractices));
 	lines.push('');
 
 	const sepChar = conventions.scssSeparator === 'underscore' ? '_' : '-';
@@ -262,31 +264,36 @@ function generateColorsScss(
 
 	if (structure === 'modern') {
 		// Modern path: @property + light-dark()
-		lines.push('// @property typed declarations — enables CSS transitions on color tokens');
-		lines.push('// and provides browser DevTools type info. Requires: color-scheme: light dark.');
+		const useLayer = bestPractices;
+		if (useLayer) lines.push('@layer tokens {');
+
+		const indent = useLayer ? '  ' : '';
+		lines.push(`${indent}// @property typed declarations — enables CSS transitions on color tokens`);
+		lines.push(`${indent}// and provides browser DevTools type info. Requires: color-scheme: light dark.`);
 		for (const category of orderedCategories) {
-			lines.push(`// ${capitalize(category)} colors`);
+			lines.push(`${indent}// ${capitalize(category)} colors`);
 			for (const token of byCategory.get(category)!) {
-				lines.push(`@property ${token.cssVar} {`);
-				lines.push(`  syntax: '<color>';`);
-				lines.push(`  inherits: true;`);
-				lines.push(`  initial-value: transparent;`);
-				lines.push(`}`);
+				lines.push(`${indent}@property ${token.cssVar} {`);
+				lines.push(`${indent}  syntax: '<color>';`);
+				lines.push(`${indent}  inherits: true;`);
+				lines.push(`${indent}  initial-value: transparent;`);
+				lines.push(`${indent}}`);
 			}
 			lines.push('');
 		}
 
-		lines.push(':root {');
-		lines.push('  color-scheme: light dark;');
+		lines.push(`${indent}:root {`);
+		lines.push(`${indent}  color-scheme: light dark;`);
 		lines.push('');
 		for (const category of orderedCategories) {
-			lines.push(`  // ${capitalize(category)} colors`);
+			lines.push(`${indent}  // ${capitalize(category)} colors`);
 			for (const token of byCategory.get(category)!) {
-				lines.push(formatCssCustomPropDecl(token));
+				lines.push(formatCssCustomPropDecl(token, indent));
 			}
 			lines.push('');
 		}
-		lines.push('}');
+		lines.push(`${indent}}`);
+		if (useLayer) lines.push('}');
 		lines.push('');
 
 		lines.push('// SCSS variable aliases — reference in .scss files; compile to var(--token-name)');
@@ -370,11 +377,11 @@ function generateColorsScss(
 // Uses SCSS #{} interpolation so SCSS resolves $primitive-var → hex before writing CSS.
 //   e.g. --text-primary: light-dark(#{$grey-750}, #{$grey-50});
 //   compiles to → --text-primary: light-dark(#1d1d1d, #f5f5f5);
-function formatCssCustomPropDecl(token: SemanticToken): string {
+function formatCssCustomPropDecl(token: SemanticToken, indent: string = ''): string {
 	if (token.isStatic) {
-		return `  ${token.cssVar}: #{${token.lightPrimitive}};`;
+		return `${indent}  ${token.cssVar}: #{${token.lightPrimitive}};`;
 	}
-	return `  ${token.cssVar}: light-dark(#{${token.lightPrimitive}}, #{${token.darkPrimitive}});`;
+	return `${indent}  ${token.cssVar}: light-dark(#{${token.lightPrimitive}}, #{${token.darkPrimitive}});`;
 }
 
 // ─── Naming Helpers ───────────────────────────────────────────────────────────

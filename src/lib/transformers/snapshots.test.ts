@@ -97,17 +97,17 @@ describe('SCSS snapshots', () => {
 		}
 	});
 
-	it('inline structure', () => {
+	it('inline structure (match-existing)', () => {
 		const conv = { ...conventions, scssColorStructure: 'inline' as const };
-		const results = transformToSCSS(lightColors, darkColors, conv);
+		const results = transformToSCSS(lightColors, darkColors, conv, undefined, new Map(), () => false, false);
 		for (const r of results) {
 			expect(strip(r.content)).toMatchSnapshot(`${r.filename}-inline`);
 		}
 	});
 
-	it('media-query structure', () => {
+	it('media-query structure (match-existing)', () => {
 		const conv = { ...conventions, scssColorStructure: 'media-query' as const };
-		const results = transformToSCSS(lightColors, darkColors, conv);
+		const results = transformToSCSS(lightColors, darkColors, conv, undefined, new Map(), () => false, false);
 		for (const r of results) {
 			expect(strip(r.content)).toMatchSnapshot(`${r.filename}-media-query`);
 		}
@@ -117,16 +117,16 @@ describe('SCSS snapshots', () => {
 // ─── CSS ─────────────────────────────────────────────────────────────────────
 
 describe('CSS snapshots', () => {
-	it('modern structure', () => {
+	it('modern structure (best practices)', () => {
 		const results = transformToCSS(lightColors, darkColors, conventions);
 		for (const r of results) {
 			expect(strip(r.content)).toMatchSnapshot(`${r.filename}-modern`);
 		}
 	});
 
-	it('media-query structure', () => {
+	it('media-query structure (match-existing)', () => {
 		const conv = { ...conventions, scssColorStructure: 'media-query' as const };
-		const results = transformToCSS(lightColors, darkColors, conv);
+		const results = transformToCSS(lightColors, darkColors, conv, undefined, new Map(), () => false, false);
 		for (const r of results) {
 			expect(strip(r.content)).toMatchSnapshot(`${r.filename}-media-query`);
 		}
@@ -164,8 +164,10 @@ describe('Swift snapshots', () => {
 
 describe('Kotlin snapshots', () => {
 	it('default conventions', () => {
-		const r = transformToKotlin(lightColors, darkColors)[0];
-		expect(strip(r.content)).toMatchSnapshot(r.filename);
+		const results = transformToKotlin(lightColors, darkColors);
+		for (const r of results) {
+			expect(strip(r.content)).toMatchSnapshot(r.filename);
+		}
 	});
 });
 

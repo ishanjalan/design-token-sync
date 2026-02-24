@@ -8,7 +8,7 @@
  */
 
 import type { TransformResult, Platform } from '$lib/types.js';
-import { pathToKebab, pathToCamel } from './shared.js';
+import { pathToKebab, pathToCamel, fileHeaderLines } from './shared.js';
 
 interface OpacityEntry {
 	name: string;
@@ -80,8 +80,7 @@ function generateOpacityScss(entries: OpacityEntry[]): TransformResult {
 	const sorted = [...entries].sort((a, b) => a.sortKey - b.sortKey);
 	const lines: string[] = [
 		'// Opacity.scss',
-		'// Auto-generated from Figma Variables — DO NOT EDIT',
-		`// Generated: ${new Date().toISOString()}`,
+		...fileHeaderLines('//', true),
 		''
 	];
 
@@ -106,8 +105,7 @@ function generateOpacitySwift(entries: OpacityEntry[]): TransformResult {
 	const sorted = [...entries].sort((a, b) => a.sortKey - b.sortKey);
 	const lines: string[] = [
 		'// Opacity.swift',
-		'// Auto-generated from Figma Variables — DO NOT EDIT',
-		`// Generated: ${new Date().toISOString()}`,
+		...fileHeaderLines('//', true),
 		'',
 		'import Foundation',
 		'',
@@ -130,8 +128,7 @@ function generateOpacityKotlin(entries: OpacityEntry[]): TransformResult {
 	const sorted = [...entries].sort((a, b) => a.sortKey - b.sortKey);
 	const lines: string[] = [
 		'// Opacity.kt',
-		'// Auto-generated from Figma Variables — DO NOT EDIT',
-		`// Generated: ${new Date().toISOString()}`,
+		...fileHeaderLines('//', true),
 		'',
 		'package com.example.design // TODO: update to your package name',
 		'',

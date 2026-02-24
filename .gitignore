@@ -32,6 +32,7 @@ test-results/
 
 # IDE
 .idea/
+.cursor/
 *.swp
 *.swo
 

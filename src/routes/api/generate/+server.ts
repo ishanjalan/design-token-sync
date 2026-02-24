@@ -5,13 +5,17 @@ import { transformToTS } from '$lib/transformers/ts-web.js';
 import { transformToCSS } from '$lib/transformers/css.js';
 import { transformToSpacing } from '$lib/transformers/spacing.js';
 import { transformToSwift } from '$lib/transformers/swift.js';
-import { transformToKotlin } from '$lib/transformers/kotlin.js';
+import { transformToKotlin, type KotlinOutputScope } from '$lib/transformers/kotlin.js';
 import { transformToTypography, countTypographyStyles, detectTypographyConventions } from '$lib/transformers/typography.js';
 import { transformToShadows, countShadowTokens } from '$lib/transformers/shadow.js';
 import { transformToBorders, countBorderTokens } from '$lib/transformers/border.js';
 import { transformToOpacity, countOpacityTokens } from '$lib/transformers/opacity.js';
+import { transformToGradients, countGradientTokens } from '$lib/transformers/gradient.js';
+import { transformToRadius, countRadiusTokens } from '$lib/transformers/radius.js';
+import { transformToMotion, countMotionTokens } from '$lib/transformers/motion.js';
 import { detectConventions } from '$lib/transformers/naming.js';
 import { buildTokenGraph, detectCycles, formatCycleWarnings, walkAllTokens } from '$lib/resolve-tokens.js';
+import { normalizeTokens, detectTokenFormat } from '$lib/token-adapters.js';
 import { detectRenamesInReference, createNewDetector } from '$lib/transformers/shared.js';
 import { appendRemovedTokenComments } from '$lib/diff-utils.js';
 import type { RequestHandler } from './$types';
@@ -31,7 +35,11 @@ const RequestSchema = z.object({
 	referenceColorsSwift: z.array(RefFileEntry).optional(),
 	referenceColorsKotlin: z.array(RefFileEntry).optional(),
 	referenceTypographySwift: z.array(RefFileEntry).optional(),
-	referenceTypographyKotlin: z.array(RefFileEntry).optional()
+	referenceTypographyKotlin: z.array(RefFileEntry).optional(),
+	additionalThemes: z.array(z.object({
+		label: z.string(),
+		tokens: z.record(z.string(), z.unknown())
+	})).optional()
 });
 
 const MAX_FILE_BYTES = 10 * 1024 * 1024; // 10 MB
@@ -66,6 +74,21 @@ async function multiFileEntries(
 	return result.length > 0 ? result : undefined;
 }
 
+async function parseAdditionalThemes(
+	formData: FormData
+): Promise<{ label: string; tokens: Record<string, unknown> }[] | undefined> {
+	const entries = formData.getAll('additionalThemes');
+	const result: { label: string; tokens: Record<string, unknown> }[] = [];
+	for (const entry of entries) {
+		if (!(entry instanceof File) || entry.size === 0) continue;
+		checkFileSize(entry, 'additionalThemes');
+		const label = entry.name.replace(/\.json$/i, '').replace(/[._-]?tokens$/i, '');
+		const tokens = parseJsonFile(await entry.text(), entry.name);
+		result.push({ label, tokens });
+	}
+	return result.length > 0 ? result : undefined;
+}
+
 type RefEntry = { filename: string; content: string };
 
 function classifyWebColorFiles(entries: RefEntry[] | undefined): {
@@ -94,6 +117,32 @@ function classifyWebColorFiles(entries: RefEntry[] | undefined): {
 	return result;
 }
 
+function classifyKotlinRefFiles(entries: RefEntry[] | undefined): {
+	hasPrimitives: boolean;
+	hasSemantics: boolean;
+	semanticCategories: string[];
+} {
+	if (!entries?.length) return { hasPrimitives: false, hasSemantics: false, semanticCategories: [] };
+	let hasPrimitives = false,
+		hasSemantics = false;
+	const categories: string[] = [];
+	for (const { content } of entries) {
+		if (
+			/\bobject\s+\w+Palette\b/.test(content) ||
+			/^val\s+\w+\s*=\s*Color\(/m.test(content) ||
+			/\bobject\s+(?:Primitives|.*Primitives)\s*\{/.test(content)
+		)
+			hasPrimitives = true;
+		const catMatches = [...content.matchAll(/\bclass\s+R(\w+)Colors\b/g)];
+		if (catMatches.length) {
+			hasSemantics = true;
+			categories.push(...catMatches.map((m) => m[1].toLowerCase()));
+		}
+		if (/\bobject\s+(?:Light|Dark)ColorTokens\b/.test(content)) hasSemantics = true;
+	}
+	return { hasPrimitives, hasSemantics, semanticCategories: [...new Set(categories)] };
+}
+
 function classifyWebTypographyFiles(entries: RefEntry[] | undefined): {
 	typoScss?: string;
 	typoTs?: string;
@@ -109,12 +158,18 @@ function classifyWebTypographyFiles(entries: RefEntry[] | undefined): {
 }
 
 function parseJsonFile(text: string, label: string): Record<string, unknown> {
+	let parsed: Record<string, unknown>;
 	try {
-		return JSON.parse(text) as Record<string, unknown>;
+		parsed = JSON.parse(text) as Record<string, unknown>;
 	} catch (e) {
 		const msg = e instanceof SyntaxError ? e.message : 'Invalid JSON';
 		throw error(400, `Failed to parse ${label}: ${msg}`);
 	}
+	const format = detectTokenFormat(parsed);
+	if (format !== 'figma-dtcg' && format !== 'unknown') {
+		return normalizeTokens(parsed);
+	}
+	return parsed;
 }
 
 async function optionalFileJson(
@@ -198,7 +253,8 @@ export const POST: RequestHandler = async ({ request }) => {
 			referenceColorsSwift: await multiFileEntries(formData, 'referenceColorsSwift'),
 			referenceColorsKotlin: await multiFileEntries(formData, 'referenceColorsKotlin'),
 			referenceTypographySwift: await multiFileEntries(formData, 'referenceTypographySwift'),
-			referenceTypographyKotlin: await multiFileEntries(formData, 'referenceTypographyKotlin')
+			referenceTypographyKotlin: await multiFileEntries(formData, 'referenceTypographyKotlin'),
+			additionalThemes: await parseAdditionalThemes(formData)
 		};
 	} catch (e) {
 		if (e && typeof e === 'object' && 'status' in e) throw e;
@@ -222,7 +278,8 @@ export const POST: RequestHandler = async ({ request }) => {
 		referenceColorsSwift: refColorsSwiftEntries,
 		referenceColorsKotlin: refColorsKotlinEntries,
 		referenceTypographySwift: refTypoSwiftEntries,
-		referenceTypographyKotlin: refTypoKotlinEntries
+		referenceTypographyKotlin: refTypoKotlinEntries,
+		additionalThemes
 	} = parsed.data;
 
 	// Classify web multi-file references
@@ -242,6 +299,12 @@ export const POST: RequestHandler = async ({ request }) => {
 	);
 	const bestPractices = !hasAnyRefFile;
 
+	const hasScssRef = !!(webColors.primitivesScss || webColors.colorsScss || webTypo.typoScss);
+	const hasTsRef = !!(webColors.primitivesTs || webColors.colorsTs || webTypo.typoTs);
+	const wantScss = bestPractices || hasScssRef;
+	const wantTs = bestPractices || hasTsRef;
+	const wantCss = bestPractices;
+
 	const wantColors = outputs.includes('colors');
 	const wantTypography = outputs.includes('typography');
 
@@ -260,30 +323,38 @@ export const POST: RequestHandler = async ({ request }) => {
 		const webRenames = bestPractices ? new Map<string, string>() : detectRenamesInReference(webRefContent || undefined);
 		const webIsNew = bestPractices ? (() => false) : createNewDetector(webRefContent || undefined);
 
-		results.push(
-			...transformToSCSS(
-				lightColors as FigmaColorExport,
-				darkColors as FigmaColorExport,
-				conventions,
-				undefined,
-				webRenames,
-				webIsNew
-			)
-		);
-		results.push(
-			...transformToTS(lightColors as FigmaColorExport, darkColors as FigmaColorExport, conventions, undefined, webRenames, webIsNew)
-		);
+		if (wantScss) {
+			results.push(
+				...transformToSCSS(
+					lightColors as FigmaColorExport,
+					darkColors as FigmaColorExport,
+					conventions,
+					undefined,
+					webRenames,
+					webIsNew,
+					bestPractices
+				)
+			);
+		}
+		if (wantTs) {
+			results.push(
+				...transformToTS(lightColors as FigmaColorExport, darkColors as FigmaColorExport, conventions, undefined, webRenames, webIsNew, bestPractices)
+			);
+		}
 		results.push(...transformToSpacing(values, conventions));
-		results.push(
-			...transformToCSS(
-				lightColors as FigmaColorExport,
-				darkColors as FigmaColorExport,
-				conventions,
-				values,
-				webRenames,
-				webIsNew
-			)
-		);
+		if (wantCss) {
+			results.push(
+				...transformToCSS(
+					lightColors as FigmaColorExport,
+					darkColors as FigmaColorExport,
+					conventions,
+					values,
+					webRenames,
+					webIsNew,
+					bestPractices
+				)
+			);
+		}
 	}
 
 	if (wantColors && platforms.includes('ios')) {
@@ -298,12 +369,21 @@ export const POST: RequestHandler = async ({ request }) => {
 	}
 
 	if (wantColors && platforms.includes('android')) {
+		const kotlinScope = classifyKotlinRefFiles(refColorsKotlinEntries);
+		const scope: KotlinOutputScope | undefined = bestPractices
+			? undefined
+			: {
+					generatePrimitives: kotlinScope.hasPrimitives || (!kotlinScope.hasPrimitives && !kotlinScope.hasSemantics),
+					generateSemantics: kotlinScope.hasSemantics || (!kotlinScope.hasPrimitives && !kotlinScope.hasSemantics),
+					semanticCategories: kotlinScope.semanticCategories.length > 0 ? kotlinScope.semanticCategories : undefined
+				};
 		results.push(
 			...transformToKotlin(
 				lightColors as FigmaColorExport,
 				darkColors as FigmaColorExport,
 				referenceColorsKotlin,
-				bestPractices
+				bestPractices,
+				scope
 			)
 		);
 	}
@@ -323,6 +403,27 @@ export const POST: RequestHandler = async ({ request }) => {
 		results.push(...transformToShadows(values, platforms));
 		results.push(...transformToBorders(values, platforms));
 		results.push(...transformToOpacity(values, platforms));
+		results.push(...transformToGradients(values, platforms));
+		results.push(...transformToRadius(values, platforms));
+		results.push(...transformToMotion(values, platforms));
+	}
+
+	// ── Additional Theme Generation ──────────────────────────────────────────
+	if (wantColors && additionalThemes?.length) {
+		for (const theme of additionalThemes) {
+			const themeLabel = theme.label.replace(/\s+/g, '-').toLowerCase();
+			const themeResults = [
+				...(wantScss ? transformToSCSS(theme.tokens as FigmaColorExport, theme.tokens as FigmaColorExport, conventions) : []),
+				...(wantTs ? transformToTS(theme.tokens as FigmaColorExport, theme.tokens as FigmaColorExport, conventions) : []),
+				...(wantCss ? transformToCSS(theme.tokens as FigmaColorExport, theme.tokens as FigmaColorExport, conventions) : [])
+			];
+			for (const r of themeResults) {
+				const ext = r.filename.split('.').pop() ?? '';
+				const base = r.filename.replace(/\.[^.]+$/, '');
+				r.filename = `${base}.${themeLabel}.${ext}`;
+				results.push(r);
+			}
+		}
 	}
 
 	const referenceMap: Record<string, string> = {};
@@ -375,6 +476,9 @@ export const POST: RequestHandler = async ({ request }) => {
 	const shadowTokens = countShadowTokens(values);
 	const borderTokens = countBorderTokens(values);
 	const opacityTokens = countOpacityTokens(values);
+	const gradientTokens = countGradientTokens(values);
+	const radiusTokens = countRadiusTokens(values);
+	const motionTokens = countMotionTokens(values);
 
 	return json({
 		success: true,
@@ -386,7 +490,10 @@ export const POST: RequestHandler = async ({ request }) => {
 			typographyStyles,
 			shadowTokens,
 			borderTokens,
-			opacityTokens
+			opacityTokens,
+			gradientTokens,
+			radiusTokens,
+			motionTokens
 		},
 		files: results.map(({ filename, content, format, platform }) => ({
 			filename,

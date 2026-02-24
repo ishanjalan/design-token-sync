@@ -7,7 +7,7 @@
 
 import type { TransformResult, Platform } from '$lib/types.js';
 import { figmaToHex } from '$lib/color-utils.js';
-import { pathToKebab, pathToCamel, pathToPascal, extractNumericKey } from './shared.js';
+import { pathToKebab, pathToCamel, pathToPascal, extractNumericKey, fileHeaderLines } from './shared.js';
 
 interface ShadowEntry {
 	name: string;
@@ -91,8 +91,7 @@ function generateShadowScss(entries: ShadowEntry[]): TransformResult {
 	const sorted = [...entries].sort((a, b) => a.sortKey - b.sortKey || a.name.localeCompare(b.name));
 	const lines: string[] = [
 		'// Shadows.scss',
-		'// Auto-generated from Figma Variables — DO NOT EDIT',
-		`// Generated: ${new Date().toISOString()}`,
+		...fileHeaderLines('//', true),
 		''
 	];
 
@@ -119,8 +118,7 @@ function generateShadowSwift(entries: ShadowEntry[]): TransformResult {
 	const sorted = [...entries].sort((a, b) => a.sortKey - b.sortKey || a.name.localeCompare(b.name));
 	const lines: string[] = [
 		'// Shadows.swift',
-		'// Auto-generated from Figma Variables — DO NOT EDIT',
-		`// Generated: ${new Date().toISOString()}`,
+		...fileHeaderLines('//', true),
 		'',
 		'import SwiftUI',
 		'',
@@ -154,8 +152,7 @@ function generateShadowKotlin(entries: ShadowEntry[], kotlinPackage: string): Tr
 	const sorted = [...entries].sort((a, b) => a.sortKey - b.sortKey || a.name.localeCompare(b.name));
 	const lines: string[] = [
 		'// Shadows.kt',
-		'// Auto-generated from Figma Variables — DO NOT EDIT',
-		`// Generated: ${new Date().toISOString()}`,
+		...fileHeaderLines('//', true),
 		'',
 		`package ${kotlinPackage}`,
 		'',
