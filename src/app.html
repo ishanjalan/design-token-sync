@@ -16,5 +16,30 @@
 	</head>
 	<body data-sveltekit-preload-data="hover">
 		<div style="display: contents">%sveltekit.body%</div>
+		<script>
+			window.addEventListener('error', function (e) {
+				if (
+					e.message &&
+					e.message.indexOf('Failed to fetch dynamically imported module') !== -1 &&
+					!sessionStorage.getItem('chunk-reload')
+				) {
+					sessionStorage.setItem('chunk-reload', '1');
+					location.reload();
+				}
+			});
+			window.addEventListener('unhandledrejection', function (e) {
+				var r = e.reason;
+				if (
+					r &&
+					(String(r).indexOf('Failed to fetch dynamically imported module') !== -1 ||
+						String(r).indexOf('Loading chunk') !== -1) &&
+					!sessionStorage.getItem('chunk-reload')
+				) {
+					sessionStorage.setItem('chunk-reload', '1');
+					location.reload();
+				}
+			});
+			if (sessionStorage.getItem('chunk-reload')) sessionStorage.removeItem('chunk-reload');
+		</script>
 	</body>
 </html>
