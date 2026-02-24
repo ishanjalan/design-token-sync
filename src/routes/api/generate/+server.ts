@@ -6,12 +6,13 @@ import { transformToCSS } from '$lib/transformers/css.js';
 import { transformToSpacing } from '$lib/transformers/spacing.js';
 import { transformToSwift } from '$lib/transformers/swift.js';
 import { transformToKotlin } from '$lib/transformers/kotlin.js';
-import { transformToTypography, countTypographyStyles } from '$lib/transformers/typography.js';
+import { transformToTypography, countTypographyStyles, detectTypographyConventions } from '$lib/transformers/typography.js';
 import { transformToShadows, countShadowTokens } from '$lib/transformers/shadow.js';
 import { transformToBorders, countBorderTokens } from '$lib/transformers/border.js';
 import { transformToOpacity, countOpacityTokens } from '$lib/transformers/opacity.js';
 import { detectConventions } from '$lib/transformers/naming.js';
 import { buildTokenGraph, detectCycles, formatCycleWarnings, walkAllTokens } from '$lib/resolve-tokens.js';
+import { appendRemovedTokenComments } from '$lib/diff-utils.js';
 import type { RequestHandler } from './$types';
 import type { FigmaColorExport, Platform, GenerateWarning } from '$lib/types.js';
 
@@ -28,7 +29,11 @@ const RequestSchema = z.object({
 	referencePrimitivesTs: z.string().optional(),
 	referenceColorsTs: z.string().optional(),
 	referenceColorsSwift: z.string().optional(),
-	referenceColorsKotlin: z.string().optional()
+	referenceColorsKotlin: z.string().optional(),
+	referenceTypographyScss: z.string().optional(),
+	referenceTypographyTs: z.string().optional(),
+	referenceTypographySwift: z.string().optional(),
+	referenceTypographyKotlin: z.string().optional()
 });
 
 const MAX_FILE_BYTES = 10 * 1024 * 1024; // 10 MB
@@ -137,7 +142,11 @@ export const POST: RequestHandler = async ({ request }) => {
 			referencePrimitivesTs: await optionalFileText(formData, 'referencePrimitivesTs'),
 			referenceColorsTs: await optionalFileText(formData, 'referenceColorsTs'),
 			referenceColorsSwift: await optionalFileText(formData, 'referenceColorsSwift'),
-			referenceColorsKotlin: await optionalFileText(formData, 'referenceColorsKotlin')
+			referenceColorsKotlin: await optionalFileText(formData, 'referenceColorsKotlin'),
+			referenceTypographyScss: await optionalFileText(formData, 'referenceTypographyScss'),
+			referenceTypographyTs: await optionalFileText(formData, 'referenceTypographyTs'),
+			referenceTypographySwift: await optionalFileText(formData, 'referenceTypographySwift'),
+			referenceTypographyKotlin: await optionalFileText(formData, 'referenceTypographyKotlin')
 		};
 	} catch (e) {
 		if (e && typeof e === 'object' && 'status' in e) throw e;
@@ -161,7 +170,11 @@ export const POST: RequestHandler = async ({ request }) => {
 		referencePrimitivesTs,
 		referenceColorsTs,
 		referenceColorsSwift,
-		referenceColorsKotlin
+		referenceColorsKotlin,
+		referenceTypographyScss,
+		referenceTypographyTs,
+		referenceTypographySwift,
+		referenceTypographyKotlin
 	} = parsed.data;
 
 	const results = [];
@@ -218,7 +231,20 @@ export const POST: RequestHandler = async ({ request }) => {
 	}
 
 	if (typography) {
-		results.push(...transformToTypography(typography, platforms));
+		const typoConventions = detectTypographyConventions(
+			referenceTypographyScss,
+			referenceTypographyTs,
+			bestPractices
+		);
+		results.push(
+			...transformToTypography(
+				typography,
+				platforms,
+				typoConventions,
+				referenceTypographySwift,
+				referenceTypographyKotlin
+			)
+		);
 	}
 
 	// Shadow, border, opacity transformers (auto-detect from values export)
@@ -233,6 +259,18 @@ export const POST: RequestHandler = async ({ request }) => {
 	if (referenceColorsTs) referenceMap['Colors.ts'] = referenceColorsTs;
 	if (referenceColorsSwift) referenceMap['Colors.swift'] = referenceColorsSwift;
 	if (referenceColorsKotlin) referenceMap['Colors.kt'] = referenceColorsKotlin;
+	if (referenceTypographyScss) referenceMap['Typography.scss'] = referenceTypographyScss;
+	if (referenceTypographyTs) referenceMap['Typography.ts'] = referenceTypographyTs;
+	if (referenceTypographySwift) referenceMap['Typography.swift'] = referenceTypographySwift;
+	if (referenceTypographyKotlin) referenceMap['Typography.kt'] = referenceTypographyKotlin;
+
+	// ── Removed Token Comments ─────────────────────────────────────────────────
+	for (const result of results) {
+		const ref = referenceMap[result.filename];
+		if (ref) {
+			result.content = appendRemovedTokenComments(result.content, ref, result.format);
+		}
+	}
 
 	// ── Cycle Detection ────────────────────────────────────────────────────────
 	const warnings: GenerateWarning[] = [];

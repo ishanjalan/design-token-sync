@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Download, ClipboardCopy, GitPullRequest, List, WrapText, Check, X, ChevronRight, ChevronUp, ChevronDown, RefreshCw, AlertTriangle, ArrowLeftRight, Target, Pencil, Search, ArrowRight } from 'lucide-svelte';
+	import { Download, ClipboardCopy, GitPullRequest, List, WrapText, Check, X, ChevronRight, ChevronUp, ChevronDown, AlertTriangle, ArrowLeftRight, Target, Pencil, ArrowRight } from 'lucide-svelte';
 	import type { GeneratedFile, Platform, DropZoneKey, FileSlot } from '$lib/types.js';
 	import type { FileInsight } from '$lib/file-validation.js';
 	import WelcomeView from './WelcomeView.svelte';

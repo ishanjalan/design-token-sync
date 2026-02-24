@@ -102,10 +102,10 @@
 			<button class="shortcuts-close" onclick={() => (showShortcuts = false)}>&times;</button>
 		</div>
 		<dl class="shortcuts-list">
-			{#each SHORTCUTS as s}
+			{#each SHORTCUTS as s (s.keys)}
 				<div class="shortcut-row">
 					<dt class="shortcut-keys">
-						{#each s.keys.split('+') as part, i}
+						{#each s.keys.split('+') as part, i (part)}
 							{#if i > 0}<span class="shortcut-plus">+</span>{/if}
 							<kbd>{part}</kbd>
 						{/each}
@@ -124,7 +124,7 @@
 			<button class="warnings-close" onclick={() => (showWarnings = false)}>&times;</button>
 		</div>
 		<ul class="warnings-list">
-			{#each warnings as w}
+			{#each warnings as w (w.message)}
 				<li class="warning-item">
 					<AlertTriangle size={12} />
 					<span class="warning-type">{w.type}</span>

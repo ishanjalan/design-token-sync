@@ -5,7 +5,7 @@
 		onClose: () => void;
 	}
 
-	let { onClose }: Props = $props();
+	let { onClose: _onClose }: Props = $props();
 </script>
 
 <div class="help-panel">

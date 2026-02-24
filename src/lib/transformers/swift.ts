@@ -14,7 +14,7 @@
  * If a reference Colors.swift is provided, naming conventions are detected and matched.
  */
 
-import type { FigmaColorExport, FigmaColorToken, TransformResult } from '$lib/types.js';
+import type { FigmaColorExport, TransformResult } from '$lib/types.js';
 import type { DetectedSwiftConventions } from '$lib/types.js';
 import { BEST_PRACTICE_SWIFT_CONVENTIONS } from '$lib/types.js';
 import { figmaToSwiftHex, figmaToStringHex } from '$lib/color-utils.js';
@@ -25,7 +25,6 @@ import {
 	pathToTokenName,
 	extractSortKey,
 	capitalize,
-	CATEGORY_ORDER,
 	orderCategories
 } from './shared.js';
 

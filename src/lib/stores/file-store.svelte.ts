@@ -28,7 +28,11 @@ export const ALL_KEYS: DropZoneKey[] = [
 	'referencePrimitivesTs',
 	'referenceColorsTs',
 	'referenceColorsSwift',
-	'referenceColorsKotlin'
+	'referenceColorsKotlin',
+	'referenceTypographyScss',
+	'referenceTypographyTs',
+	'referenceTypographySwift',
+	'referenceTypographyKotlin'
 ];
 
 export const REF_KEYS: DropZoneKey[] = [
@@ -37,7 +41,11 @@ export const REF_KEYS: DropZoneKey[] = [
 	'referencePrimitivesTs',
 	'referenceColorsTs',
 	'referenceColorsSwift',
-	'referenceColorsKotlin'
+	'referenceColorsKotlin',
+	'referenceTypographyScss',
+	'referenceTypographyTs',
+	'referenceTypographySwift',
+	'referenceTypographyKotlin'
 ];
 
 class FileStoreClass {
@@ -160,6 +168,54 @@ class FileStoreClass {
 			restored: false,
 			warning: null
 		},
+		referenceTypographyScss: {
+			label: 'Typography.scss',
+			accept: '.scss,text/plain',
+			hint: 'Current file — typography variables & mixins',
+			ext: 'scss',
+			platforms: ['web'],
+			required: false,
+			file: null,
+			dragging: false,
+			restored: false,
+			warning: null
+		},
+		referenceTypographyTs: {
+			label: 'Typography.ts',
+			accept: '.ts,text/plain',
+			hint: 'Current file — typography constants',
+			ext: 'ts',
+			platforms: ['web'],
+			required: false,
+			file: null,
+			dragging: false,
+			restored: false,
+			warning: null
+		},
+		referenceTypographySwift: {
+			label: 'Typography.swift',
+			accept: '.swift,text/plain',
+			hint: 'Current file — typography styles',
+			ext: 'swift',
+			platforms: ['ios'],
+			required: false,
+			file: null,
+			dragging: false,
+			restored: false,
+			warning: null
+		},
+		referenceTypographyKotlin: {
+			label: 'Typography.kt',
+			accept: '.kt,text/plain',
+			hint: 'Current file — typography text styles',
+			ext: 'kt',
+			platforms: ['android'],
+			required: false,
+			file: null,
+			dragging: false,
+			restored: false,
+			warning: null
+		},
 		typography: {
 			label: 'typography.tokens.json',
 			accept: 'application/json,.json',
@@ -187,14 +243,16 @@ class FileStoreClass {
 						'referencePrimitivesScss',
 						'referenceColorsScss',
 						'referencePrimitivesTs',
-						'referenceColorsTs'
+						'referenceColorsTs',
+						'referenceTypographyScss',
+						'referenceTypographyTs'
 					] as DropZoneKey[])
 				: []),
 			...(this.selectedPlatforms.includes('ios')
-				? (['referenceColorsSwift'] as DropZoneKey[])
+				? (['referenceColorsSwift', 'referenceTypographySwift'] as DropZoneKey[])
 				: []),
 			...(this.selectedPlatforms.includes('android')
-				? (['referenceColorsKotlin'] as DropZoneKey[])
+				? (['referenceColorsKotlin', 'referenceTypographyKotlin'] as DropZoneKey[])
 				: [])
 		];
 	}

@@ -1,8 +1,7 @@
-import { browser } from '$app/environment';
 import { toast } from 'svelte-sonner';
 import type { DropZoneKey } from '$lib/types.js';
 import { fileStore } from './file-store.svelte.js';
-import { validateFigmaJson, computeInsight } from '$lib/file-validation.js';
+// file-validation utilities are imported dynamically where needed
 
 class TokenStoreClientClass {
 	storedTokenVersion = $state<number | null>(null);

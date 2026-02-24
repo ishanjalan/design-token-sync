@@ -15,7 +15,6 @@ import {
 	extractDeprecations
 } from '$lib/diff-utils.js';
 import {
-	type DependencyEntry,
 	computeTokenCoverage,
 	validateCrossPlatform,
 	computeImpact,

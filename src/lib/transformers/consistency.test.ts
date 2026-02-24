@@ -38,7 +38,7 @@ describe('cross-transformer token count parity', () => {
 		const scssColors = scssResults.find((r) => r.filename === 'Colors.scss')!;
 		const cssColors = cssResults.find((r) => r.filename === 'colors.css')!;
 
-		const scssCount = countPattern(scssColors.content, /\@property --/g);
+		const scssCount = countPattern(scssColors.content, /@property --/g);
 		const cssCount = countPattern(cssColors.content, /^\s+--[\w-]+:\s+(?:light-dark|var)/gm);
 
 		expect(scssCount).toBe(cssCount);
@@ -51,7 +51,7 @@ describe('cross-transformer token count parity', () => {
 		const scssColors = scssResults.find((r) => r.filename === 'Colors.scss')!;
 		const tsColors = tsResults.find((r) => r.filename === 'Colors.ts')!;
 
-		const scssCount = countPattern(scssColors.content, /\@property --/g);
+		const scssCount = countPattern(scssColors.content, /@property --/g);
 		const tsCount = countPattern(tsColors.content, /^export const /gm);
 
 		expect(scssCount).toBe(tsCount);

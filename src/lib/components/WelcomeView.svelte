@@ -130,7 +130,7 @@
 					>
 					<span class="card-radio" class:card-radio--active={selectedPlatforms.includes(p.id)}></span>
 					<span class="card-icons">
-						{#each p.techIcons as tech}
+						{#each p.techIcons as tech (tech.label)}
 							<!-- eslint-disable-next-line svelte/no-at-html-tags -->
 							<span class="tech-icon" style="color: {tech.color}" title={tech.label}>{@html tech.svg}</span>
 						{/each}

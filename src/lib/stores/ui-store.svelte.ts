@@ -1,4 +1,5 @@
 import { browser } from '$app/environment';
+import { SvelteSet } from 'svelte/reactivity';
 
 export const THEMES = [
 	{ id: 'github-dark-dimmed', label: 'Dimmed', bg: '#22272e', mode: 'dark' as const },
@@ -40,7 +41,7 @@ class UiStoreClass {
 	highlightedLines = $state<{ start: number; end: number } | null>(null);
 	wrapLines = $state(false);
 	showSectionNav = $state(false);
-	collapsedSections = $state<Set<number>>(new Set());
+	collapsedSections = new SvelteSet<number>();
 	codeScrollTop = $state(0);
 	codeScrollHeight = $state(0);
 	codeClientHeight = $state(0);
@@ -82,10 +83,8 @@ class UiStoreClass {
 	}
 
 	toggleFold(lineNum: number) {
-		const next = new Set(this.collapsedSections);
-		if (next.has(lineNum)) next.delete(lineNum);
-		else next.add(lineNum);
-		this.collapsedSections = next;
+		if (this.collapsedSections.has(lineNum)) this.collapsedSections.delete(lineNum);
+		else this.collapsedSections.add(lineNum);
 	}
 
 	scrollToLine(lineNum: number) {

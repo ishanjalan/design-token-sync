@@ -1,4 +1,4 @@
-import type { GeneratedFile, Platform } from './types.js';
+import type { GeneratedFile, OutputFormat, Platform } from './types.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -98,6 +98,94 @@ export function extractTokenNames(lines: DiffLine[], type: 'add' | 'remove'): Se
 		}
 	}
 	return names;
+}
+
+// ─── Content-Level Token Extraction ──────────────────────────────────────────
+
+/** Extract all token names from raw file content (no diff context needed). */
+export function extractTokenNamesFromContent(content: string): Set<string> {
+	const names = new Set<string>();
+	for (const line of content.split('\n')) {
+		for (const pat of TOKEN_PATTERNS) {
+			const m = line.match(pat);
+			if (m) {
+				names.add(m[1]);
+				break;
+			}
+		}
+	}
+	return names;
+}
+
+/** Extract token name→value map from raw file content. */
+export function extractTokenMapFromContent(content: string): Map<string, string> {
+	const map = new Map<string, string>();
+	for (const line of content.split('\n')) {
+		const nv = extractTokenNameValue(line);
+		if (nv) map.set(nv.name, nv.value);
+	}
+	return map;
+}
+
+/**
+ * Compare reference file against generated output and append a comment section
+ * listing tokens that were removed (exist in reference but not in generated).
+ */
+export function appendRemovedTokenComments(
+	generated: string,
+	reference: string,
+	format: OutputFormat
+): string {
+	const genNames = extractTokenNamesFromContent(generated);
+	const refMap = extractTokenMapFromContent(reference);
+
+	const removed: { name: string; value: string }[] = [];
+	for (const [name, value] of refMap) {
+		if (!genNames.has(name)) removed.push({ name, value });
+	}
+	if (removed.length === 0) return generated;
+
+	const commentLines = formatRemovedBlock(removed, format);
+	const separator = generated.endsWith('\n') ? '' : '\n';
+	return generated + separator + commentLines + '\n';
+}
+
+function formatRemovedBlock(
+	removed: { name: string; value: string }[],
+	format: OutputFormat
+): string {
+	if (format === 'css') {
+		const lines = [
+			'/* REMOVED — the following tokens no longer exist in Figma. */',
+			'/* Update usages before removing these lines. */'
+		];
+		for (const { name, value } of removed) {
+			lines.push(`/* --${name}: ${value}; */`);
+		}
+		return lines.join('\n');
+	}
+
+	const header = [
+		'// REMOVED — the following tokens no longer exist in Figma.',
+		'// Update usages before removing these lines.'
+	];
+
+	const tokenLines = removed.map(({ name, value }) => {
+		switch (format) {
+			case 'scss':
+				return `// $${name}: ${value};`;
+			case 'typescript':
+				return `// export const ${name} = ${value};`;
+			case 'swift':
+				return `// static let ${name} = ${value}`;
+			case 'kotlin':
+				return `// val ${name} = ${value}`;
+			default:
+				return `// ${name}: ${value}`;
+		}
+	});
+
+	return [...header, ...tokenLines].join('\n');
 }
 
 // ─── Diff Computation Helpers ─────────────────────────────────────────────────

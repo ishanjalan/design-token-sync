@@ -38,15 +38,170 @@ interface ParsedEntry {
 	figmaName: string;
 }
 
+// ─── Typography conventions ──────────────────────────────────────────────────
+
+export interface DetectedTypographyConventions {
+	scss: {
+		varPrefix: string; // e.g. "$font-" — prefix for SCSS variables
+		hasCssCustomProperties: boolean;
+		hasMixins: boolean;
+		mixinPrefix: string; // e.g. "font-"
+		includesFontFamily: boolean;
+		includesFontWeight: boolean;
+		sizeUnit: 'rem' | 'px';
+		heightUnit: 'rem' | 'unitless';
+		spacingUnit: 'px' | 'em';
+		twoTier: boolean; // primitive variables + semantic mixins
+	};
+	ts: {
+		namingCase: 'SCREAMING_SNAKE' | 'camelCase';
+		constPrefix: string; // e.g. "FONT_"
+		includesFontFamily: boolean;
+		hasInterface: boolean;
+		interfaceName: string | null;
+		valueFormat: 'string' | 'number'; // string rem vs number px
+		twoTier: boolean; // private size objects + exported aliases
+		exportWeights: boolean;
+	};
+}
+
+const BEST_PRACTICE_TYPO_CONVENTIONS: DetectedTypographyConventions = {
+	scss: {
+		varPrefix: '$typo-',
+		hasCssCustomProperties: true,
+		hasMixins: true,
+		mixinPrefix: 'typo-',
+		includesFontFamily: true,
+		includesFontWeight: true,
+		sizeUnit: 'rem',
+		heightUnit: 'unitless',
+		spacingUnit: 'em',
+		twoTier: false
+	},
+	ts: {
+		namingCase: 'camelCase',
+		constPrefix: 'typo',
+		includesFontFamily: true,
+		hasInterface: true,
+		interfaceName: 'TypographyToken',
+		valueFormat: 'number',
+		twoTier: false,
+		exportWeights: false
+	}
+};
+
+export function detectTypographyConventions(
+	refScss?: string,
+	refTs?: string,
+	bestPractices?: boolean
+): DetectedTypographyConventions {
+	if (bestPractices || (!refScss && !refTs)) return BEST_PRACTICE_TYPO_CONVENTIONS;
+
+	const scss = refScss ? detectScssConventions(refScss) : BEST_PRACTICE_TYPO_CONVENTIONS.scss;
+	const ts = refTs ? detectTsConventions(refTs) : BEST_PRACTICE_TYPO_CONVENTIONS.ts;
+	return { scss, ts };
+}
+
+function detectScssConventions(content: string): DetectedTypographyConventions['scss'] {
+	const lines = content.split('\n');
+
+	const varLines = lines.filter((l) => /^\$[\w-]+:\s/.test(l.trim()));
+	const firstVar = varLines[0]?.trim() ?? '';
+	const varMatch = firstVar.match(/^\$([\w-]+?)-(?:size|height|spacing|weight)/);
+	const varPrefix = varMatch ? `$${varMatch[1]}-` : '$font-';
+
+	const hasCssCustomProperties = lines.some((l) => l.includes(':root') || l.includes('--'));
+	const hasMixins = lines.some((l) => /^@mixin\s/.test(l.trim()));
+	const mixinMatch = lines.find((l) => /^@mixin\s/.test(l.trim()))?.match(/@mixin\s+([\w-]+)/);
+	const mixinName = mixinMatch?.[1] ?? '';
+	const mixinPrefix = mixinName ? mixinName.replace(/-[\w]+$/, '-').replace(/-$/, '-') : 'font-';
+
+	const includesFontFamily = lines.some(
+		(l) => l.includes('font-family') && !l.trim().startsWith('//')
+	);
+	const includesFontWeight = varLines.some((l) => /weight/.test(l));
+
+	const sizeUnit: 'rem' | 'px' = varLines.some((l) => /size.*rem/.test(l)) ? 'rem' : 'px';
+	const heightUnit: 'rem' | 'unitless' = varLines.some((l) => /height.*rem/.test(l))
+		? 'rem'
+		: 'unitless';
+	const spacingUnit: 'px' | 'em' = varLines.some((l) => /spacing.*em/.test(l) && !/rem/.test(l))
+		? 'em'
+		: 'px';
+
+	const twoTier = varLines.length > 0 && hasMixins;
+
+	return {
+		varPrefix,
+		hasCssCustomProperties,
+		hasMixins,
+		mixinPrefix,
+		includesFontFamily,
+		includesFontWeight,
+		sizeUnit,
+		heightUnit,
+		spacingUnit,
+		twoTier
+	};
+}
+
+function detectTsConventions(content: string): DetectedTypographyConventions['ts'] {
+	const lines = content.split('\n');
+
+	const exportConsts = lines.filter((l) => /^export\s+const\s/.test(l.trim()));
+	const privateConsts = lines.filter(
+		(l) => /^const\s+[A-Z]/.test(l.trim()) && !l.trim().startsWith('export')
+	);
+
+	const isScreaming = exportConsts.some((l) => /export\s+const\s+[A-Z_]+\s/.test(l));
+	const namingCase: 'SCREAMING_SNAKE' | 'camelCase' = isScreaming ? 'SCREAMING_SNAKE' : 'camelCase';
+
+	const firstExport = exportConsts[0]?.trim() ?? '';
+	const prefixMatch = firstExport.match(/export\s+const\s+([A-Z]+_)/);
+	const constPrefix = prefixMatch ? prefixMatch[1] : 'FONT_';
+
+	const includesFontFamily = lines.some(
+		(l) => l.includes('fontFamily') && !l.trim().startsWith('//')
+	);
+
+	const hasInterface = lines.some((l) => /^(export\s+)?interface\s/.test(l.trim()));
+	const interfaceMatch = lines
+		.find((l) => /^(export\s+)?interface\s/.test(l.trim()))
+		?.match(/interface\s+(\w+)/);
+	const interfaceName = interfaceMatch?.[1] ?? null;
+
+	const valueFormat: 'string' | 'number' =
+		lines.some((l) => /fontSize:\s*'/.test(l)) ? 'string' : 'number';
+
+	const twoTier = privateConsts.length > 0 && exportConsts.some((l) => /=\s+[A-Z_]+\s*;/.test(l));
+
+	const exportWeights = exportConsts.some((l) => /WEIGHT/.test(l));
+
+	return {
+		namingCase,
+		constPrefix,
+		includesFontFamily,
+		hasInterface,
+		interfaceName,
+		valueFormat,
+		twoTier,
+		exportWeights
+	};
+}
+
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 export function transformToTypography(
 	typographyJson: Record<string, unknown>,
-	platforms: Platform[]
+	platforms: Platform[],
+	conventions?: DetectedTypographyConventions,
+	_referenceTypographySwift?: string,
+	_referenceTypographyKotlin?: string
 ): TransformResult[] {
+	const conv = conventions ?? BEST_PRACTICE_TYPO_CONVENTIONS;
+
 	let raw = typographyJson['typography'];
 	if (!raw || typeof raw !== 'object') {
-		// Fallback: accept unwrapped format where entries are at the top level
 		const hasTypographyEntries = Object.values(typographyJson).some(
 			(v) => v && typeof v === 'object' && (v as Record<string, unknown>).$type === 'typography'
 		);
@@ -68,8 +223,8 @@ export function transformToTypography(
 			.filter((e) => e.targetPlatform !== 'ios')
 			.map((e) => (e.targetPlatform === 'android' ? { ...e, fullKey: e.shortKey } : e));
 		if (webEntries.length > 0) {
-			results.push(generateScss(webEntries));
-			results.push(generateTs(webEntries));
+			results.push(generateScss(webEntries, conv.scss));
+			results.push(generateTs(webEntries, conv.ts));
 		}
 	}
 
@@ -225,45 +380,104 @@ function pxToEm(letterSpacing: number, fontSize: number): string {
 
 // ─── SCSS Generator ───────────────────────────────────────────────────────────
 
-function generateScss(entries: ParsedEntry[]): TransformResult {
+function generateScss(
+	entries: ParsedEntry[],
+	conv: DetectedTypographyConventions['scss']
+): TransformResult {
 	const lines: string[] = [];
 	lines.push('// Typography.scss');
 	lines.push('// Auto-generated from Figma Text Styles — DO NOT EDIT');
 	lines.push(`// Generated: ${new Date().toISOString()}`);
 	lines.push('');
-	lines.push('// Usage: @include typo-{name}; e.g. @include typo-body-r;');
-	lines.push('');
 
-	// CSS custom properties block
-	lines.push('// CSS custom properties — for runtime / JS access');
-	lines.push(':root {');
-	for (const entry of entries) {
-		const { fullKey: k, value: v } = entry;
-		lines.push(`  --typo-${k}-family: '${v.fontFamily}', sans-serif;`);
-		lines.push(`  --typo-${k}-size: ${pxToRem(v.fontSize)};`);
-		lines.push(`  --typo-${k}-weight: ${v.fontWeight};`);
-		lines.push(`  --typo-${k}-line-height: ${unitlessLineHeight(v.lineHeight, v.fontSize)};`);
-		lines.push(`  --typo-${k}-letter-spacing: ${pxToEm(v.letterSpacing, v.fontSize)};`);
-	}
-	lines.push('}');
-	lines.push('');
+	const fmtSize = (px: number) => (conv.sizeUnit === 'rem' ? pxToRem(px) : `${px}px`);
+	const fmtHeight = (lh: number, fs: number) =>
+		conv.heightUnit === 'rem' ? pxToRem(lh) : unitlessLineHeight(lh, fs);
+	const fmtSpacing = (ls: number, fs: number) =>
+		conv.spacingUnit === 'em' ? pxToEm(ls, fs) : `${ls}px`;
 
-	// Group mixins by platform-category
-	const grouped = groupEntries(entries);
+	if (conv.twoTier) {
+		// Two-tier: SCSS variables for primitives, then semantic mixins referencing them
+		const varPfx = conv.varPrefix.replace(/^\$/, '');
+		const weights = new Set(entries.map((e) => e.value.fontWeight));
 
-	for (const [groupLabel, groupEntries] of grouped) {
-		lines.push(`// ${groupLabel}`);
-		for (const entry of groupEntries) {
-			const { fullKey: k, value: v } = entry;
-			lines.push(`@mixin typo-${k} {`);
-			lines.push(`  font-family: '${v.fontFamily}', sans-serif;`);
-			lines.push(`  font-size: ${pxToRem(v.fontSize)};`);
-			lines.push(`  font-weight: ${v.fontWeight};`);
-			lines.push(`  line-height: ${unitlessLineHeight(v.lineHeight, v.fontSize)};`);
-			lines.push(`  letter-spacing: ${pxToEm(v.letterSpacing, v.fontSize)};`);
-			lines.push('}');
+		if (conv.includesFontWeight && weights.size > 0) {
+			lines.push('// Font weights');
+			for (const w of [...weights].sort((a, b) => a - b)) {
+				lines.push(`$${varPfx}weight-${w}: ${w};`);
+			}
+			lines.push('');
 		}
+
+		lines.push('// Font sizes, line heights, and letter spacings');
+		for (const entry of entries) {
+			const sizeKey = kebabToScssSize(entry.fullKey);
+			const { value: v } = entry;
+			lines.push(
+				`$${varPfx}${sizeKey}-size: ${fmtSize(v.fontSize)};${v.fontSize ? ` // ${fmtSize(v.fontSize)}` + (conv.sizeUnit === 'rem' ? ` * 16 = ${v.fontSize}px` : '') : ''}`
+			);
+			lines.push(`$${varPfx}${sizeKey}-height: ${fmtHeight(v.lineHeight, v.fontSize)};`);
+			lines.push(`$${varPfx}${sizeKey}-spacing: ${fmtSpacing(v.letterSpacing, v.fontSize)};`);
+			lines.push('');
+		}
+
+		if (conv.hasMixins) {
+			lines.push('// Typography mixins for easy usage');
+			for (const entry of entries) {
+				const sizeKey = kebabToScssSize(entry.fullKey);
+				const mixinName = kebabToMixinName(entry.fullKey, conv.mixinPrefix);
+				lines.push(`@mixin ${mixinName} {`);
+				if (conv.includesFontFamily) {
+					lines.push(`  font-family: '${entry.value.fontFamily}', sans-serif;`);
+				}
+				lines.push(`  font-size: $${varPfx}${sizeKey}-size;`);
+				lines.push(`  line-height: $${varPfx}${sizeKey}-height;`);
+				lines.push(`  letter-spacing: $${varPfx}${sizeKey}-spacing;`);
+				lines.push('}');
+				lines.push('');
+			}
+		}
+	} else {
+		// Best-practices flat format
+		lines.push(`// Usage: @include ${conv.mixinPrefix}{name}; e.g. @include ${conv.mixinPrefix}body-r;`);
 		lines.push('');
+
+		if (conv.hasCssCustomProperties) {
+			lines.push('// CSS custom properties — for runtime / JS access');
+			lines.push(':root {');
+			for (const entry of entries) {
+				const { fullKey: k, value: v } = entry;
+				if (conv.includesFontFamily) {
+					lines.push(`  --${conv.mixinPrefix}${k}-family: '${v.fontFamily}', sans-serif;`);
+				}
+				lines.push(`  --${conv.mixinPrefix}${k}-size: ${fmtSize(v.fontSize)};`);
+				lines.push(`  --${conv.mixinPrefix}${k}-weight: ${v.fontWeight};`);
+				lines.push(`  --${conv.mixinPrefix}${k}-line-height: ${fmtHeight(v.lineHeight, v.fontSize)};`);
+				lines.push(`  --${conv.mixinPrefix}${k}-letter-spacing: ${fmtSpacing(v.letterSpacing, v.fontSize)};`);
+			}
+			lines.push('}');
+			lines.push('');
+		}
+
+		if (conv.hasMixins) {
+			const grouped = groupEntries(entries);
+			for (const [groupLabel, groupEntries] of grouped) {
+				lines.push(`// ${groupLabel}`);
+				for (const entry of groupEntries) {
+					const { fullKey: k, value: v } = entry;
+					lines.push(`@mixin ${conv.mixinPrefix}${k} {`);
+					if (conv.includesFontFamily) {
+						lines.push(`  font-family: '${v.fontFamily}', sans-serif;`);
+					}
+					lines.push(`  font-size: ${fmtSize(v.fontSize)};`);
+					lines.push(`  font-weight: ${v.fontWeight};`);
+					lines.push(`  line-height: ${fmtHeight(v.lineHeight, v.fontSize)};`);
+					lines.push(`  letter-spacing: ${fmtSpacing(v.letterSpacing, v.fontSize)};`);
+					lines.push('}');
+				}
+				lines.push('');
+			}
+		}
 	}
 
 	return {
@@ -274,46 +488,110 @@ function generateScss(entries: ParsedEntry[]): TransformResult {
 	};
 }
 
+function kebabToScssSize(key: string): string {
+	const parts = key.split('-');
+	if (parts.length <= 2) return parts.join('-');
+	return parts.slice(0, 2).join('-');
+}
+
+function kebabToMixinName(key: string, prefix: string): string {
+	return `${prefix}${key}`;
+}
+
 // ─── TypeScript Generator ─────────────────────────────────────────────────────
 
-function generateTs(entries: ParsedEntry[]): TransformResult {
+function generateTs(
+	entries: ParsedEntry[],
+	conv: DetectedTypographyConventions['ts']
+): TransformResult {
 	const lines: string[] = [];
 	lines.push('// Typography.ts');
 	lines.push('// Auto-generated from Figma Text Styles — DO NOT EDIT');
 	lines.push(`// Generated: ${new Date().toISOString()}`);
 	lines.push('');
-	lines.push('export interface TypographyToken {');
-	lines.push('  fontFamily: string;');
-	lines.push('  fontSize: number; // px (raw Figma value)');
-	lines.push('  fontSizeRem: string; // e.g. "1rem"');
-	lines.push('  fontWeight: number;');
-	lines.push('  lineHeight: number; // px (raw Figma value)');
-	lines.push('  lineHeightUnitless: number; // e.g. 1.5');
-	lines.push('  letterSpacing: number; // px (raw Figma value)');
-	lines.push('  letterSpacingEm: string; // e.g. "0.0313em"');
-	lines.push('}');
-	lines.push('');
 
-	const grouped = groupEntries(entries);
+	if (conv.twoTier) {
+		// Match-existing two-tier: weight consts, private size objects, exported semantic aliases
+		if (conv.exportWeights) {
+			const weights = new Set(entries.map((e) => e.value.fontWeight));
+			for (const w of [...weights].sort((a, b) => a - b)) {
+				lines.push(`export const ${conv.constPrefix}WEIGHT_${w} = ${w};`);
+			}
+			lines.push('');
+		}
 
-	for (const [groupLabel, groupEntries] of grouped) {
-		lines.push(`// ${groupLabel}`);
-		for (const entry of groupEntries) {
-			const constName = kebabToCamel(`typo-${entry.fullKey}`);
+		for (const entry of entries) {
+			const sizeConst = kebabToScreaming(entry.fullKey, conv.constPrefix);
 			const v = entry.value;
-			const lhUnitless = v.fontSize === 0 ? 1 : parseFloat((v.lineHeight / v.fontSize).toFixed(4));
-			lines.push(`export const ${constName}: TypographyToken = {`);
-			lines.push(`  fontFamily: '${v.fontFamily}',`);
-			lines.push(`  fontSize: ${v.fontSize},`);
-			lines.push(`  fontSizeRem: '${pxToRem(v.fontSize)}',`);
-			lines.push(`  fontWeight: ${v.fontWeight},`);
-			lines.push(`  lineHeight: ${v.lineHeight},`);
-			lines.push(`  lineHeightUnitless: ${lhUnitless},`);
-			lines.push(`  letterSpacing: ${v.letterSpacing},`);
-			lines.push(`  letterSpacingEm: '${pxToEm(v.letterSpacing, v.fontSize)}',`);
-			lines.push('} as const;');
+			lines.push(`const ${sizeConst} = {`);
+			if (conv.includesFontFamily) {
+				lines.push(`  fontFamily: '${v.fontFamily}',`);
+			}
+			if (conv.valueFormat === 'string') {
+				lines.push(`  fontSize: '${pxToRem(v.fontSize)}',`);
+				lines.push(`  lineHeight: '${pxToRem(v.lineHeight)}',`);
+				lines.push(`  letterSpacing: '${v.letterSpacing}px',`);
+			} else {
+				lines.push(`  fontSize: ${v.fontSize},`);
+				lines.push(`  lineHeight: ${v.lineHeight},`);
+				lines.push(`  letterSpacing: ${v.letterSpacing},`);
+			}
+			lines.push('};');
 		}
 		lines.push('');
+
+		lines.push('// Typography objects with descriptive names for easy usage');
+		for (const entry of entries) {
+			const sizeConst = kebabToScreaming(entry.fullKey, conv.constPrefix);
+			const semanticName = kebabToSemanticScreaming(entry.fullKey, conv.constPrefix);
+			lines.push(`export const ${semanticName} = ${sizeConst};`);
+		}
+	} else {
+		// Best-practices flat format
+		if (conv.hasInterface && conv.interfaceName) {
+			lines.push(`export interface ${conv.interfaceName} {`);
+			if (conv.includesFontFamily) {
+				lines.push('  fontFamily: string;');
+			}
+			lines.push('  fontSize: number; // px (raw Figma value)');
+			lines.push("  fontSizeRem: string; // e.g. \"1rem\"");
+			lines.push('  fontWeight: number;');
+			lines.push('  lineHeight: number; // px (raw Figma value)');
+			lines.push('  lineHeightUnitless: number; // e.g. 1.5');
+			lines.push('  letterSpacing: number; // px (raw Figma value)');
+			lines.push("  letterSpacingEm: string; // e.g. \"0.0313em\"");
+			lines.push('}');
+			lines.push('');
+		}
+
+		const grouped = groupEntries(entries);
+		const typeAnnotation = conv.hasInterface && conv.interfaceName ? `: ${conv.interfaceName}` : '';
+
+		for (const [groupLabel, groupEntries] of grouped) {
+			lines.push(`// ${groupLabel}`);
+			for (const entry of groupEntries) {
+				const constName =
+					conv.namingCase === 'SCREAMING_SNAKE'
+						? kebabToScreaming(entry.fullKey, conv.constPrefix)
+						: kebabToCamel(`${conv.constPrefix}${entry.fullKey}`);
+				const v = entry.value;
+				const lhUnitless =
+					v.fontSize === 0 ? 1 : parseFloat((v.lineHeight / v.fontSize).toFixed(4));
+				lines.push(`export const ${constName}${typeAnnotation} = {`);
+				if (conv.includesFontFamily) {
+					lines.push(`  fontFamily: '${v.fontFamily}',`);
+				}
+				lines.push(`  fontSize: ${v.fontSize},`);
+				lines.push(`  fontSizeRem: '${pxToRem(v.fontSize)}',`);
+				lines.push(`  fontWeight: ${v.fontWeight},`);
+				lines.push(`  lineHeight: ${v.lineHeight},`);
+				lines.push(`  lineHeightUnitless: ${lhUnitless},`);
+				lines.push(`  letterSpacing: ${v.letterSpacing},`);
+				lines.push(`  letterSpacingEm: '${pxToEm(v.letterSpacing, v.fontSize)}',`);
+				lines.push('} as const;');
+			}
+			lines.push('');
+		}
 	}
 
 	return {
@@ -322,6 +600,15 @@ function generateTs(entries: ParsedEntry[]): TransformResult {
 		format: 'typescript',
 		platform: 'web'
 	};
+}
+
+function kebabToScreaming(key: string, prefix: string): string {
+	return prefix + key.toUpperCase().replace(/-/g, '_');
+}
+
+function kebabToSemanticScreaming(key: string, prefix: string): string {
+	const semantic = key.replace(/-r$/, '').replace(/-/g, '_').toUpperCase();
+	return prefix + semantic;
 }
 
 // ─── Swift Generator ──────────────────────────────────────────────────────────

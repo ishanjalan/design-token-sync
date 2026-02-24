@@ -2,7 +2,7 @@
 // Matches the web team's exact existing format, using Figma aliasData to preserve
 // semantic → primitive references instead of hardcoding resolved hex values.
 
-import type { TransformResult, FigmaColorExport, FigmaColorToken, DetectedConventions } from '$lib/types.js';
+import type { TransformResult, FigmaColorExport, DetectedConventions } from '$lib/types.js';
 import { BEST_PRACTICE_WEB_CONVENTIONS } from '$lib/types.js';
 import {
 	walkColorTokens,
@@ -12,7 +12,6 @@ import {
 	extractSortKey,
 	resolveColorValue,
 	capitalize,
-	CATEGORY_ORDER,
 	orderCategories
 } from './shared.js';
 

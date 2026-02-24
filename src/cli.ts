@@ -14,7 +14,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { loadConfig, scaffoldConfig } from './lib/config.js';
 import { lintTokenNames, getRuleSet, lintSummary } from './lib/naming-lint.js';
-import { checkContrast, extractSemanticColors, detectPairings, validatePalette } from './lib/contrast.js';
+import { extractSemanticColors, detectPairings, validatePalette } from './lib/contrast.js';
 import { generateTokenDocs } from './lib/docs-generator.js';
 import { transformToSCSS } from './lib/transformers/scss.js';
 import { transformToTS } from './lib/transformers/ts-web.js';

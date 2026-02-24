@@ -9,7 +9,7 @@
  * Colors.ts      → `export const TEXT_PRIMARY = \`var(--text-primary, light-dark(\${PRIMITIVES.GREY_750}, \${PRIMITIVES.GREY_50}))\`;`
  */
 
-import type { FigmaColorExport, FigmaColorToken, TransformResult } from '$lib/types.js';
+import type { FigmaColorExport, TransformResult } from '$lib/types.js';
 import type { DetectedConventions } from '$lib/types.js';
 import { scssVarToTsName } from '$lib/transformers/naming.js';
 import {
@@ -20,7 +20,6 @@ import {
 	extractSortKey,
 	resolveColorValue,
 	capitalize,
-	CATEGORY_ORDER,
 	orderCategories
 } from './shared.js';
 

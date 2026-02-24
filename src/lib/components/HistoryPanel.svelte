@@ -57,8 +57,9 @@
 				</div>
 				{#if entry.prUrls?.length}
 					<div class="history-pr-links">
-						{#each entry.prUrls as url}
-							<a class="pr-link" href={url} target="_blank" rel="noopener noreferrer">PR ↗</a>
+						{#each entry.prUrls as url (url)}
+							<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
+						<a class="pr-link" href={url} target="_blank" rel="noopener noreferrer">PR ↗</a>
 						{/each}
 					</div>
 				{/if}

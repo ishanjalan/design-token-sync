@@ -13,7 +13,7 @@
  * If a reference Colors.kt is provided, naming conventions are detected and matched.
  */
 
-import type { FigmaColorExport, FigmaColorToken, TransformResult } from '$lib/types.js';
+import type { FigmaColorExport, TransformResult } from '$lib/types.js';
 import type { DetectedKotlinConventions } from '$lib/types.js';
 import { BEST_PRACTICE_KOTLIN_CONVENTIONS } from '$lib/types.js';
 import { figmaToKotlinHex } from '$lib/color-utils.js';

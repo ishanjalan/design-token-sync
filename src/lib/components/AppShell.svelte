@@ -39,7 +39,7 @@
 	function onPointerUp() {
 		if (!resizing) return;
 		resizing = false;
-		try { localStorage.setItem('tokensmith:panel-width', String(panelWidth)); } catch {}
+		try { localStorage.setItem('tokensmith:panel-width', String(panelWidth)); } catch { /* persist failure is non-critical */ }
 	}
 </script>
 

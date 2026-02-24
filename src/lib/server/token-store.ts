@@ -276,7 +276,7 @@ async function initializeRepo(cfg: { pat: string; owner: string; repo: string })
 	return data.commit.sha;
 }
 
-async function createBlob(cfg: { pat: string; owner: string; repo: string }, content: string): Promise<string> {
+async function _createBlob(cfg: { pat: string; owner: string; repo: string }, content: string): Promise<string> {
 	const url = `${API}/repos/${cfg.owner}/${cfg.repo}/git/blobs`;
 	const res = await fetch(url, {
 		method: 'POST',

@@ -106,8 +106,8 @@
 	}
 
 	$effect(() => {
-		content; totalLines; scrollTop; scrollHeight; clientHeight;
-		diffRegions; searchMatchLines;
+		void content; void totalLines; void scrollTop; void scrollHeight; void clientHeight;
+		void diffRegions; void searchMatchLines;
 		draw();
 	});
 

@@ -241,7 +241,11 @@ export type DropZoneKey =
 	| 'referencePrimitivesTs'
 	| 'referenceColorsTs'
 	| 'referenceColorsSwift'
-	| 'referenceColorsKotlin';
+	| 'referenceColorsKotlin'
+	| 'referenceTypographyScss'
+	| 'referenceTypographyTs'
+	| 'referenceTypographySwift'
+	| 'referenceTypographyKotlin';
 
 export interface FileSlot {
 	label: string;

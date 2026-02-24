@@ -7,7 +7,7 @@
  * Uses `light-dark()` for themed tokens (Baseline 2024).
  */
 
-import type { FigmaColorExport, FigmaColorToken, TransformResult } from '$lib/types.js';
+import type { FigmaColorExport, TransformResult } from '$lib/types.js';
 import type { DetectedConventions } from '$lib/types.js';
 import {
 	walkColorTokens,

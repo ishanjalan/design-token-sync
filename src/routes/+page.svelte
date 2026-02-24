@@ -2,24 +2,19 @@
 	import { browser } from '$app/environment';
 	import { onMount } from 'svelte';
 	import { Toaster, toast } from 'svelte-sonner';
-	import { saveResult } from '$lib/storage.js';
 	import type {
 		Platform,
 		HistoryEntry,
 		GenerateResponse,
-		DropZoneKey,
-		GeneratedFile
+		DropZoneKey
 	} from '$lib/types.js';
 	import {
 		type DiffLine,
 		type ChangelogContext,
-		type BlameStatus,
 		diffChangeIndices,
-		filterDiffLines,
 		generateChangelog,
 		computeBlameMap
 	} from '$lib/diff-utils.js';
-	import { buildSearchHighlight } from '$lib/search-utils.js';
 
 	import AppShell from '$lib/components/AppShell.svelte';
 	import ActivityRail from '$lib/components/ActivityRail.svelte';
@@ -35,7 +30,7 @@
 
 	import { fileStore, REF_KEYS } from '$lib/stores/file-store.svelte.js';
 	import { genStore } from '$lib/stores/generation-store.svelte.js';
-	import { uiStore, THEMES, type ThemeId } from '$lib/stores/ui-store.svelte.js';
+	import { uiStore, THEMES } from '$lib/stores/ui-store.svelte.js';
 	import { settingsStore } from '$lib/stores/settings-store.svelte.js';
 	import { tokenStore, setGenStoreRef } from '$lib/stores/token-store-client.svelte.js';
 	import { historyStore } from '$lib/stores/history-store.svelte.js';
@@ -324,6 +319,7 @@
 	}
 
 	function computeHunkHeaders(lines: DiffLine[]): Set<number> {
+		// eslint-disable-next-line svelte/prefer-svelte-reactivity
 		const hunks = new Set<number>();
 		for (let i = 0; i < lines.length; i++) {
 			if (lines[i].type === 'equal') continue;
@@ -357,7 +353,7 @@
 			fd.append('values', fileStore.slots.values.file!);
 			fd.append('platforms', JSON.stringify(fileStore.selectedPlatforms));
 			fd.append('bestPractices', String(fileStore.bestPractices));
-			const optionalKeys: DropZoneKey[] = ['typography', 'referencePrimitivesScss', 'referenceColorsScss', 'referencePrimitivesTs', 'referenceColorsTs', 'referenceColorsSwift', 'referenceColorsKotlin'];
+			const optionalKeys: DropZoneKey[] = ['typography', 'referencePrimitivesScss', 'referenceColorsScss', 'referencePrimitivesTs', 'referenceColorsTs', 'referenceColorsSwift', 'referenceColorsKotlin', 'referenceTypographyScss', 'referenceTypographyTs', 'referenceTypographySwift', 'referenceTypographyKotlin'];
 			for (const key of optionalKeys) { if (fileStore.slots[key].file) fd.append(key, fileStore.slots[key].file!); }
 			const res = await fetch('/api/generate', { method: 'POST', body: fd });
 			if (!res.ok) { const text = await res.text(); throw new Error(text || `HTTP ${res.status}`); }
@@ -476,7 +472,8 @@
 		if (!settingsStore.githubPat) { toast.error('Add your GitHub PAT in Settings first'); uiStore.activePanel = 'settings'; return; }
 		settingsStore.sendingPrs = true; settingsStore.prResults = [];
 		try {
-			const grouped = new Map<string, { platforms: string[]; owner: string; repo: string; baseBranch: string; targetDir: string; files: { filename: string; content: string }[] }>();
+			// eslint-disable-next-line svelte/prefer-svelte-reactivity
+		const grouped = new Map<string, { platforms: string[]; owner: string; repo: string; baseBranch: string; targetDir: string; files: { filename: string; content: string }[] }>();
 			for (const platform of genStore.result.platforms) {
 				const cfg = settingsStore.githubRepos[platform]; if (!cfg?.owner || !cfg?.repo) continue;
 				const repoKey = `${cfg.owner}/${cfg.repo}`;

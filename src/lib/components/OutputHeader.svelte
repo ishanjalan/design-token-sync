@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { Download, GitPullRequest, ClipboardCopy, History, Palette } from 'lucide-svelte';
-	import type { GenerateResponse, GenerationStats } from '$lib/types.js';
+	import type { GenerateResponse } from '$lib/types.js';
 
 	interface DiffTotals {
 		added: number;

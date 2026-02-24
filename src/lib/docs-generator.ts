@@ -6,7 +6,7 @@
  * - HTML: static single-page site with color swatches, alias chains, theme comparison
  */
 
-import { walkAllTokens, buildTokenGraph } from './resolve-tokens.js';
+import { walkAllTokens } from './resolve-tokens.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 

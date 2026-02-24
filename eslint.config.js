@@ -14,18 +14,29 @@ export default [
 		}
 	},
 	{
-		files: ['**/*.svelte'],
+		files: ['**/*.svelte.ts', '**/*.svelte.js'],
 		languageOptions: {
-			parserOptions: { parser: ts.parser }
+			parser: ts.parser
 		}
 	},
 	{
 		rules: {
 			'@typescript-eslint/no-explicit-any': 'warn',
-			'@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }]
+			'@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }]
 		}
 	},
 	{
-		ignores: ['.svelte-kit/', 'build/', 'node_modules/']
+		files: ['**/*.svelte'],
+		languageOptions: {
+			parserOptions: { parser: ts.parser }
+		},
+		rules: {
+			'@typescript-eslint/no-unused-vars': 'off',
+			'@typescript-eslint/no-unused-expressions': 'off',
+			'no-undef': 'off'
+		}
+	},
+	{
+		ignores: ['.svelte-kit/', 'build/', 'node_modules/', 'figma-plugin/dist/', 'typography-plugin/dist/', '.vercel/']
 	}
 ];
