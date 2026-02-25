@@ -1,5 +1,5 @@
 import { browser } from '$app/environment';
-import type { GenerateResponse, GeneratedFile, Platform } from '$lib/types.js';
+import type { GenerateResponse, GeneratedFile, GenerationMode, Platform } from '$lib/types.js';
 import {
 	type DiffLine,
 	type ViewMode,
@@ -32,6 +32,7 @@ class GenerationStoreClass {
 	errorHint = $state<string | null>(null);
 	progressStatus = $state<string | null>(null);
 	activeTab = $state<string>('');
+	activeMode = $state<GenerationMode>('matched');
 	lastGeneratedAt = $state<Date | null>(null);
 	viewModes = $state<Record<string, ViewMode>>({});
 	highlights = $state<Record<string, string>>({});
@@ -45,10 +46,17 @@ class GenerationStoreClass {
 	impactedTokens = $state<ImpactEntry[]>([]);
 	swatchComparisons = $state<SwatchComparison[]>([]);
 
+	get hasDualMode(): boolean {
+		if (!this.result?.files) return false;
+		return this.result.files.some((f) => f.mode === 'matched') &&
+			this.result.files.some((f) => f.mode === 'best-practices');
+	}
+
 	get visibleFiles(): GeneratedFile[] {
 		return (
 			this.result?.files?.filter((f) =>
-				fileStore.selectedPlatforms.includes(f.platform as Platform)
+				fileStore.selectedPlatforms.includes(f.platform as Platform) &&
+				(!this.hasDualMode || f.mode === this.activeMode)
 			) ?? []
 		);
 	}
@@ -94,13 +102,21 @@ class GenerationStoreClass {
 	applyResult(parsed: GenerateResponse) {
 		this.result = parsed;
 		this.lastGeneratedAt = new Date();
-		this.activeTab = parsed.files[0].filename;
+		const hasMatched = parsed.files.some((f) => f.mode === 'matched');
+		this.activeMode = hasMatched ? 'matched' : 'best-practices';
+		this.activeTab = this.visibleFiles[0]?.filename ?? parsed.files[0].filename;
 		saveResult(parsed);
+	}
+
+	setMode(mode: GenerationMode) {
+		this.activeMode = mode;
+		this.activeTab = this.visibleFiles[0]?.filename ?? this.activeTab;
 	}
 
 	resetAll() {
 		this.result = null;
 		this.lastGeneratedAt = null;
+		this.activeMode = 'matched';
 		this.highlights = {};
 		this.diffs = {};
 		this.viewModes = {};

@@ -3,6 +3,15 @@ import type { TransformResult } from '$lib/types.js';
 import { resolveNameFromMap, groupEntries, kebabToCamel, fileHeaderLines } from './typography.js';
 import { capitalize, bugWarningBlock } from './shared.js';
 
+export interface KotlinTypographyScope {
+	generateDefinition: boolean;
+	generateAccessor: boolean;
+	definitionFilename?: string;
+	accessorClassName?: string;
+	accessorContainerRef?: string;
+	accessorFilename?: string;
+}
+
 const KOTLIN_WEIGHTS: Record<number, string> = {
 	100: 'FontWeight.Thin',
 	200: 'FontWeight.ExtraLight',
@@ -116,16 +125,40 @@ export function detectKotlinConventions(content: string): DetectedTypographyConv
 
 export function generateKotlin(
 	entries: ParsedEntry[],
-	conv: DetectedTypographyConventions['kotlin']
-): TransformResult {
-	if (conv.architecture === 'class') {
-		return generateKotlinClass(entries, conv);
+	conv: DetectedTypographyConventions['kotlin'],
+	scope?: KotlinTypographyScope
+): TransformResult[] {
+	const effectiveScope: KotlinTypographyScope = scope ?? { generateDefinition: true, generateAccessor: false };
+	const results: TransformResult[] = [];
+
+	if (effectiveScope.generateDefinition) {
+		const defResult = conv.architecture === 'class'
+			? generateKotlinClass(entries, conv, effectiveScope.definitionFilename)
+			: generateKotlinDefinition(entries, conv, effectiveScope.definitionFilename);
+		results.push(defResult);
 	}
 
+	if (effectiveScope.generateAccessor) {
+		results.push(generateKotlinAccessor(entries, conv, effectiveScope));
+	}
+
+	if (results.length === 0) {
+		results.push(generateKotlinDefinition(entries, conv));
+	}
+
+	return results;
+}
+
+function generateKotlinDefinition(
+	entries: ParsedEntry[],
+	conv: DetectedTypographyConventions['kotlin'],
+	filename?: string
+): TransformResult {
 	const lines: string[] = [];
 	const hasReference = Object.keys(conv.nameMap).length > 0;
+	const defFilename = filename ?? 'Typography.kt';
 
-	lines.push('// Typography.kt');
+	lines.push(`// ${defFilename}`);
 	lines.push(...fileHeaderLines('//', true));
 	lines.push('');
 
@@ -231,7 +264,7 @@ export function generateKotlin(
 	}
 
 	return {
-		filename: 'Typography.kt',
+		filename: defFilename,
 		content: lines.join('\n') + '\n',
 		format: 'kotlin',
 		platform: 'android'
@@ -240,12 +273,14 @@ export function generateKotlin(
 
 function generateKotlinClass(
 	entries: ParsedEntry[],
-	conv: DetectedTypographyConventions['kotlin']
+	conv: DetectedTypographyConventions['kotlin'],
+	filename?: string
 ): TransformResult {
 	const lines: string[] = [];
 	const clsName = conv.className ?? conv.containerName;
+	const defFilename = filename ?? 'Typography.kt';
 
-	lines.push('// Typography.kt');
+	lines.push(`// ${defFilename}`);
 	lines.push(...fileHeaderLines('//', true));
 	lines.push('');
 
@@ -345,7 +380,65 @@ function generateKotlinClass(
 	lines.push('');
 
 	return {
-		filename: 'Typography.kt',
+		filename: defFilename,
+		content: lines.join('\n') + '\n',
+		format: 'kotlin',
+		platform: 'android'
+	};
+}
+
+function generateKotlinAccessor(
+	entries: ParsedEntry[],
+	conv: DetectedTypographyConventions['kotlin'],
+	scope: KotlinTypographyScope
+): TransformResult {
+	const lines: string[] = [];
+	const enumName = scope.accessorClassName ?? 'LocalTypography';
+	const containerRef = scope.accessorContainerRef ?? 'LocalTypography';
+	const accFilename = scope.accessorFilename ?? `${enumName}.kt`;
+
+	lines.push(`// ${accFilename}`);
+	lines.push(...fileHeaderLines('//', true));
+	lines.push('');
+	lines.push(`package ${conv.packageName}`);
+	lines.push('');
+	lines.push('import androidx.compose.material3.MaterialTheme');
+	lines.push('import androidx.compose.runtime.Composable');
+	lines.push('import androidx.compose.ui.text.TextStyle');
+	if (conv.packageName !== 'com.example.design') {
+		lines.push(`import ${conv.packageName.replace(/\.\w+$/, '')}.${containerRef}`);
+	}
+	lines.push('');
+
+	const propNames = entries.map((e) => resolveNameFromMap(e.shortKey, conv.nameMap, conv.namingStyle));
+
+	lines.push(`enum class ${enumName} {`);
+	const grouped = groupEntries(entries);
+	let firstGroup = true;
+	for (const [groupLabel, gEntries] of grouped) {
+		if (!firstGroup) lines.push('');
+		firstGroup = false;
+		for (const entry of gEntries) {
+			const name = resolveNameFromMap(entry.shortKey, conv.nameMap, conv.namingStyle);
+			lines.push(`    ${name},`);
+		}
+	}
+
+	lines.push('    ;');
+	lines.push('    val textStyle: TextStyle');
+	lines.push('        @Composable');
+	lines.push('        get() = when (this) {');
+	for (const name of propNames) {
+		lines.push(`            ${name} -> {`);
+		lines.push(`                MaterialTheme.${containerRef}.${name}`);
+		lines.push('            }');
+	}
+	lines.push('        }');
+	lines.push('}');
+	lines.push('');
+
+	return {
+		filename: accFilename,
 		content: lines.join('\n') + '\n',
 		format: 'kotlin',
 		platform: 'android'

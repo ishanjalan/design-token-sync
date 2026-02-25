@@ -44,10 +44,16 @@ export function migrateStorageIfNeeded(): void {
 	}
 }
 
+interface StoredRefFileEntry {
+	name: string;
+	content: string;
+}
+
 interface StoredRefFile {
 	name: string;
 	content: string;
 	savedAt: string; // ISO timestamp
+	entries?: StoredRefFileEntry[];
 }
 
 interface StoredResult {
@@ -58,9 +64,14 @@ interface StoredResult {
 
 // ─── Reference files ──────────────────────────────────────────────────────────
 
-export function saveRefFile(slotKey: string, name: string, content: string): void {
+export function saveRefFile(
+	slotKey: string,
+	name: string,
+	content: string,
+	entries?: StoredRefFileEntry[]
+): void {
 	try {
-		const payload: StoredRefFile = { name, content, savedAt: new Date().toISOString() };
+		const payload: StoredRefFile = { name, content, savedAt: new Date().toISOString(), entries };
 		localStorage.setItem(`${PREFIX}:ref:${slotKey}`, JSON.stringify(payload));
 	} catch {
 		// Quota exceeded or private browsing — fail silently

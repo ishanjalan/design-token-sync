@@ -54,9 +54,7 @@
 		]
 	},
 	"dependencies": {
-		"@primer/primitives": "^11.4.0",
 		"@sveltejs/adapter-vercel": "^6.3.2",
-		"apca-w3": "^0.1.9",
 		"culori": "^4.0.2",
 		"diff": "^8.0.3",
 		"fflate": "^0.8.2",

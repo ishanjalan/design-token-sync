@@ -87,9 +87,13 @@
 
 <style>
 	.swatch-panel {
-		border-top: 1px solid var(--borderColor-muted);
 		padding: 16px 20px;
-		background: var(--bgColor-inset);
+		background: var(--bgColor-muted);
+		backdrop-filter: blur(12px);
+		-webkit-backdrop-filter: blur(12px);
+		border: 1px solid var(--borderColor-muted);
+		box-shadow: var(--shadow-panel);
+		border-radius: var(--radius-md);
 		max-height: 380px;
 		overflow-y: auto;
 		scrollbar-width: thin;
@@ -100,8 +104,9 @@
 		align-items: center;
 		justify-content: space-between;
 		margin-bottom: 16px;
+		font-family: var(--font-display);
 		font-size: 10px;
-		font-weight: var(--base-text-weight-medium);
+		font-weight: 500;
 		color: var(--fgColor-disabled);
 		letter-spacing: 0.06em;
 		text-transform: uppercase;
@@ -111,9 +116,9 @@
 	}
 	.swatch-group-name {
 		display: block;
-		font-family: var(--fontStack-sansSerif);
-		font-size: var(--base-text-size-xs);
-		font-weight: var(--base-text-weight-semibold);
+		font-family: var(--font-display);
+		font-size: 11px;
+		font-weight: 600;
 		color: var(--fgColor-disabled);
 		letter-spacing: 0;
 		text-transform: none;
@@ -129,18 +134,24 @@
 		flex-direction: column;
 		align-items: center;
 		gap: 4px;
+		padding: 4px;
 		cursor: default;
+		border-radius: var(--radius-sm);
+		transition: background var(--transition-fast);
+	}
+	.swatch-item:hover {
+		background: var(--control-bgColor-hover);
 	}
 	.swatch-color {
 		width: 32px;
 		height: 32px;
-		border-radius: var(--borderRadius-medium);
+		border-radius: var(--radius-sm);
 		border: 1px solid rgba(255, 255, 255, 0.06);
 		flex-shrink: 0;
 	}
 	.swatch-hex {
 		font-size: 9px;
-		font-weight: var(--base-text-weight-normal);
+		font-weight: 400;
 		color: var(--fgColor-disabled);
 		letter-spacing: 0.02em;
 		text-transform: uppercase;
@@ -160,16 +171,19 @@
 		color: var(--fgColor-muted);
 		font-size: 10px;
 		padding: 2px 8px;
-		border-radius: var(--borderRadius-small);
+		border-radius: 100px;
 		cursor: pointer;
 		text-transform: uppercase;
 		letter-spacing: 0.06em;
-		font-weight: var(--base-text-weight-medium);
+		font-weight: 500;
+		transition: background var(--transition-fast), color var(--transition-fast),
+			box-shadow var(--transition-fast);
 	}
 	.swatch-tab--active {
-		background: var(--bgColor-accent-muted);
+		background: var(--control-bgColor-hover);
 		color: var(--fgColor-accent);
 		border-color: var(--borderColor-accent-emphasis);
+		box-shadow: var(--shadow-button);
 	}
 	.swatch-comparison-list {
 		display: flex;
@@ -183,7 +197,7 @@
 		padding: 4px 0;
 	}
 	.swatch-cmp-name {
-		font-family: var(--fontStack-monospace);
+		font-family: var(--font-code);
 		font-size: 11px;
 		color: var(--fgColor-default);
 		flex: 1;
@@ -201,7 +215,7 @@
 	.swatch-cmp-chip {
 		width: 24px;
 		height: 24px;
-		border-radius: var(--borderRadius-small);
+		border-radius: var(--radius-sm);
 		border: 1px solid rgba(255, 255, 255, 0.08);
 	}
 	.swatch-cmp-chip--empty {
@@ -215,11 +229,11 @@
 	}
 	.swatch-cmp-badge {
 		font-size: 9px;
-		font-weight: var(--base-text-weight-semibold);
+		font-weight: 600;
 		text-transform: uppercase;
 		letter-spacing: 0.06em;
 		padding: 1px 6px;
-		border-radius: var(--borderRadius-small);
+		border-radius: var(--radius-sm);
 		flex-shrink: 0;
 	}
 	.swatch-cmp-badge--changed {
@@ -235,29 +249,29 @@
 		background: color-mix(in srgb, var(--bgColor-danger-muted) 50%, transparent);
 	}
 	.swatch-cmp-empty {
-		font-size: var(--base-text-size-xs);
+		font-size: 11px;
 		color: var(--fgColor-muted);
 		text-align: center;
 		padding: 20px;
 	}
 
 	.ctrl-btn {
-		font-family: 'IBM Plex Mono', monospace;
+		font-family: var(--font-code);
 		font-size: 10px;
 		letter-spacing: 0.04em;
 		color: var(--fgColor-muted);
-		background: none;
-		border: 1px solid var(--borderColor-default);
-		border-radius: var(--borderRadius-small);
+		background: var(--surface-glass);
+		border: 1px solid var(--surface-glass-border);
+		border-radius: var(--radius-sm);
 		padding: 3px 10px;
 		cursor: pointer;
 		transition:
-			background var(--base-duration-100) var(--base-easing-ease),
-			color var(--base-duration-100) var(--base-easing-ease);
+			background var(--transition-fast),
+			color var(--transition-fast);
 		white-space: nowrap;
 	}
 	.ctrl-btn:hover {
-		background: var(--bgColor-neutral-muted);
+		background: var(--control-bgColor-hover);
 		color: var(--fgColor-default);
 	}
 </style>

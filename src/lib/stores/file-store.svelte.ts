@@ -44,7 +44,17 @@ export const REF_KEYS: DropZoneKey[] = [
 
 class FileStoreClass {
 	selectedPlatforms = $state<Platform[]>(['web']);
-	selectedOutputs = $state<OutputCategory[]>(['colors', 'typography']);
+	get selectedOutputs(): OutputCategory[] {
+		const outputs: OutputCategory[] = [];
+		const colorRefKeys: DropZoneKey[] = ['referenceColorsWeb', 'referenceColorsSwift', 'referenceColorsKotlin'];
+		const typoRefKeys: DropZoneKey[] = ['referenceTypographyWeb', 'referenceTypographySwift', 'referenceTypographyKotlin'];
+		if (colorRefKeys.some((k) => !!this.slots[k].file)) outputs.push('colors');
+		if (typoRefKeys.some((k) => !!this.slots[k].file)) outputs.push('typography');
+		if (outputs.length === 0) {
+			outputs.push('colors', 'typography');
+		}
+		return outputs;
+	}
 	loading = $state(false);
 	bulkDropActive = $state(false);
 	needsRegeneration = $state(false);
@@ -215,33 +225,21 @@ class FileStoreClass {
 	dragCounters: Partial<Record<DropZoneKey, number>> = {};
 
 	get visibleKeys(): DropZoneKey[] {
-		const wantColors = this.selectedOutputs.includes('colors');
-		const wantTypo = this.selectedOutputs.includes('typography');
-
 		const webKeys: DropZoneKey[] = this.selectedPlatforms.includes('web')
-			? [
-					...(wantColors ? (['referenceColorsWeb'] as DropZoneKey[]) : []),
-					...(wantTypo ? (['referenceTypographyWeb'] as DropZoneKey[]) : [])
-				]
+			? ['referenceColorsWeb', 'referenceTypographyWeb']
 			: [];
 		const iosKeys: DropZoneKey[] = this.selectedPlatforms.includes('ios')
-			? [
-					...(wantColors ? (['referenceColorsSwift'] as DropZoneKey[]) : []),
-					...(wantTypo ? (['referenceTypographySwift'] as DropZoneKey[]) : [])
-				]
+			? ['referenceColorsSwift', 'referenceTypographySwift']
 			: [];
 		const androidKeys: DropZoneKey[] = this.selectedPlatforms.includes('android')
-			? [
-					...(wantColors ? (['referenceColorsKotlin'] as DropZoneKey[]) : []),
-					...(wantTypo ? (['referenceTypographyKotlin'] as DropZoneKey[]) : [])
-				]
+			? ['referenceColorsKotlin', 'referenceTypographyKotlin']
 			: [];
 		return [
 			'lightColors',
 			'darkColors',
 			'values',
-			...(wantTypo ? (['typography'] as DropZoneKey[]) : []),
-			...(wantColors ? (['additionalThemes'] as DropZoneKey[]) : []),
+			'typography',
+			'additionalThemes',
 			...webKeys,
 			...iosKeys,
 			...androidKeys
@@ -262,6 +260,7 @@ class FileStoreClass {
 			this.requiredFilled === 3 &&
 			!this.loading &&
 			this.selectedOutputs.length > 0 &&
+			this.hasRefFiles &&
 			!hasRequiredWarnings
 		);
 	}
@@ -286,9 +285,17 @@ class FileStoreClass {
 		for (const key of REF_KEYS) {
 			const stored = loadRefFile(key);
 			if (!stored) continue;
-			const synthetic = new File([stored.content], stored.name, { type: 'text/plain' });
-			this.slots[key].file = synthetic;
-			this.slots[key].files = [synthetic];
+			if (stored.entries && stored.entries.length > 1) {
+				const files = stored.entries.map(
+					(e) => new File([e.content], e.name, { type: 'text/plain' })
+				);
+				this.slots[key].file = files[0];
+				this.slots[key].files = files;
+			} else {
+				const synthetic = new File([stored.content], stored.name, { type: 'text/plain' });
+				this.slots[key].file = synthetic;
+				this.slots[key].files = [synthetic];
+			}
 			this.slots[key].restored = true;
 			this.conventionHints[key] = computeConventionHints(key, stored.content);
 			this.validations[key] = computeValidation(key, stored.content);
@@ -298,14 +305,6 @@ class FileStoreClass {
 	selectPlatform(id: Platform) {
 		this.selectedPlatforms = [id];
 		if (browser) savePlatforms([id]);
-	}
-
-	toggleOutput(cat: OutputCategory) {
-		if (this.selectedOutputs.includes(cat)) {
-			this.selectedOutputs = this.selectedOutputs.filter((c) => c !== cat);
-		} else {
-			this.selectedOutputs = [...this.selectedOutputs, cat];
-		}
 	}
 
 	async assignFile(key: DropZoneKey, file: File) {
@@ -411,7 +410,10 @@ class FileStoreClass {
 		this.fileInsights[key] = computeInsight(key, combinedContent);
 		this.conventionHints[key] = computeConventionHints(key, combinedContent);
 		this.validations[key] = computeValidation(key, combinedContent);
-		if (REF_KEYS.includes(key)) saveRefFile(key, validFiles.map((f) => f.name).join(','), combinedContent);
+		if (REF_KEYS.includes(key)) {
+			const entries = validFiles.map((f, i) => ({ name: f.name, content: allContents[i] }));
+			saveRefFile(key, validFiles.map((f) => f.name).join(','), combinedContent, entries);
+		}
 
 		const count = validFiles.length;
 		toast.success(`${count} file${count > 1 ? 's' : ''} loaded for ${slot.label}`);

@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { Upload, Loader2, ArrowRight, Check, X, Sparkles, CheckCircle2, AlertTriangle } from 'lucide-svelte';
-	import type { Platform, DropZoneKey, FileSlot, OutputCategory } from '$lib/types.js';
+	import { Upload, Loader2, ArrowRight, Check, X, AlertTriangle } from 'lucide-svelte';
+	import type { Platform, DropZoneKey, FileSlot } from '$lib/types.js';
 	import type { FileInsight } from '$lib/file-validation.js';
 
 	interface TechIcon {
@@ -30,8 +30,6 @@
 		slots: Record<DropZoneKey, FileSlot>;
 		fileInsights: Partial<Record<DropZoneKey, FileInsight>>;
 		hasRefFiles: boolean;
-		selectedOutputs: OutputCategory[];
-		onToggleOutput: (cat: OutputCategory) => void;
 		tokensInitialLoading: boolean;
 		canGenerate: boolean;
 		loading: boolean;
@@ -51,7 +49,6 @@
 		platforms, selectedPlatforms, onSelectPlatform,
 		swatchCount, storedTokenVersion, storedTokenPushedAt,
 		refKeys, visibleKeys, slots, fileInsights, hasRefFiles,
-		selectedOutputs, onToggleOutput,
 		tokensInitialLoading, canGenerate, loading, progressStatus = null, errorMsg = null, onGenerate,
 		onDragEnter, onDragOver, onDragLeave, onDrop, onFileInput, onClearFile,
 		requiredFilled
@@ -85,11 +82,20 @@
 </script>
 
 <div class="welcome">
+	<!-- Ambient background -->
+	<div class="ambient">
+		<div class="orb orb--1"></div>
+		<div class="orb orb--2"></div>
+		<div class="orb orb--3"></div>
+	</div>
+
 	<div class="welcome-card">
 		<!-- Step 1: Tokens -->
 		<div class="step" style="animation-delay: 0ms">
 			<div class="step-header">
-				<span class="step-num">1</span>
+				<span class="step-num" class:step-num--done={tokensReady}>
+					{#if tokensReady}<Check size={11} strokeWidth={3} />{:else}1{/if}
+				</span>
 				<span class="step-title">Design tokens</span>
 				{#if tokensInitialLoading}
 					<span class="token-badge token-badge--loading">
@@ -117,9 +123,11 @@
 		</div>
 
 		<!-- Step 2: Platform -->
-		<div class="step" style="animation-delay: 60ms">
+		<div class="step" style="animation-delay: 80ms">
 			<div class="step-header">
-				<span class="step-num">2</span>
+				<span class="step-num" class:step-num--done={selectedPlatforms.length > 0}>
+					{#if selectedPlatforms.length > 0}<Check size={11} strokeWidth={3} />{:else}2{/if}
+				</span>
 				<span class="step-title">Platform</span>
 			</div>
 			<div class="platform-row">
@@ -143,42 +151,14 @@
 			</div>
 		</div>
 
-		<!-- Step 3: Output -->
-		<div class="step" style="animation-delay: 120ms">
-			<div class="step-header">
-				<span class="step-num">3</span>
-				<span class="step-title">Output</span>
-			</div>
-			<div class="output-row">
-				<button
-					class="out-chip"
-					class:out-chip--active={selectedOutputs.includes('colors')}
-					onclick={() => onToggleOutput('colors')}
-				>
-					<span class="out-dot" style="background: var(--fgColor-accent)"></span>
-					Colors
-				</button>
-				<button
-					class="out-chip"
-					class:out-chip--active={selectedOutputs.includes('typography')}
-					onclick={() => onToggleOutput('typography')}
-				>
-					<span class="out-dot" style="background: #F5A623"></span>
-					Typography
-				</button>
-			</div>
-			{#if selectedOutputs.length === 0}
-				<p class="out-warn">Select at least one</p>
-			{/if}
-		</div>
-
-		<!-- Step 4: Reference files -->
+		<!-- Step 3: Reference files -->
 		{#if activeRefKeys.length > 0}
 			<div class="step" style="animation-delay: 160ms">
 				<div class="step-header">
-					<span class="step-num step-num--optional">4</span>
+					<span class="step-num" class:step-num--done={hasRefFiles}>
+						{#if hasRefFiles}<Check size={11} strokeWidth={3} />{:else}3{/if}
+					</span>
 					<span class="step-title">Reference files</span>
-					<span class="step-optional">optional</span>
 				</div>
 				<p class="step-hint">Drop your existing code files so generated output matches your architecture, naming, and patterns</p>
 				<div class="ref-grid">
@@ -236,32 +216,25 @@
 		{/if}
 
 		<!-- Generate -->
-		<div class="step step--cta" style="animation-delay: {activeRefKeys.length > 0 ? 220 : 180}ms">
-			<span class="mode-indicator" class:mode-indicator--match={hasRefFiles}>
-				{#if hasRefFiles}
-					<CheckCircle2 size={12} strokeWidth={2} />
-					Matching your existing conventions
-				{:else}
-					<Sparkles size={12} strokeWidth={2} />
-					Best practices output
-				{/if}
-			</span>
-			<button
-				class="gen-btn"
-				class:gen-btn--ready={canGenerate && !loading}
-				disabled={!canGenerate}
-				onclick={onGenerate}
-			>
-			{#if loading}
-				<span class="gen-spinner"></span>
-				{progressStatus ?? 'Generating…'}
-				{:else if selectedOutputs.length === 0}
-					Select an output
+		<div class="step step--cta" style="animation-delay: {activeRefKeys.length > 0 ? 220 : 160}ms">
+			<div class="gen-wrapper" class:gen-wrapper--ready={canGenerate && !loading}>
+				<button
+					class="gen-btn"
+					class:gen-btn--ready={canGenerate && !loading}
+					disabled={!canGenerate}
+					onclick={onGenerate}
+				>
+				{#if loading}
+					<span class="gen-spinner"></span>
+					{progressStatus ?? 'Generating…'}
+				{:else if !canGenerate && !hasRefFiles}
+					Upload reference files
 				{:else}
 					Generate
 					<ArrowRight size={14} strokeWidth={2} />
 				{/if}
-			</button>
+				</button>
+			</div>
 			{#if errorMsg}
 				<div class="gen-error">
 					<AlertTriangle size={12} strokeWidth={2} />
@@ -273,33 +246,104 @@
 </div>
 
 <style>
+	/* ─── Ambient background ──────────────────────────────────────────────── */
+
 	.welcome {
+		position: relative;
 		display: flex;
 		flex-direction: column;
 		align-items: center;
 		justify-content: center;
 		flex: 1;
 		min-height: 0;
-		padding: 32px 24px;
+		padding: 48px 24px;
 		overflow-y: auto;
-		gap: 16px;
+		overflow-x: hidden;
+		gap: 20px;
 	}
 
+	.ambient {
+		position: absolute;
+		inset: 0;
+		overflow: hidden;
+		pointer-events: none;
+		z-index: 0;
+	}
+
+	.orb {
+		position: absolute;
+		border-radius: 50%;
+		filter: blur(100px);
+		opacity: 0;
+		animation: orb-fade 1.2s ease-out forwards;
+	}
+
+	.orb--1 {
+		width: 500px;
+		height: 500px;
+		top: -20%;
+		left: 20%;
+		background: radial-gradient(circle, color-mix(in srgb, var(--brand-color) 10%, transparent), transparent 70%);
+		animation-delay: 0ms;
+	}
+
+	.orb--2 {
+		width: 400px;
+		height: 400px;
+		bottom: -20%;
+		right: -10%;
+		background: radial-gradient(circle, color-mix(in srgb, #818CF8 7%, transparent), transparent 70%);
+		animation-delay: 200ms;
+	}
+
+	.orb--3 {
+		width: 350px;
+		height: 350px;
+		top: 30%;
+		left: -15%;
+		background: radial-gradient(circle, color-mix(in srgb, #34D399 5%, transparent), transparent 70%);
+		animation-delay: 400ms;
+	}
+
+	@keyframes orb-fade {
+		from { opacity: 0; transform: scale(0.7); }
+		to { opacity: 1; transform: scale(1); }
+	}
+
+	/* ─── Card ────────────────────────────────────────────────────────────── */
+
 	.welcome-card {
+		position: relative;
 		display: flex;
 		flex-direction: column;
 		width: 100%;
-		max-width: 480px;
-		background: var(--bgColor-inset);
-		border: 1px solid var(--borderColor-muted);
-		border-radius: 12px;
-		overflow: hidden;
+		max-width: 540px;
+		background: var(--surface-glass);
+		backdrop-filter: blur(32px) saturate(1.4);
+		-webkit-backdrop-filter: blur(32px) saturate(1.4);
+		border: 1px solid var(--surface-glass-border);
+		border-radius: 16px;
+		overflow: visible;
+		box-shadow:
+			0 0 0 1px var(--surface-glass-border),
+			0 8px 40px rgba(0,0,0,0.25),
+			inset 0 1px 0 rgba(255,255,255,0.06);
+		z-index: 1;
+		animation: card-in 600ms cubic-bezier(0.16, 1, 0.3, 1) both;
 	}
 
+	@keyframes card-in {
+		from { opacity: 0; transform: translateY(24px) scale(0.97); }
+		to { opacity: 1; transform: translateY(0) scale(1); }
+	}
+
+	/* ─── Steps ──────────────────────────────────────────────────────────── */
+
 	.step {
-		padding: 16px 20px;
+		position: relative;
+		padding: 22px 28px;
 		border-bottom: 1px solid var(--borderColor-muted);
-		animation: step-in 350ms ease both;
+		animation: step-in 500ms cubic-bezier(0.16, 1, 0.3, 1) both;
 	}
 
 	.step:last-child {
@@ -307,57 +351,71 @@
 	}
 
 	@keyframes step-in {
-		from { opacity: 0; transform: translateY(8px); }
+		from { opacity: 0; transform: translateY(12px); }
 		to { opacity: 1; transform: translateY(0); }
 	}
 
 	.step-header {
 		display: flex;
 		align-items: center;
-		gap: 10px;
+		gap: 12px;
 	}
 
 	.step-num {
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		width: 20px;
-		height: 20px;
+		width: 24px;
+		height: 24px;
 		flex-shrink: 0;
-		background: var(--bgColor-accent-muted);
-		color: var(--fgColor-accent);
-		font-size: 10px;
-		font-weight: 700;
+		background: linear-gradient(135deg, var(--brand-color), #818CF8);
+		color: white;
+		font-family: var(--font-display);
+		font-size: 11px;
+		font-weight: 800;
 		border-radius: 50%;
+		box-shadow: 0 0 10px color-mix(in srgb, var(--brand-color) 20%, transparent);
+		transition: background var(--transition-default), box-shadow var(--transition-default), transform var(--transition-fast);
+	}
+
+	.step-num--done {
+		background: linear-gradient(135deg, #34D399, #10B981);
+		box-shadow: 0 0 10px color-mix(in srgb, #34D399 25%, transparent);
+		transform: scale(1.05);
 	}
 
 	.step-title {
-		font-family: var(--fontStack-sansSerif);
-		font-size: 13px;
-		font-weight: 600;
+		font-family: var(--font-display);
+		font-size: 14px;
+		font-weight: 700;
 		color: var(--fgColor-default);
+		letter-spacing: -0.01em;
 	}
 
 	.step-hint {
+		font-family: var(--font-display);
 		font-size: 12px;
+		line-height: 1.6;
 		color: var(--fgColor-muted);
-		margin: 8px 0 0 30px;
-		line-height: 1.5;
+		margin: 8px 0 0 36px;
 	}
 
-	/* Token badge */
+	/* ─── Token badge ────────────────────────────────────────────────────── */
+
 	.token-badge {
 		margin-left: auto;
-		font-family: var(--fontStack-monospace);
+		font-family: var(--font-code);
 		font-size: 10px;
-		padding: 2px 8px;
-		border-radius: 10px;
+		padding: 3px 10px;
+		border-radius: 100px;
 		white-space: nowrap;
+		letter-spacing: 0.02em;
 	}
 
 	.token-badge--ok {
 		background: color-mix(in srgb, var(--fgColor-success) 12%, transparent);
 		color: var(--fgColor-success);
+		box-shadow: 0 0 8px color-mix(in srgb, var(--fgColor-success) 10%, transparent);
 	}
 
 	.token-badge--empty {
@@ -377,57 +435,91 @@
 		animation: spin 1s linear infinite;
 	}
 
-	/* Platform row */
+	/* ─── Platform row ───────────────────────────────────────────────────── */
+
 	.platform-row {
 		display: grid;
 		grid-template-columns: repeat(3, 1fr);
-		gap: 8px;
-		margin-top: 12px;
+		gap: 10px;
+		margin-top: 14px;
 	}
 
 	.plat-btn {
+		position: relative;
 		display: flex;
 		flex-direction: column;
 		align-items: center;
-		gap: 6px;
-		padding: 14px 8px 10px;
+		gap: 8px;
+		padding: 20px 12px 14px;
 		background: var(--bgColor-default);
 		border: 1px solid var(--borderColor-muted);
-		border-radius: var(--borderRadius-medium);
+		border-radius: var(--radius-md);
 		cursor: pointer;
-		transition: background 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
+		overflow: hidden;
+		transition:
+			background var(--transition-fast),
+			border-color var(--transition-fast),
+			box-shadow var(--transition-default),
+			transform 300ms cubic-bezier(0.16, 1, 0.3, 1);
+	}
+
+	.plat-btn::before {
+		content: '';
+		position: absolute;
+		inset: 0;
+		background: radial-gradient(circle at 50% 0%, color-mix(in srgb, var(--p-color) 8%, transparent), transparent 70%);
+		opacity: 0;
+		transition: opacity var(--transition-default);
+	}
+
+	.plat-btn:hover::before {
+		opacity: 1;
 	}
 
 	.plat-btn:hover {
-		background: var(--control-bgColor-hover);
-		border-color: var(--borderColor-default);
+		transform: translateY(-3px);
+		border-color: color-mix(in srgb, var(--p-color) 30%, transparent);
+		box-shadow:
+			0 8px 32px color-mix(in srgb, var(--p-color) 12%, transparent),
+			0 2px 8px rgba(0,0,0,0.15);
 	}
 
 	.plat-btn--active {
-		background: color-mix(in srgb, var(--p-color) 8%, var(--bgColor-default));
 		border-color: var(--p-color);
-		box-shadow: 0 0 0 1px var(--p-color);
+		box-shadow:
+			0 0 0 1px var(--p-color),
+			0 0 24px color-mix(in srgb, var(--p-color) 20%, transparent),
+			inset 0 1px 0 rgba(255,255,255,0.06);
+	}
+
+	.plat-btn--active::before {
+		opacity: 1;
 	}
 
 	.plat-btn--active:hover {
-		background: color-mix(in srgb, var(--p-color) 12%, var(--bgColor-default));
+		transform: translateY(-3px);
+		box-shadow:
+			0 0 0 1px var(--p-color),
+			0 0 32px color-mix(in srgb, var(--p-color) 25%, transparent),
+			inset 0 1px 0 rgba(255,255,255,0.06);
 	}
 
 	.plat-icons {
 		display: flex;
-		gap: 4px;
-		opacity: 0.5;
-		transition: opacity 120ms ease;
+		gap: 6px;
+		opacity: 0.4;
+		transition: opacity var(--transition-default), transform var(--transition-default);
 	}
 
 	.plat-btn--active .plat-icons {
 		opacity: 1;
+		transform: scale(1.1);
 	}
 
 	.plat-tech {
 		display: flex;
-		width: 18px;
-		height: 18px;
+		width: 20px;
+		height: 20px;
 	}
 
 	.plat-tech :global(svg) {
@@ -436,11 +528,12 @@
 	}
 
 	.plat-label {
-		font-family: var(--fontStack-sansSerif);
+		font-family: var(--font-display);
 		font-size: 12px;
-		font-weight: 600;
+		font-weight: 700;
 		color: var(--fgColor-muted);
-		transition: color 120ms ease;
+		transition: color var(--transition-fast);
+		position: relative;
 	}
 
 	.plat-btn--active .plat-label {
@@ -448,102 +541,46 @@
 	}
 
 	.plat-sub {
-		font-family: var(--fontStack-monospace);
+		font-family: var(--font-code);
 		font-size: 9px;
 		color: var(--fgColor-disabled);
+		letter-spacing: 0.03em;
+		position: relative;
 	}
 
-	/* Output row */
-	.output-row {
-		display: flex;
-		gap: 8px;
-		margin-top: 10px;
-	}
-
-	.out-chip {
-		display: flex;
-		align-items: center;
-		gap: 6px;
-		padding: 5px 12px;
-		background: var(--bgColor-default);
-		border: 1px solid var(--borderColor-muted);
-		border-radius: var(--borderRadius-medium);
-		font-family: var(--fontStack-sansSerif);
-		font-size: 12px;
-		font-weight: 500;
-		color: var(--fgColor-muted);
-		cursor: pointer;
-		transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
-	}
-
-	.out-chip:hover {
-		background: var(--control-bgColor-hover);
-		border-color: var(--borderColor-default);
-	}
-
-	.out-chip--active {
-		background: var(--control-bgColor-rest);
-		border-color: var(--borderColor-default);
-		color: var(--fgColor-default);
-		font-weight: 600;
-		box-shadow: var(--shadow-floating-small);
-	}
-
-	.out-dot {
-		width: 7px;
-		height: 7px;
-		border-radius: 50%;
-		opacity: 0.35;
-		transition: opacity 120ms ease;
-	}
-
-	.out-chip--active .out-dot {
-		opacity: 1;
-	}
-
-	.out-warn {
-		font-size: 11px;
-		color: var(--fgColor-danger);
-		margin: 6px 0 0 30px;
-	}
-
-	/* Reference files */
-	.step-optional {
-		font-size: 11px;
-		font-weight: 400;
-		color: var(--fgColor-disabled);
-	}
-
-	.step-num--optional {
-		background: var(--bgColor-neutral-muted);
-		color: var(--fgColor-muted);
-	}
+	/* ─── Reference files ────────────────────────────────────────────────── */
 
 	.ref-grid {
 		display: flex;
 		flex-direction: column;
 		gap: 6px;
-		margin-top: 10px;
+		margin-top: 12px;
 	}
 
 	.ref-slot {
 		display: flex;
 		align-items: center;
-		gap: 5px;
-		padding: 6px 10px;
+		gap: 6px;
+		padding: 10px 14px;
 		background: var(--bgColor-default);
-		border: 1px dashed var(--borderColor-muted);
-		border-radius: var(--borderRadius-medium);
+		border: 1px dashed var(--borderColor-default);
+		border-radius: var(--radius-md);
 		font-size: 11px;
 		color: var(--fgColor-disabled);
 		cursor: pointer;
-		transition: background 100ms ease, border-color 100ms ease, color 100ms ease;
+		transition:
+			background var(--transition-fast),
+			border-color var(--transition-fast),
+			color var(--transition-fast),
+			box-shadow var(--transition-fast),
+			transform var(--transition-fast);
 	}
 
 	.ref-slot:hover {
-		border-color: var(--fgColor-accent);
-		color: var(--fgColor-accent);
-		background: color-mix(in srgb, var(--bgColor-accent-muted) 15%, var(--bgColor-default));
+		border-color: var(--brand-color);
+		color: var(--brand-color);
+		transform: translateY(-1px);
+		box-shadow: 0 4px 12px color-mix(in srgb, var(--brand-color) 8%, transparent);
 	}
 
 	.ref-slot--filled {
@@ -562,30 +599,33 @@
 		flex-direction: column;
 		align-items: stretch;
 		gap: 4px;
+		padding: 12px 14px;
 	}
 
 	.ref-slot--dragging {
 		border-color: var(--borderColor-accent-emphasis);
 		border-style: solid;
 		background: var(--bgColor-accent-muted);
+		box-shadow: 0 0 0 3px color-mix(in srgb, var(--borderColor-accent-emphasis) 20%, transparent);
 	}
 
 	.ref-top-row {
 		display: flex;
 		align-items: center;
-		gap: 5px;
+		gap: 6px;
 		width: 100%;
 	}
 
 	.ref-dot {
-		width: 6px;
-		height: 6px;
+		width: 7px;
+		height: 7px;
 		border-radius: 50%;
 		flex-shrink: 0;
+		box-shadow: 0 0 4px currentColor;
 	}
 
 	.ref-label {
-		font-family: var(--fontStack-monospace);
+		font-family: var(--font-code);
 		font-size: 11px;
 		font-weight: 500;
 		min-width: 0;
@@ -603,18 +643,17 @@
 	.ref-files-list {
 		list-style: none;
 		margin: 0;
-		padding: 0 0 0 11px;
+		padding: 0 0 0 13px;
 		max-height: 80px;
 		overflow-y: auto;
 		scrollbar-width: thin;
-		scrollbar-color: var(--borderColor-default) transparent;
 	}
 
 	.ref-files-list li {
-		font-family: var(--fontStack-monospace);
+		font-family: var(--font-code);
 		font-size: 10px;
+		line-height: 1.8;
 		color: var(--fgColor-muted);
-		line-height: 1.7;
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
@@ -635,11 +674,11 @@
 	.ref-cta {
 		font-size: 10px;
 		color: var(--fgColor-disabled);
-		transition: color 100ms ease;
+		transition: color var(--transition-fast);
 	}
 
 	.ref-slot:hover .ref-cta {
-		color: var(--fgColor-accent);
+		color: var(--brand-color);
 	}
 
 	.ref-clear {
@@ -649,14 +688,15 @@
 		border: none;
 		color: var(--fgColor-disabled);
 		cursor: pointer;
-		padding: 1px;
-		border-radius: 2px;
+		padding: 2px;
+		border-radius: var(--radius-sm);
 		flex-shrink: 0;
-		transition: color 100ms ease;
+		transition: color var(--transition-fast), background var(--transition-fast);
 	}
 
 	.ref-clear:hover {
 		color: var(--fgColor-danger);
+		background: color-mix(in srgb, var(--fgColor-danger) 10%, transparent);
 	}
 
 	.sr-only {
@@ -667,88 +707,131 @@
 		overflow: hidden;
 	}
 
-	/* Generate CTA */
+	/* ─── Generate CTA ───────────────────────────────────────────────────── */
+
 	.step--cta {
 		display: flex;
 		flex-direction: column;
 		align-items: center;
-		gap: 14px;
-		padding: 20px;
+		gap: 16px;
+		padding: 24px 28px;
 	}
 
-	.mode-indicator {
-		display: flex;
-		align-items: center;
-		gap: 6px;
-		font-size: 11px;
-		color: var(--fgColor-muted);
-		padding: 4px 12px;
-		border-radius: var(--borderRadius-medium);
-		background: color-mix(in srgb, var(--bgColor-accent-muted) 20%, transparent);
-		transition: background 150ms ease, color 150ms ease;
+	.gen-wrapper {
+		position: relative;
+		padding: 2px;
+		border-radius: 14px;
+		overflow: hidden;
 	}
 
-	.mode-indicator--match {
-		color: var(--fgColor-success);
-		background: color-mix(in srgb, var(--fgColor-success) 8%, transparent);
+	.gen-wrapper--ready::before {
+		content: '';
+		position: absolute;
+		top: 50%;
+		left: 50%;
+		width: 200%;
+		height: 200%;
+		margin-left: -100%;
+		margin-top: -100%;
+		background: conic-gradient(
+			from 0deg,
+			var(--brand-color),
+			#818CF8,
+			#34D399,
+			#FBBF24,
+			var(--brand-color)
+		);
+		opacity: 0;
+		animation: aurora-border 600ms ease forwards, aurora-spin 3s linear infinite;
+	}
+
+	@keyframes aurora-border {
+		from { opacity: 0; }
+		to { opacity: 0.7; }
+	}
+
+	@keyframes aurora-spin {
+		to { transform: rotate(360deg); }
 	}
 
 	.gen-btn {
+		position: relative;
+		z-index: 1;
 		display: inline-flex;
 		align-items: center;
-		gap: 8px;
-		padding: 10px 36px;
-		background: var(--brand-color);
-		color: var(--fgColor-onEmphasis);
+		justify-content: center;
+		gap: 10px;
+		padding: 14px 48px;
+		background: linear-gradient(135deg, var(--brand-color) 0%, #E11D48 50%, #BE123C 100%);
+		color: white;
 		border: none;
-		border-radius: var(--borderRadius-medium);
-		font-family: var(--fontStack-sansSerif);
-		font-size: 13px;
-		font-weight: 600;
+		border-radius: 12px;
+		font-family: var(--font-display);
+		font-size: 14px;
+		font-weight: 700;
+		letter-spacing: -0.01em;
 		cursor: pointer;
-		transition: background 150ms ease, box-shadow 200ms ease, transform 100ms ease;
+		box-shadow:
+			0 1px 2px rgba(0,0,0,0.3),
+			inset 0 1px 0 rgba(255,255,255,0.15);
+		transition:
+			box-shadow var(--transition-default),
+			transform 300ms cubic-bezier(0.16, 1, 0.3, 1);
 	}
 
 	.gen-btn:hover:not(:disabled) {
-		background: color-mix(in srgb, var(--brand-color) 85%, white);
-		box-shadow: 0 0 20px color-mix(in srgb, var(--brand-color) 30%, transparent);
-		transform: scale(1.02);
+		box-shadow:
+			0 0 32px color-mix(in srgb, var(--brand-color) 40%, transparent),
+			0 8px 20px rgba(0,0,0,0.2),
+			inset 0 1px 0 rgba(255,255,255,0.15);
+		transform: translateY(-2px) scale(1.02);
 	}
 
 	.gen-btn:active:not(:disabled) {
-		transform: scale(0.98);
+		transform: scale(0.97);
 	}
 
 	.gen-btn--ready {
-		animation: gen-glow 2s ease-in-out infinite;
+		animation: gen-breathe 3s ease-in-out infinite;
 	}
 
 	.gen-btn:disabled {
 		background: var(--button-default-bgColor-rest);
-		border: 1px solid var(--button-default-borderColor-rest);
+		border: 1px solid var(--borderColor-muted);
 		color: var(--fgColor-disabled);
 		cursor: not-allowed;
+		box-shadow: none;
 		animation: none;
 	}
 
-	@keyframes gen-glow {
-		0%, 100% { box-shadow: 0 0 8px color-mix(in srgb, var(--brand-color) 20%, transparent); }
-		50% { box-shadow: 0 0 20px color-mix(in srgb, var(--brand-color) 40%, transparent); }
+	@keyframes gen-breathe {
+		0%, 100% {
+			box-shadow:
+				0 1px 2px rgba(0,0,0,0.3),
+				0 0 12px color-mix(in srgb, var(--brand-color) 15%, transparent),
+				inset 0 1px 0 rgba(255,255,255,0.15);
+		}
+		50% {
+			box-shadow:
+				0 1px 2px rgba(0,0,0,0.3),
+				0 0 28px color-mix(in srgb, var(--brand-color) 30%, transparent),
+				inset 0 1px 0 rgba(255,255,255,0.15);
+		}
 	}
 
 	.gen-error {
 		display: flex;
 		align-items: flex-start;
 		gap: 8px;
-		margin-top: 12px;
+		margin-top: 4px;
 		padding: 10px 14px;
-		border-radius: var(--borderRadius-medium);
+		border-radius: var(--radius-md);
 		background: color-mix(in srgb, var(--bgColor-danger-muted) 40%, transparent);
 		border: 1px solid var(--borderColor-danger-muted, #f8514940);
 		color: var(--fgColor-danger);
 		font-size: 12px;
 		line-height: 1.5;
-		max-width: 480px;
+		max-width: 520px;
 		text-align: left;
 		animation: gen-error-in 200ms ease;
 	}
@@ -765,35 +848,29 @@
 
 	.gen-spinner {
 		display: inline-block;
-		width: 13px;
-		height: 13px;
-		border: 2px solid color-mix(in srgb, var(--fgColor-onEmphasis) 30%, transparent);
-		border-top-color: var(--fgColor-onEmphasis);
+		width: 14px;
+		height: 14px;
+		border: 2px solid rgba(255,255,255,0.3);
+		border-top-color: white;
 		border-radius: 50%;
 		animation: spin 0.6s linear infinite;
 	}
 
 	@keyframes spin { to { transform: rotate(360deg); } }
 
-	/* Motion */
+	/* ─── Motion ──────────────────────────────────────────────────────────── */
+
 	@media (prefers-reduced-motion: reduce) {
-		.step {
-			animation-duration: 0.01ms !important;
-		}
-		.gen-btn--ready {
-			animation: none;
-		}
+		.step, .welcome-card, .orb { animation-duration: 0.01ms !important; }
+		.gen-btn--ready, .gen-wrapper--ready::before { animation: none; }
 	}
 
-	/* Mobile */
-	@media (max-width: 767px) {
-		.welcome {
-			padding: 16px;
-		}
+	/* ─── Mobile ──────────────────────────────────────────────────────────── */
 
-		.welcome-card {
-			max-width: 100%;
-		}
+	@media (max-width: 767px) {
+		.welcome { padding: 24px 16px; }
+		.welcome-card { max-width: 100%; }
+		.step { padding: 18px 20px; }
 
 		.platform-row {
 			grid-template-columns: 1fr;
@@ -802,27 +879,24 @@
 
 		.plat-btn {
 			flex-direction: row;
-			padding: 10px 12px;
+			padding: 12px 14px;
 			gap: 10px;
 		}
 
-		.plat-sub {
-			margin-left: auto;
-		}
-
-		.gen-btn {
-			width: 100%;
-			justify-content: center;
-		}
+		.plat-sub { margin-left: auto; }
+		.gen-btn { width: 100%; justify-content: center; }
+		.orb { display: none; }
 	}
+
+	/* ─── Warnings ────────────────────────────────────────────────────────── */
 
 	.step-warning {
 		display: flex;
 		align-items: flex-start;
 		gap: 6px;
-		margin: 8px 0 0 30px;
+		margin: 8px 0 0 36px;
 		padding: 6px 10px;
-		border-radius: var(--borderRadius-small);
+		border-radius: var(--radius-sm);
 		background: color-mix(in srgb, var(--fgColor-attention) 8%, transparent);
 		color: var(--fgColor-attention);
 		font-size: 11px;

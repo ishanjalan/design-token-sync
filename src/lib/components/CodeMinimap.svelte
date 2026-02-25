@@ -167,6 +167,10 @@
 		background: color-mix(in srgb, var(--bgColor-default) 50%, transparent);
 		cursor: pointer;
 		user-select: none;
+		transition: background var(--transition-fast), border-color var(--transition-fast);
+	}
+	.minimap:hover {
+		background: color-mix(in srgb, var(--bgColor-default) 60%, transparent);
 	}
 	.minimap canvas {
 		display: block;

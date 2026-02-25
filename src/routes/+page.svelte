@@ -20,6 +20,7 @@
 	import ImportPanel from '$lib/components/ImportPanel.svelte';
 	import ExplorerPanel from '$lib/components/ExplorerPanel.svelte';
 	import EditorPane from '$lib/components/EditorPane.svelte';
+	import WelcomeView from '$lib/components/WelcomeView.svelte';
 	import StatusBar from '$lib/components/StatusBar.svelte';
 	import SettingsPanel from '$lib/components/SettingsPanel.svelte';
 	import HelpPanel from '$lib/components/HelpPanel.svelte';
@@ -152,16 +153,18 @@
 	// ─── Syntax highlighting effects ─────────────────────────────────────────────
 
 	$effect(() => {
-		if (genStore.result?.files && browser) {
+		const files = genStore.visibleFiles;
+		if (files.length > 0 && browser) {
 			const theme = THEMES.find((t) => t.id === uiStore.selectedTheme) ?? THEMES[2];
-			genStore.highlightAll(genStore.result.files, theme.id, theme.bg);
-			genStore.computeAllDiffs(genStore.result.files);
+			genStore.highlightAll(files, theme.id, theme.bg);
+			genStore.computeAllDiffs(files);
 		}
 	});
 	$effect(() => {
-		if (uiStore.selectedTheme && genStore.result?.files && browser) {
+		const files = genStore.visibleFiles;
+		if (uiStore.selectedTheme && files.length > 0 && browser) {
 			const theme = THEMES.find((t) => t.id === uiStore.selectedTheme) ?? THEMES[2];
-			genStore.highlightAll(genStore.result.files, theme.id, theme.bg);
+			genStore.highlightAll(files, theme.id, theme.bg);
 		}
 	});
 
@@ -317,15 +320,12 @@
 				try { refContents[key] = await slot.file.text(); } catch { /* skip */ }
 			}
 		}
-		const completenessWarnings = detectRefCompleteness(refContents);
-		for (const w of completenessWarnings) warnings.push(w.message);
-
+		const visibleRefContents: Record<string, string | undefined> = {};
 		for (const key of REF_KEYS) {
-			const slot = fileStore.slots[key];
-			if (slot.file && !fileStore.visibleKeys.includes(key)) {
-				warnings.push(`${slot.label} uploaded but ${slot.platforms.join('/')} is not selected — it will be ignored.`);
-			}
+			if (fileStore.visibleKeys.includes(key)) visibleRefContents[key] = refContents[key];
 		}
+		const completenessWarnings = detectRefCompleteness(visibleRefContents);
+		for (const w of completenessWarnings) warnings.push(w.message);
 
 		if (warnings.length > 0) {
 			confirmWarnings = warnings;
@@ -494,19 +494,8 @@
 <AppShell activePanel={uiStore.activePanel} bind:panelWidth={uiStore.panelWidth} welcomeMode={!genStore.result} onClosePanel={() => (uiStore.activePanel = null)}>
 	{#snippet header()}
 		<HeaderBar
-			platforms={PLATFORMS}
-			selectedPlatforms={fileStore.selectedPlatforms}
-			selectedOutputs={fileStore.selectedOutputs}
-			onToggleOutput={(cat) => fileStore.toggleOutput(cat)}
-			canGenerate={fileStore.canGenerate}
-			loading={fileStore.loading}
-			progressStatus={genStore.progressStatus}
-			needsRegeneration={fileStore.needsRegeneration}
 			appColorMode={uiStore.appColorMode}
-			tokensAutoLoaded={tokenStore.tokensAutoLoaded}
-			welcomeMode={!genStore.result}
-			onSelectPlatform={(id) => fileStore.selectPlatform(id)}
-			onGenerate={generate}
+			onBrandClick={backToHome}
 			onThemeToggle={() => {
 				const html = document.documentElement;
 				const current = html.getAttribute('data-color-mode') ?? 'dark';
@@ -553,8 +542,6 @@
 				onBulkDragOver={(e) => { e.preventDefault(); }}
 				onBulkDragLeave={(e) => { if (e.currentTarget === e.target || !(e.currentTarget as HTMLElement).contains(e.relatedTarget as Node)) fileStore.bulkDropActive = false; }}
 				onBulkDrop={(e) => fileStore.handleBulkDrop(e)}
-			selectedOutputs={fileStore.selectedOutputs}
-				onToggleOutput={(cat) => fileStore.toggleOutput(cat)}
 				onClearAll={clearAll}
 				onGenerate={generate}
 				storedTokenVersion={tokenStore.storedTokenVersion}
@@ -610,111 +597,118 @@
 	{/snippet}
 
 	{#snippet editor()}
-		<EditorPane
-			result={genStore.result}
-			visibleFiles={genStore.visibleFiles}
-			activeTab={genStore.activeTab}
-			highlights={genStore.highlights}
-			diffs={genStore.diffs}
-			viewModes={genStore.viewModes}
-			modifications={genStore.modifications}
-			renames={genStore.renames}
-			familyRenames={genStore.familyRenames}
-			tokenCoverage={genStore.tokenCoverage}
-			deprecations={genStore.deprecations}
-			impactedTokens={genStore.impactedTokens}
-			searchQuery={uiStore.searchQuery}
-			searchInputEl={uiStore.searchInputEl}
-			searchShortcutHint={uiStore.searchShortcutHint}
-			highlightedLines={uiStore.highlightedLines}
-			wrapLines={uiStore.wrapLines}
-			showSectionNav={uiStore.showSectionNav}
-			showChangeSummary={uiStore.showChangeSummary}
-			collapsedSections={uiStore.collapsedSections}
-			currentBreadcrumb={uiStore.currentBreadcrumb}
-			codeScrollTop={uiStore.codeScrollTop}
-			codeScrollHeight={uiStore.codeScrollHeight}
-			codeClientHeight={uiStore.codeClientHeight}
-			codeScrollEl={uiStore.codeScrollEl}
-			lastGeneratedAt={genStore.lastGeneratedAt}
-			sendingPrs={settingsStore.sendingPrs}
-			diffTotals={genStore.diffTotals}
-			diffNavIndex={uiStore.diffNavIndex}
-			swatches={fileStore.swatches}
-			showSwatches={uiStore.showSwatches}
-			swatchComparisons={genStore.swatchComparisons}
-			swatchTab={uiStore.swatchTab}
-			prResults={settingsStore.prResults}
-			platformMismatches={genStore.platformMismatches}
-			themes={THEMES}
-			selectedTheme={uiStore.selectedTheme}
-			showThemePicker={uiStore.showThemePicker}
-			selectedPlatforms={fileStore.selectedPlatforms}
-			storedTokenVersion={tokenStore.storedTokenVersion}
-			storedTokenPushedAt={tokenStore.storedTokenPushedAt}
-			tokensUpdatedBanner={tokenStore.tokensUpdatedBanner}
-			onRegenerate={generate}
-			onBackToHome={backToHome}
-			platforms={PLATFORMS}
-			onSelectPlatform={(id) => fileStore.selectPlatform(id)}
-			swatchCount={fileStore.swatches.length}
-			refKeys={REF_KEYS}
-			visibleKeysAll={fileStore.visibleKeys}
-			slots={fileStore.slots}
-			fileInsights={fileStore.fileInsights}
-			hasRefFiles={fileStore.hasRefFiles}
-			selectedOutputs={fileStore.selectedOutputs}
-			onToggleOutput={(cat) => fileStore.toggleOutput(cat)}
-			tokensInitialLoading={tokenStore.tokensInitialLoading}
-			canGenerate={fileStore.canGenerate}
-			loading={fileStore.loading}
-			progressStatus={genStore.progressStatus}
-			errorMsg={genStore.errorMsg}
-			onGenerate={generate}
-			onOpenImportPanel={() => (uiStore.activePanel = 'import')}
-			onOpenSettings={() => (uiStore.activePanel = 'settings')}
-			onWelcomeDragEnter={(k, e) => fileStore.handleDragEnter(k, e)}
-			onWelcomeDragOver={(k, e) => fileStore.handleDragOver(k, e)}
-			onWelcomeDragLeave={(k) => fileStore.handleDragLeave(k)}
-			onWelcomeDrop={(k, e) => fileStore.handleDrop(k, e)}
-			onWelcomeFileInput={(k, e) => fileStore.handleFileInput(k, e)}
-			onWelcomeClearFile={(k, e) => fileStore.clearFile(k, e)}
-			requiredFilled={fileStore.requiredFilled}
-			{formatTime}
-			{timeAgo}
-			{platformColor}
-			onTabSelect={(f) => (genStore.activeTab = f)}
-			onTabKeydown={handleTabKeydown}
-			onViewModeChange={(filename, mode) => (genStore.viewModes[filename] = mode)}
-			onSearchChange={(q) => (uiStore.searchQuery = q)}
-			onSearchInputBind={(el) => (uiStore.searchInputEl = el)}
-			onCodeKeydown={handleCodeKeydown}
-			onCodeScroll={handleCodeScroll}
-			onCodeScrollBind={(el) => (uiStore.codeScrollEl = el)}
-			onLineClick={(n, e) => uiStore.handleLineClick(n, e)}
-			onSectionNavToggle={() => (uiStore.showSectionNav = !uiStore.showSectionNav)}
-			onScrollToLine={(n) => uiStore.scrollToLine(n)}
-			onWrapToggle={() => (uiStore.wrapLines = !uiStore.wrapLines)}
-			onChangeSummaryToggle={(f) => (uiStore.showChangeSummary[f] = !uiStore.showChangeSummary[f])}
-			onNavigateDiff={navigateDiff}
-			onSeekMinimap={(f) => uiStore.seekMinimap(f)}
-			onDownloadZip={downloadZip}
-			onCopyFile={() => { if (genStore.activeFile) copyToClipboard(genStore.activeFile.content); }}
-			onSendPRs={sendPRs}
-			onCopyChangelog={() => copyToClipboard(generateChangelog(buildChangelogCtx(genStore as any, PLATFORMS) as any))}
-			onToggleSwatches={() => (uiStore.showSwatches = !uiStore.showSwatches)}
-			onSwatchTabChange={(t) => (uiStore.swatchTab = t)}
-			onDismissPrResults={() => (settingsStore.prResults = [])}
-			onRetryPr={retryPr}
-			onChangeTheme={(id) => uiStore.changeTheme(id)}
-			onThemePickerToggle={() => (uiStore.showThemePicker = !uiStore.showThemePicker)}
-			{extractSections}
-			{extractDiffColor}
-			{computeHunkHeaders}
-			{nearestContext}
-			{langLabel}
-			{formatFileSize}
-		/>
+		{#if !genStore.result}
+			<div class="welcome-wrapper">
+				<WelcomeView
+					platforms={PLATFORMS}
+					selectedPlatforms={fileStore.selectedPlatforms}
+					onSelectPlatform={(id) => fileStore.selectPlatform(id)}
+					swatchCount={fileStore.swatches.length}
+					storedTokenVersion={tokenStore.storedTokenVersion}
+					storedTokenPushedAt={tokenStore.storedTokenPushedAt}
+					refKeys={REF_KEYS}
+					visibleKeys={fileStore.visibleKeys}
+					slots={fileStore.slots}
+					fileInsights={fileStore.fileInsights}
+					hasRefFiles={fileStore.hasRefFiles}
+					tokensInitialLoading={tokenStore.tokensInitialLoading}
+					canGenerate={fileStore.canGenerate}
+					loading={fileStore.loading}
+					progressStatus={genStore.progressStatus}
+					errorMsg={genStore.errorMsg}
+					onGenerate={generate}
+					onDragEnter={(k, e) => fileStore.handleDragEnter(k, e)}
+					onDragOver={(k, e) => fileStore.handleDragOver(k, e)}
+					onDragLeave={(k) => fileStore.handleDragLeave(k)}
+					onDrop={(k, e) => fileStore.handleDrop(k, e)}
+					onFileInput={(k, e) => fileStore.handleFileInput(k, e)}
+					onClearFile={(k, e) => fileStore.clearFile(k, e)}
+					requiredFilled={fileStore.requiredFilled}
+				/>
+			</div>
+		{:else}
+			<EditorPane
+				result={genStore.result}
+				visibleFiles={genStore.visibleFiles}
+				activeTab={genStore.activeTab}
+				highlights={genStore.highlights}
+				diffs={genStore.diffs}
+				viewModes={genStore.viewModes}
+				modifications={genStore.modifications}
+				renames={genStore.renames}
+				familyRenames={genStore.familyRenames}
+				tokenCoverage={genStore.tokenCoverage}
+				deprecations={genStore.deprecations}
+				impactedTokens={genStore.impactedTokens}
+				searchQuery={uiStore.searchQuery}
+				searchInputEl={uiStore.searchInputEl}
+				searchShortcutHint={uiStore.searchShortcutHint}
+				highlightedLines={uiStore.highlightedLines}
+				wrapLines={uiStore.wrapLines}
+				showSectionNav={uiStore.showSectionNav}
+				showChangeSummary={uiStore.showChangeSummary}
+				collapsedSections={uiStore.collapsedSections}
+				currentBreadcrumb={uiStore.currentBreadcrumb}
+				codeScrollTop={uiStore.codeScrollTop}
+				codeScrollHeight={uiStore.codeScrollHeight}
+				codeClientHeight={uiStore.codeClientHeight}
+				codeScrollEl={uiStore.codeScrollEl}
+				lastGeneratedAt={genStore.lastGeneratedAt}
+				sendingPrs={settingsStore.sendingPrs}
+				diffTotals={genStore.diffTotals}
+				diffNavIndex={uiStore.diffNavIndex}
+				swatches={fileStore.swatches}
+				showSwatches={uiStore.showSwatches}
+				swatchComparisons={genStore.swatchComparisons}
+				swatchTab={uiStore.swatchTab}
+				prResults={settingsStore.prResults}
+				platformMismatches={genStore.platformMismatches}
+				themes={THEMES}
+				selectedTheme={uiStore.selectedTheme}
+				showThemePicker={uiStore.showThemePicker}
+				selectedPlatforms={fileStore.selectedPlatforms}
+				tokensUpdatedBanner={tokenStore.tokensUpdatedBanner}
+				onRegenerate={generate}
+				onBackToHome={backToHome}
+				hasDualMode={genStore.hasDualMode}
+				activeMode={genStore.activeMode}
+				onModeChange={(mode) => genStore.setMode(mode)}
+				{formatTime}
+				{timeAgo}
+				{platformColor}
+				onTabSelect={(f) => (genStore.activeTab = f)}
+				onTabKeydown={handleTabKeydown}
+				onViewModeChange={(filename, mode) => (genStore.viewModes[filename] = mode)}
+				onSearchChange={(q) => (uiStore.searchQuery = q)}
+				onSearchInputBind={(el) => (uiStore.searchInputEl = el)}
+				onCodeKeydown={handleCodeKeydown}
+				onCodeScroll={handleCodeScroll}
+				onCodeScrollBind={(el) => (uiStore.codeScrollEl = el)}
+				onLineClick={(n, e) => uiStore.handleLineClick(n, e)}
+				onSectionNavToggle={() => (uiStore.showSectionNav = !uiStore.showSectionNav)}
+				onScrollToLine={(n) => uiStore.scrollToLine(n)}
+				onWrapToggle={() => (uiStore.wrapLines = !uiStore.wrapLines)}
+				onChangeSummaryToggle={(f) => (uiStore.showChangeSummary[f] = !uiStore.showChangeSummary[f])}
+				onNavigateDiff={navigateDiff}
+				onSeekMinimap={(f) => uiStore.seekMinimap(f)}
+				onDownloadZip={downloadZip}
+				onCopyFile={() => { if (genStore.activeFile) copyToClipboard(genStore.activeFile.content); }}
+				onSendPRs={sendPRs}
+				onCopyChangelog={() => copyToClipboard(generateChangelog(buildChangelogCtx(genStore as any, PLATFORMS) as any))}
+				onToggleSwatches={() => (uiStore.showSwatches = !uiStore.showSwatches)}
+				onSwatchTabChange={(t) => (uiStore.swatchTab = t)}
+				onDismissPrResults={() => (settingsStore.prResults = [])}
+				onRetryPr={retryPr}
+				onChangeTheme={(id) => uiStore.changeTheme(id)}
+				onThemePickerToggle={() => (uiStore.showThemePicker = !uiStore.showThemePicker)}
+				{extractSections}
+				{extractDiffColor}
+				{computeHunkHeaders}
+				{nearestContext}
+				{langLabel}
+				{formatFileSize}
+			/>
+		{/if}
 	{/snippet}
 
 	{#snippet statusBar()}
@@ -742,8 +736,26 @@
 </AppShell>
 
 <style>
+	.welcome-wrapper {
+		display: flex;
+		flex: 1;
+		min-height: 0;
+		animation: view-enter 300ms ease both;
+	}
+
+	@keyframes view-enter {
+		from { opacity: 0; transform: translateY(8px); }
+		to { opacity: 1; transform: translateY(0); }
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.welcome-wrapper {
+			animation-duration: 0.01ms !important;
+		}
+	}
+
 	:global(:root) {
-		--brand-color: #e83030;
+		--brand-color: #F43F5E;
 	}
 
 	:global(*, *::before, *::after) {
@@ -753,17 +765,18 @@
 	}
 
 	:global(body) {
-		font-family: var(--fontStack-sansSerif);
+		font-family: var(--font-display);
 		background: var(--bgColor-default);
 		color: var(--fgColor-default);
 		-webkit-font-smoothing: antialiased;
-		font-size: var(--base-text-size-sm);
-		line-height: var(--base-text-lineHeight-normal);
+		-moz-osx-font-smoothing: grayscale;
+		font-size: 13px;
+		line-height: 1.5;
 		overflow: hidden;
 	}
 
 	:global(:focus-visible) {
-		outline: 2px solid var(--focus-outlineColor);
+		outline: 2px solid var(--fgColor-accent);
 		outline-offset: 2px;
 	}
 
@@ -786,7 +799,7 @@
 	:global(.shiki-wrap pre) {
 		background: transparent !important;
 		padding: 16px 24px 16px 16px;
-		font-family: 'IBM Plex Mono', var(--fontStack-monospace) !important;
+		font-family: var(--font-code) !important;
 		font-size: 12.5px !important;
 		font-weight: 400 !important;
 		line-height: 1.8 !important;
@@ -829,13 +842,13 @@
 		display: inline-block; width: 14px; font-size: 8px; text-align: center;
 		cursor: pointer; color: var(--fgColor-disabled); user-select: none;
 		margin-right: 2px; vertical-align: middle; opacity: 0;
-		transition: opacity var(--base-duration-100) var(--base-easing-ease);
+		transition: opacity var(--transition-fast);
 	}
 	:global(.shiki-wrap .line:hover .fold-toggle), :global(.fold-toggle--collapsed) { opacity: 1; }
 	:global(.fold-toggle:hover) { color: var(--fgColor-accent); }
 	:global(.fold-placeholder) {
 		padding: 2px 16px 2px 60px;
-		font-family: var(--fontStack-monospace); font-size: 10.5px;
+		font-family: var(--font-code); font-size: 10.5px;
 		color: var(--fgColor-disabled); background: var(--bgColor-inset);
 		border-top: 1px dashed var(--borderColor-muted); border-bottom: 1px dashed var(--borderColor-muted);
 		cursor: pointer; user-select: none; text-align: center;
@@ -857,7 +870,7 @@
 		border: 1px solid rgba(255, 255, 255, 0.08);
 	}
 	:global(.swatch-hex) {
-		font-family: var(--fontStack-monospace); font-size: 8px;
+		font-family: var(--font-code); font-size: 8px;
 		color: var(--fgColor-disabled); white-space: nowrap;
 	}
 
@@ -874,13 +887,13 @@
 	}
 
 	.confirm-dialog {
-		background: var(--bgColor-default);
+		background: var(--bgColor-muted);
 		border: 1px solid var(--borderColor-muted);
-		border-radius: 12px;
+		border-radius: var(--radius-lg);
 		padding: 24px;
 		max-width: 440px;
 		width: 90%;
-		box-shadow: var(--shadow-floating-large);
+		box-shadow: var(--shadow-panel);
 	}
 
 	.confirm-icon {
@@ -889,8 +902,9 @@
 	}
 
 	.confirm-title {
-		font-size: 14px;
-		font-weight: 600;
+		font-family: var(--font-display);
+		font-size: 15px;
+		font-weight: 700;
 		color: var(--fgColor-default);
 		margin-bottom: 12px;
 	}
@@ -905,9 +919,10 @@
 	}
 
 	.confirm-list li {
+		font-family: var(--font-display);
 		font-size: 12px;
 		color: var(--fgColor-muted);
-		line-height: 1.5;
+		line-height: 1.6;
 		padding-left: 16px;
 		position: relative;
 	}
@@ -927,12 +942,13 @@
 
 	.confirm-btn {
 		padding: 7px 16px;
-		border-radius: var(--borderRadius-medium);
+		border-radius: var(--radius-md);
+		font-family: var(--font-display);
 		font-size: 12px;
 		font-weight: 600;
 		cursor: pointer;
 		border: 1px solid var(--borderColor-muted);
-		transition: background 100ms ease, border-color 100ms ease;
+		transition: background var(--transition-fast), border-color var(--transition-fast);
 	}
 
 	.confirm-btn--secondary {

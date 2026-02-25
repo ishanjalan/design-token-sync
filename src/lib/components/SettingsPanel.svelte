@@ -283,7 +283,7 @@
 	.settings-section {
 		margin-top: 14px;
 		border: 1px solid var(--borderColor-default);
-		border-radius: var(--borderRadius-large);
+		border-radius: var(--radius-lg);
 		overflow: hidden;
 	}
 	.settings-toggle {
@@ -291,19 +291,17 @@
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		padding: 10px 14px;
+		padding: 12px 16px;
 		background: var(--bgColor-inset);
 		border: none;
-		font-family: var(--fontStack-sansSerif);
-		font-size: var(--base-text-size-xs);
-		font-weight: var(--base-text-weight-medium);
+		font-family: var(--font-display);
+		font-size: 13px;
+		font-weight: 600;
 		letter-spacing: 0;
 		text-transform: none;
 		color: var(--fgColor-disabled);
 		cursor: pointer;
-		transition:
-			color var(--base-duration-100) var(--base-easing-ease),
-			background var(--base-duration-100) var(--base-easing-ease);
+		transition: color var(--transition-fast), background var(--transition-fast);
 	}
 	.settings-toggle:hover {
 		color: var(--fgColor-muted);
@@ -330,9 +328,11 @@
 		gap: 0;
 	}
 
-	/* ─── Tabs ──────────────────────────────────────────────────────────────── */
+	/* ─── Tabs (pill-style) ─────────────────────────────────────────────────── */
 	.settings-tabs {
 		display: flex;
+		gap: 4px;
+		padding: 12px 16px 0;
 		border-bottom: 1px solid var(--borderColor-muted);
 		background: var(--bgColor-inset);
 		overflow-x: auto;
@@ -347,20 +347,18 @@
 		flex-direction: column;
 		align-items: center;
 		gap: 2px;
-		padding: 10px 8px 8px;
+		padding: 8px 12px 10px;
+		margin-bottom: -1px;
 		border: none;
 		background: transparent;
+		border-radius: 100px;
 		cursor: pointer;
 		color: var(--fgColor-disabled);
-		font-family: var(--fontStack-sansSerif);
-		font-size: 10px;
-		font-weight: var(--base-text-weight-medium);
+		font-family: var(--font-display);
+		font-size: 11px;
+		font-weight: 500;
 		white-space: nowrap;
-		border-bottom: 2px solid transparent;
-		transition:
-			color var(--base-duration-100) var(--base-easing-ease),
-			border-color var(--base-duration-100) var(--base-easing-ease),
-			background var(--base-duration-100) var(--base-easing-ease);
+		transition: color var(--transition-fast), background var(--transition-fast), box-shadow var(--transition-fast);
 	}
 	.settings-tab:hover {
 		color: var(--fgColor-muted);
@@ -368,7 +366,8 @@
 	}
 	.settings-tab--active {
 		color: var(--fgColor-default);
-		border-bottom-color: var(--borderColor-accent-emphasis);
+		background: var(--control-bgColor-hover);
+		box-shadow: var(--shadow-button);
 	}
 	.settings-tab-icon {
 		display: flex;
@@ -382,26 +381,26 @@
 
 	/* ─── Tab body ──────────────────────────────────────────────────────────── */
 	.settings-tab-body {
-		padding: 16px;
+		padding: 20px 16px;
 		display: flex;
 		flex-direction: column;
-		gap: 16px;
+		gap: 20px;
 	}
 
 	/* ─── Shared ────────────────────────────────────────────────────────────── */
 	.settings-group {
 		display: flex;
 		flex-direction: column;
-		gap: 6px;
+		gap: 8px;
 		border: none;
 		margin: 0;
 		padding: 0;
 	}
 	.settings-group-label {
 		display: block;
-		font-family: var(--fontStack-sansSerif);
-		font-size: var(--base-text-size-xs);
-		font-weight: var(--base-text-weight-medium);
+		font-family: var(--font-display);
+		font-size: 12px;
+		font-weight: 600;
 		letter-spacing: 0;
 		text-transform: none;
 		color: var(--fgColor-muted);
@@ -409,20 +408,18 @@
 		padding: 0;
 	}
 	.settings-input {
-		font-family: var(--fontStack-sansSerif);
-		font-size: var(--base-text-size-sm);
-		font-weight: var(--base-text-weight-normal);
+		font-family: var(--font-display);
+		font-size: 13px;
+		font-weight: 500;
 		padding: 8px 12px;
-		background: var(--control-bgColor-rest);
-		border: 1px solid var(--control-borderColor-rest);
-		border-radius: var(--borderRadius-medium);
+		background: var(--surface-glass);
+		border: 1px solid var(--surface-glass-border);
+		border-radius: var(--radius-sm);
 		color: var(--control-fgColor-rest);
 		width: 100%;
 		letter-spacing: 0;
 		outline: none;
-		transition:
-			border-color var(--base-duration-200) var(--base-easing-ease),
-			color var(--base-duration-200) var(--base-easing-ease);
+		transition: border-color var(--transition-default), color var(--transition-default);
 	}
 	.settings-input:focus {
 		border-color: var(--borderColor-accent-emphasis);
@@ -432,30 +429,28 @@
 		color: var(--control-fgColor-placeholder);
 	}
 	.settings-hint {
-		font-family: var(--fontStack-sansSerif);
-		font-size: var(--base-text-size-xs);
-		font-weight: var(--base-text-weight-normal);
+		font-family: var(--font-display);
+		font-size: 11px;
+		font-weight: 500;
 		color: var(--fgColor-disabled);
-		line-height: var(--base-text-lineHeight-relaxed);
+		line-height: 1.6;
 	}
 	.settings-platform-fields {
 		display: flex;
 		flex-direction: column;
-		gap: 4px;
+		gap: 6px;
 	}
 	.figma-fetch-btn {
-		font-family: var(--fontStack-sansSerif);
-		font-size: var(--base-text-size-sm);
-		font-weight: var(--base-text-weight-semibold);
+		font-family: var(--font-display);
+		font-size: 13px;
+		font-weight: 600;
 		padding: 8px 16px;
 		background: var(--button-primary-bgColor-rest);
 		color: var(--button-primary-fgColor-rest);
 		border: 1px solid var(--button-primary-borderColor-rest);
-		border-radius: var(--borderRadius-medium);
+		border-radius: var(--radius-md);
 		cursor: pointer;
-		transition:
-			background var(--base-duration-100) var(--base-easing-ease),
-			border-color var(--base-duration-100) var(--base-easing-ease);
+		transition: background var(--transition-fast), border-color var(--transition-fast);
 	}
 	.figma-fetch-btn:hover:not(:disabled) {
 		background: var(--button-primary-bgColor-hover);
@@ -468,7 +463,7 @@
 		cursor: not-allowed;
 	}
 	.settings-hint :global(code) {
-		font-family: var(--fontStack-monospace);
+		font-family: var(--font-code);
 		font-size: 10px;
 		word-break: break-all;
 	}

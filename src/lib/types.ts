@@ -94,11 +94,14 @@ export type Platform = 'web' | 'android' | 'ios';
 
 export type OutputFormat = 'scss' | 'typescript' | 'swift' | 'kotlin' | 'css';
 
+export type GenerationMode = 'matched' | 'best-practices';
+
 export interface TransformResult {
 	filename: string;
 	content: string;
 	format: OutputFormat;
 	platform: Platform;
+	mode?: GenerationMode;
 }
 
 // ─── Convention Detection ─────────────────────────────────────────────────────
@@ -218,6 +221,7 @@ export interface GeneratedFile {
 	format: OutputFormat;
 	platform: Platform;
 	referenceContent?: string;
+	mode?: GenerationMode;
 }
 
 // ─── Generate Response ────────────────────────────────────────────────────────

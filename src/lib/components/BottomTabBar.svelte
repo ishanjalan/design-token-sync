@@ -61,6 +61,10 @@
 		justify-content: space-around;
 		width: 100%;
 		height: 100%;
+		background: var(--surface-glass);
+		backdrop-filter: blur(20px);
+		-webkit-backdrop-filter: blur(20px);
+		border-top: 1px solid var(--surface-glass-border);
 	}
 
 	.tab-btn {
@@ -74,8 +78,8 @@
 		color: var(--fgColor-muted);
 		cursor: pointer;
 		padding: 4px 12px;
-		border-radius: var(--borderRadius-medium);
-		transition: color 120ms ease;
+		border-radius: var(--radius-md);
+		transition: color var(--transition-fast);
 		-webkit-tap-highlight-color: transparent;
 	}
 
@@ -84,7 +88,7 @@
 	}
 
 	.tab-btn--active {
-		color: var(--fgColor-accent);
+		color: var(--fgColor-default);
 	}
 
 	.tab-icon {
@@ -96,8 +100,20 @@
 		height: 24px;
 	}
 
+	.tab-btn--active .tab-icon::after {
+		content: '';
+		position: absolute;
+		bottom: -6px;
+		left: 50%;
+		transform: translateX(-50%);
+		width: 4px;
+		height: 4px;
+		border-radius: 50%;
+		background: var(--brand-color);
+	}
+
 	.tab-label {
-		font-family: var(--fontStack-monospace);
+		font-family: var(--font-display);
 		font-size: 9px;
 		font-weight: 500;
 		letter-spacing: 0.01em;
@@ -108,22 +124,22 @@
 		position: absolute;
 		top: -2px;
 		right: -6px;
-		min-width: 13px;
-		height: 13px;
+		min-width: 14px;
+		height: 14px;
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		font-family: var(--fontStack-monospace);
+		font-family: var(--font-display);
 		font-size: 8px;
 		font-weight: 600;
 		color: var(--fgColor-onEmphasis);
-		background: var(--bgColor-accent-emphasis);
-		border-radius: var(--borderRadius-full);
+		background: var(--brand-color);
+		border-radius: 100px;
 		padding: 0 3px;
 		line-height: 1;
 	}
 
 	.tab-badge--warn {
-		background: var(--bgColor-attention-emphasis, #d29922);
+		background: var(--brand-color);
 	}
 </style>

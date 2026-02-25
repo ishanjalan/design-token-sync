@@ -40,6 +40,22 @@ export function detectRefCompleteness(
     }
   }
 
+  // Kotlin typography detection:
+  const kotlinTypoContent = refContents['referenceTypographyKotlin'];
+  if (kotlinTypoContent) {
+    const hasDefinition =
+      (/\bclass\s+\w+/.test(kotlinTypoContent) && (/@Immutable\b/.test(kotlinTypoContent) || /internal\s+constructor/.test(kotlinTypoContent))) ||
+      (/\bobject\s+\w+/.test(kotlinTypoContent) && /\bTextStyle\s*\(/.test(kotlinTypoContent));
+    const hasAccessor = /\benum\s+class\s+\w+/.test(kotlinTypoContent) && /MaterialTheme/.test(kotlinTypoContent);
+
+    if (hasAccessor && !hasDefinition) {
+      warnings.push({
+        key: 'referenceTypographyKotlin',
+        message: 'You uploaded an accessor file (e.g. RLocalTypography.kt) but no definition file (e.g. RTypography.kt). Upload the definition file for complete match-existing output, or remove the reference to use best-practices mode.'
+      });
+    }
+  }
+
   // Web color detection:
   const webContent = refContents['referenceColorsWeb'];
   if (webContent) {

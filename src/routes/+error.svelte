@@ -22,7 +22,7 @@
 
 <style>
 	:global(body) {
-		font-family: var(--fontStack-monospace, 'IBM Plex Mono', 'Courier New', monospace);
+		font-family: var(--font-code, 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace);
 		background: var(--bgColor-default, #0a0a0a);
 		color: var(--fgColor-default, #d8d8d8);
 		min-height: 100dvh;

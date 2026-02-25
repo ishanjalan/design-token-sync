@@ -3,6 +3,7 @@ import {
 	detectTypographyConventions,
 	transformToTypography
 } from './typography.js';
+import type { KotlinTypographyScope } from './typography-kotlin.js';
 
 // ─── Reference file fixtures (based on user's web team files) ────────────────
 
@@ -1212,5 +1213,118 @@ describe('transformToTypography — Kotlin @Immutable class generation', () => {
 
 	it('uses detected package name', () => {
 		expect(kt.content).toContain('package com.red.rubi.ions.ui.theme.typography');
+	});
+});
+
+// ─── Kotlin multi-file output (definition + accessor) ────────────────────────
+
+const REF_KOTLIN_ACCESSOR = `package com.red.rubi.ions.ui.theme.typography
+
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.text.TextStyle
+import com.red.rubi.ions.ui.theme.LocalTypography
+
+enum class RLocalTypography {
+    large_title_r,
+    body_r,
+    body_m
+    ;
+    val textStyle: TextStyle
+        @Composable
+        get() = when (this) {
+            large_title_r -> {
+                MaterialTheme.LocalTypography.large_title_r
+            }
+            body_r -> {
+                MaterialTheme.LocalTypography.body_r
+            }
+            body_m -> {
+                MaterialTheme.LocalTypography.body_m
+            }
+        }
+}
+`;
+
+describe('transformToTypography — Kotlin multi-file (definition + accessor)', () => {
+	const conv = detectTypographyConventions(undefined, undefined, false, undefined, REF_KOTLIN_CLASS);
+	const scope: KotlinTypographyScope = {
+		generateDefinition: true,
+		generateAccessor: true,
+		definitionFilename: 'RTypography.kt',
+		accessorClassName: 'RLocalTypography',
+		accessorContainerRef: 'LocalTypography',
+		accessorFilename: 'RLocalTypography.kt'
+	};
+
+	const results = transformToTypography(SAMPLE_ANDROID_JSON, ['android'], conv, scope);
+
+	it('produces two output files', () => {
+		expect(results.filter((r) => r.platform === 'android')).toHaveLength(2);
+	});
+
+	it('produces a definition file with correct filename', () => {
+		const def = results.find((r) => r.filename === 'RTypography.kt');
+		expect(def).toBeDefined();
+		expect(def!.content).toContain('@Immutable');
+		expect(def!.content).toContain('class RTypography internal constructor(');
+	});
+
+	it('produces an accessor file with correct filename', () => {
+		const acc = results.find((r) => r.filename === 'RLocalTypography.kt');
+		expect(acc).toBeDefined();
+	});
+
+	it('accessor file contains enum class with correct name', () => {
+		const acc = results.find((r) => r.filename === 'RLocalTypography.kt')!;
+		expect(acc.content).toContain('enum class RLocalTypography {');
+	});
+
+	it('accessor file references MaterialTheme.LocalTypography', () => {
+		const acc = results.find((r) => r.filename === 'RLocalTypography.kt')!;
+		expect(acc.content).toContain('MaterialTheme.LocalTypography.');
+	});
+
+	it('accessor file has @Composable textStyle getter', () => {
+		const acc = results.find((r) => r.filename === 'RLocalTypography.kt')!;
+		expect(acc.content).toContain('val textStyle: TextStyle');
+		expect(acc.content).toContain('@Composable');
+		expect(acc.content).toContain('get() = when (this) {');
+	});
+
+	it('accessor file uses same package as definition', () => {
+		const acc = results.find((r) => r.filename === 'RLocalTypography.kt')!;
+		expect(acc.content).toContain('package com.red.rubi.ions.ui.theme.typography');
+	});
+
+	it('accessor file lists token names matching definition', () => {
+		const acc = results.find((r) => r.filename === 'RLocalTypography.kt')!;
+		expect(acc.content).toMatch(/xlarge_title_r,/);
+		expect(acc.content).toMatch(/body_r,/);
+	});
+});
+
+describe('transformToTypography — Kotlin definition-only scope', () => {
+	const conv = detectTypographyConventions(undefined, undefined, false, undefined, REF_KOTLIN_CLASS);
+	const scope: KotlinTypographyScope = {
+		generateDefinition: true,
+		generateAccessor: false,
+		definitionFilename: 'RTypography.kt'
+	};
+
+	it('produces only the definition file', () => {
+		const results = transformToTypography(SAMPLE_ANDROID_JSON, ['android'], conv, scope);
+		const androidResults = results.filter((r) => r.platform === 'android');
+		expect(androidResults).toHaveLength(1);
+		expect(androidResults[0].filename).toBe('RTypography.kt');
+	});
+});
+
+describe('transformToTypography — Kotlin no scope (best practices)', () => {
+	it('produces single Typography.kt with default name when no scope', () => {
+		const results = transformToTypography(SAMPLE_ANDROID_JSON, ['android']);
+		const androidResults = results.filter((r) => r.platform === 'android');
+		expect(androidResults).toHaveLength(1);
+		expect(androidResults[0].filename).toBe('Typography.kt');
 	});
 });

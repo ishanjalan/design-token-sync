@@ -58,7 +58,7 @@
 		display: flex;
 		flex-direction: column;
 		align-items: center;
-		gap: 2px;
+		gap: 0;
 		width: 100%;
 	}
 
@@ -73,19 +73,30 @@
 		background: transparent;
 		color: var(--fgColor-muted);
 		cursor: pointer;
-		border-radius: var(--borderRadius-medium);
-		transition:
-			color var(--base-duration-100) var(--base-easing-ease),
-			background var(--base-duration-100) var(--base-easing-ease);
+		border-radius: var(--radius-md);
+		transition: color var(--transition-fast), background var(--transition-fast);
 	}
 
 	.rail-btn:hover {
-		color: var(--fgColor-default);
 		background: var(--control-bgColor-hover);
 	}
 
+	.rail-btn:active {
+		background: var(--control-bgColor-hover);
+	}
+
+	.rail-btn:hover,
 	.rail-btn--active {
 		color: var(--fgColor-default);
+	}
+
+	.rail-btn:not(:last-child) {
+		border-bottom: 1px solid var(--borderColor-muted);
+	}
+
+	.rail-btn :global(svg) {
+		width: 16px;
+		height: 16px;
 	}
 
 	.rail-accent {
@@ -95,9 +106,9 @@
 		transform: translateY(-50%);
 		width: 2px;
 		height: 0;
-		background: var(--borderColor-accent-emphasis);
+		background: var(--brand-color);
 		border-radius: 1px;
-		transition: height var(--base-duration-200) var(--base-easing-ease);
+		transition: height var(--transition-fast);
 	}
 
 	.rail-accent--visible {
@@ -113,17 +124,19 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		font-family: var(--fontStack-monospace);
-		font-size: 9px;
+		font-family: var(--font-display);
+		font-size: 10px;
 		font-weight: 600;
 		color: var(--fgColor-onEmphasis);
-		background: var(--bgColor-accent-emphasis);
-		border-radius: var(--borderRadius-full);
+		background: var(--brand-color);
+		box-shadow: 0 0 6px color-mix(in srgb, var(--brand-color) 40%, transparent);
+		border-radius: 100px;
 		padding: 0 3px;
 		line-height: 1;
 	}
 
 	.rail-badge--warn {
-		background: var(--bgColor-attention-emphasis, #d29922);
+		background: var(--brand-color);
+		box-shadow: 0 0 6px color-mix(in srgb, var(--brand-color) 40%, transparent);
 	}
 </style>

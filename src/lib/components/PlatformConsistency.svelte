@@ -43,9 +43,11 @@
 
 <style>
 	.platform-consistency-panel {
-		background: var(--bgColor-default);
-		border: 1px solid var(--borderColor-default);
-		border-radius: var(--borderRadius-medium);
+		background: var(--surface-glass);
+		backdrop-filter: blur(12px);
+		-webkit-backdrop-filter: blur(12px);
+		border: 1px solid var(--surface-glass-border);
+		border-radius: var(--radius-md);
 		margin: 12px 0;
 		overflow: hidden;
 	}
@@ -56,13 +58,14 @@
 		padding: 8px 12px;
 		background: var(--bgColor-muted);
 		border-bottom: 1px solid var(--borderColor-default);
-		font-size: var(--base-text-size-sm);
-		font-weight: var(--base-text-weight-semibold);
+		font-family: var(--font-display);
+		font-size: 12px;
+		font-weight: 600;
 	}
 	.platform-consistency-count {
 		font-size: 11px;
 		padding: 1px 8px;
-		border-radius: 10px;
+		border-radius: 100px;
 		background: color-mix(in srgb, var(--bgColor-attention-muted) 50%, transparent);
 		color: var(--fgColor-attention);
 	}
@@ -81,10 +84,19 @@
 		align-items: center;
 		gap: 8px;
 		font-size: 11px;
-		font-family: var(--fontStack-monospace);
+		font-family: var(--font-code);
+		padding: 4px 0;
+	}
+	.platform-consistency-row:nth-child(even) {
+		background: var(--surface-glass);
+		margin: 0 -12px;
+		padding: 4px 12px;
 	}
 	.platform-consistency-name {
 		flex-shrink: 0;
+		font-family: var(--font-display);
+		font-size: 12px;
+		font-weight: 600;
 		color: var(--fgColor-muted);
 		min-width: 120px;
 	}
@@ -99,12 +111,13 @@
 		gap: 4px;
 		padding: 2px 6px;
 		background: var(--bgColor-inset);
-		border-radius: var(--borderRadius-small);
+		border-radius: var(--radius-sm);
+		font-family: var(--font-code);
 	}
 	.platform-consistency-swatch {
 		width: 10px;
 		height: 10px;
-		border-radius: 2px;
+		border-radius: 50%;
 		border: 1px solid var(--borderColor-muted);
 		flex-shrink: 0;
 	}

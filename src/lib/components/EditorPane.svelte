@@ -1,8 +1,6 @@
 <script lang="ts">
 	import { Download, ClipboardCopy, GitPullRequest, List, WrapText, Check, X, ChevronRight, ChevronUp, ChevronDown, AlertTriangle, ArrowLeftRight, Target, Pencil, ArrowRight, Home } from 'lucide-svelte';
-	import type { GeneratedFile, Platform, DropZoneKey, FileSlot, OutputCategory } from '$lib/types.js';
-	import type { FileInsight } from '$lib/file-validation.js';
-	import WelcomeView from './WelcomeView.svelte';
+	import type { GeneratedFile, GenerationMode, Platform } from '$lib/types.js';
 	import {
 		type DiffLine,
 		type ViewMode,
@@ -31,18 +29,8 @@
 		mode: 'dark' | 'light';
 	}
 
-	interface PlatformOption {
-		id: Platform;
-		label: string;
-		sublabel: string;
-		color: string;
-		icon: string;
-		techIcons: { svg: string; color: string; label: string }[];
-	}
-
 	interface Props {
-		result: GenerateResponse | null;
-		errorMsg?: string | null;
+		result: GenerateResponse;
 		visibleFiles: GeneratedFile[];
 		activeTab: string;
 		highlights: Record<string, string>;
@@ -81,35 +69,12 @@
 		selectedTheme: string;
 		showThemePicker: boolean;
 		selectedPlatforms: Platform[];
-		storedTokenVersion?: number | null;
-		storedTokenPushedAt?: string | null;
 		tokensUpdatedBanner?: { version: number; summary: string } | null;
 		onRegenerate?: () => void;
 		onBackToHome?: () => void;
-		platforms: PlatformOption[];
-		onSelectPlatform: (id: Platform) => void;
-		swatchCount: number;
-		refKeys: DropZoneKey[];
-		visibleKeysAll: DropZoneKey[];
-		slots: Record<DropZoneKey, FileSlot>;
-		fileInsights: Partial<Record<DropZoneKey, FileInsight>>;
-		hasRefFiles: boolean;
-		selectedOutputs: OutputCategory[];
-		onToggleOutput: (cat: OutputCategory) => void;
-		tokensInitialLoading: boolean;
-		canGenerate: boolean;
-		loading: boolean;
-		progressStatus?: string | null;
-		onGenerate: () => void;
-		onOpenImportPanel: () => void;
-		onOpenSettings: () => void;
-		onWelcomeDragEnter: (key: DropZoneKey, e: DragEvent) => void;
-		onWelcomeDragOver: (key: DropZoneKey, e: DragEvent) => void;
-		onWelcomeDragLeave: (key: DropZoneKey) => void;
-		onWelcomeDrop: (key: DropZoneKey, e: DragEvent) => void;
-		onWelcomeFileInput: (key: DropZoneKey, e: Event) => void;
-		onWelcomeClearFile: (key: DropZoneKey, e: MouseEvent) => void;
-		requiredFilled: number;
+		hasDualMode: boolean;
+		activeMode: GenerationMode;
+		onModeChange: (mode: GenerationMode) => void;
 		formatTime: (d: Date) => string;
 		timeAgo: (d: Date) => string;
 		platformColor: (platform: Platform) => string;
@@ -147,7 +112,7 @@
 	}
 
 	let {
-		result, errorMsg = null, visibleFiles, activeTab, highlights, diffs, viewModes, modifications,
+		result, visibleFiles, activeTab, highlights, diffs, viewModes, modifications,
 		renames, familyRenames, tokenCoverage, deprecations, impactedTokens,
 		searchQuery, searchInputEl, searchShortcutHint, highlightedLines, wrapLines,
 		showSectionNav, showChangeSummary, collapsedSections, currentBreadcrumb,
@@ -155,14 +120,8 @@
 		lastGeneratedAt, sendingPrs, diffTotals, diffNavIndex, swatches,
 		showSwatches, swatchComparisons, swatchTab, prResults,
 		platformMismatches, themes, selectedTheme, showThemePicker, selectedPlatforms,
-		storedTokenVersion = null, storedTokenPushedAt = null,
 		tokensUpdatedBanner = null, onRegenerate, onBackToHome,
-		platforms, onSelectPlatform, swatchCount,
-		refKeys, visibleKeysAll, slots, fileInsights, hasRefFiles,
-		selectedOutputs, onToggleOutput,
-		tokensInitialLoading, canGenerate, loading, progressStatus = null, onGenerate, onOpenImportPanel, onOpenSettings,
-		onWelcomeDragEnter, onWelcomeDragOver, onWelcomeDragLeave, onWelcomeDrop,
-		onWelcomeFileInput, onWelcomeClearFile, requiredFilled,
+		hasDualMode, activeMode, onModeChange,
 		formatTime, timeAgo, platformColor,
 		onTabSelect, onTabKeydown, onViewModeChange, onSearchChange, onSearchInputBind,
 		onCodeKeydown, onCodeScroll, onCodeScrollBind, onLineClick, onSectionNavToggle,
@@ -194,38 +153,6 @@
 </script>
 
 <div class="editor-pane atmosphere-noise">
-	{#if !result}
-		<div class="welcome-wrapper">
-		<WelcomeView
-			{platforms}
-			{selectedPlatforms}
-			{onSelectPlatform}
-			{swatchCount}
-			{storedTokenVersion}
-			storedTokenPushedAt={storedTokenPushedAt ?? null}
-			{refKeys}
-			visibleKeys={visibleKeysAll}
-			{slots}
-			{fileInsights}
-			{hasRefFiles}
-			{selectedOutputs}
-			{onToggleOutput}
-			{tokensInitialLoading}
-			{canGenerate}
-			{loading}
-			{progressStatus}
-			{errorMsg}
-			{onGenerate}
-			onDragEnter={onWelcomeDragEnter}
-			onDragOver={onWelcomeDragOver}
-			onDragLeave={onWelcomeDragLeave}
-			onDrop={onWelcomeDrop}
-			onFileInput={onWelcomeFileInput}
-			onClearFile={onWelcomeClearFile}
-			{requiredFilled}
-		/>
-		</div>
-	{:else}
 		<div class="editor-wrapper">
 		{#if tokensUpdatedBanner}
 			<div class="tokens-updated-banner">
@@ -266,6 +193,25 @@
 					</button>
 				{/each}
 			</div>
+
+			{#if hasDualMode}
+				<div class="mode-toggle" role="group" aria-label="Generation mode">
+					<button
+						class="mode-btn"
+						class:mode-btn--active={activeMode === 'matched'}
+						onclick={() => onModeChange('matched')}
+					>
+						Your conventions
+					</button>
+					<button
+						class="mode-btn"
+						class:mode-btn--active={activeMode === 'best-practices'}
+						onclick={() => onModeChange('best-practices')}
+					>
+						Best practices
+					</button>
+				</div>
+			{/if}
 
 			<div class="tab-actions">
 				<!-- Theme picker -->
@@ -621,7 +567,6 @@
 			onDismiss={onDismissPrResults}
 		/>
 		</div>
-	{/if}
 </div>
 
 <style>
@@ -651,13 +596,6 @@
 	}
 
 	/* ─── View Wrappers ──────────────────────────── */
-	.welcome-wrapper {
-		display: flex;
-		flex: 1;
-		min-height: 0;
-		animation: view-enter 300ms ease both;
-	}
-
 	.editor-wrapper {
 		display: flex;
 		flex-direction: column;
@@ -672,7 +610,6 @@
 	}
 
 	@media (prefers-reduced-motion: reduce) {
-		.welcome-wrapper,
 		.editor-wrapper {
 			animation-duration: 0.01ms !important;
 		}
@@ -685,15 +622,19 @@
 		justify-content: space-between;
 		gap: 12px;
 		padding: 8px 16px;
-		background: color-mix(in srgb, var(--bgColor-success-muted, #2ea04326) 40%, var(--bgColor-default));
-		border-bottom: 1px solid var(--borderColor-success-muted, #2ea04340);
+		background: var(--surface-glass);
+		backdrop-filter: blur(12px);
+		-webkit-backdrop-filter: blur(12px);
+		border-bottom: 1px solid var(--borderColor-muted);
+		border-left: 3px solid var(--brand-color, var(--fgColor-success));
 	}
 
 	.success-banner-inner {
 		display: flex;
 		align-items: center;
 		gap: 6px;
-		font-size: var(--base-text-size-xs);
+		font-family: var(--font-display);
+		font-size: 12px;
 		font-weight: 600;
 		color: var(--fgColor-success, #2ea043);
 	}
@@ -708,7 +649,7 @@
 	}
 
 	.success-stat {
-		font-family: var(--fontStack-monospace);
+		font-family: var(--font-code);
 		font-size: 11px;
 		font-weight: 600;
 	}
@@ -729,13 +670,13 @@
 		padding: 3px 10px;
 		font-size: 11px;
 		font-weight: 500;
-		font-family: 'JetBrains Mono', var(--fontStack-monospace);
+		font-family: var(--font-code);
 		border: 1px solid var(--borderColor-default);
-		border-radius: 4px;
+		border-radius: var(--radius-sm);
 		background: var(--bgColor-default);
 		color: var(--fgColor-default);
 		cursor: pointer;
-		transition: background 0.1s;
+		transition: background var(--transition-fast);
 	}
 
 	.success-action:hover {
@@ -760,7 +701,8 @@
 		background: transparent;
 		color: var(--fgColor-muted);
 		cursor: pointer;
-		border-radius: 3px;
+		border-radius: var(--radius-sm);
+		transition: color var(--transition-fast), background var(--transition-fast);
 	}
 
 	.success-dismiss:hover {
@@ -768,8 +710,6 @@
 		background: var(--bgColor-muted);
 	}
 
-	/* ─── Swatch preview ─────────────────────────── */
-	/* ─── File Tabs ──────────────────────────────── */
 	/* ─── Tokens Updated Banner ─────────────────── */
 	.tokens-updated-banner {
 		display: flex;
@@ -777,11 +717,14 @@
 		justify-content: space-between;
 		gap: 12px;
 		padding: 8px 16px;
-		background: var(--bgColor-attention-muted);
-		border-bottom: 1px solid var(--borderColor-attention-muted);
+		background: var(--surface-glass);
+		backdrop-filter: blur(12px);
+		-webkit-backdrop-filter: blur(12px);
+		border-bottom: 1px solid var(--borderColor-muted);
+		font-family: var(--font-display);
 		font-size: 12px;
 		color: var(--fgColor-attention);
-		animation: banner-slide-in 0.3s ease;
+		animation: banner-slide-in var(--transition-default) ease;
 		z-index: 2;
 		position: relative;
 	}
@@ -796,11 +739,12 @@
 		background: var(--bgColor-attention-emphasis);
 		color: var(--fgColor-onEmphasis);
 		border: none;
-		border-radius: var(--borderRadius-medium);
+		border-radius: var(--radius-md);
+		font-family: var(--font-display);
 		font-size: 11px;
 		font-weight: 600;
 		cursor: pointer;
-		transition: opacity var(--base-duration-100) var(--base-easing-ease);
+		transition: opacity var(--transition-fast);
 	}
 
 	.tokens-updated-btn:hover {
@@ -812,10 +756,11 @@
 		to { transform: translateY(0); opacity: 1; }
 	}
 
+	/* ─── File Tabs ──────────────────────────────── */
 	.file-tabs-bar {
 		display: flex;
 		align-items: center;
-		background: var(--bgColor-inset);
+		background: var(--bgColor-default);
 		border-bottom: 1px solid var(--borderColor-muted);
 		flex-shrink: 0;
 		min-height: 36px;
@@ -834,11 +779,11 @@
 		border-right: 1px solid var(--borderColor-muted);
 		color: var(--fgColor-muted);
 		cursor: pointer;
-		transition: color 100ms ease, background 100ms ease;
+		transition: color var(--transition-fast), background var(--transition-fast);
 	}
 
 	.home-btn:hover {
-		color: var(--fgColor-accent);
+		color: var(--fgColor-default);
 		background: var(--control-bgColor-hover);
 	}
 
@@ -862,28 +807,26 @@
 		display: flex;
 		align-items: center;
 		gap: 6px;
-		padding: 6px 14px;
-		background: transparent;
+		padding: 6px 14px 8px;
+		background: none;
 		border: none;
 		border-bottom: 2px solid transparent;
-		font-family: var(--fontStack-monospace);
-		font-size: 11px;
+		font-family: var(--font-display);
+		font-size: 12px;
 		font-weight: 500;
-		color: var(--fgColor-disabled);
+		color: var(--fgColor-muted);
 		cursor: pointer;
 		white-space: nowrap;
-		transition:
-			color var(--base-duration-100) var(--base-easing-ease),
-			border-color var(--base-duration-100) var(--base-easing-ease);
+		transition: color var(--transition-fast), border-color var(--transition-fast);
 	}
 
 	.file-tab:hover {
-		color: var(--fgColor-muted);
+		color: var(--fgColor-default);
 	}
 
 	.file-tab--active {
 		color: var(--fgColor-default);
-		border-bottom-color: var(--tab-accent, var(--brand-color));
+		border-bottom-color: var(--tab-accent, var(--brand-color, var(--fgColor-accent)));
 	}
 
 	.tab-dot {
@@ -905,21 +848,58 @@
 		min-width: 16px;
 		height: 16px;
 		padding: 0 4px;
-		font-family: var(--fontStack-monospace);
+		font-family: var(--font-code);
 		font-size: 9px;
 		font-weight: 600;
 		color: var(--fgColor-attention);
-		background: var(--bgColor-attention-muted);
-		border-radius: var(--borderRadius-full);
+		background: color-mix(in srgb, var(--fgColor-attention) 10%, transparent);
+		border-radius: 100px;
 		line-height: 1;
 	}
 
 	.tab-actions {
 		display: flex;
 		align-items: center;
-		gap: 4px;
+		gap: 6px;
 		padding: 0 8px;
 		flex-shrink: 0;
+	}
+
+	/* ─── Mode Toggle ────────────────────────────── */
+	.mode-toggle {
+		display: flex;
+		align-items: center;
+		background: var(--surface-glass);
+		border: 1px solid var(--surface-glass-border);
+		border-radius: var(--radius-md);
+		padding: 2px;
+		gap: 2px;
+		flex-shrink: 0;
+		margin-right: 4px;
+	}
+
+	.mode-btn {
+		font-family: var(--font-display);
+		font-size: 11px;
+		font-weight: 500;
+		padding: 3px 10px;
+		background: transparent;
+		border: none;
+		border-radius: calc(var(--radius-md) - 2px);
+		color: var(--fgColor-disabled);
+		cursor: pointer;
+		white-space: nowrap;
+		transition: background var(--transition-fast), color var(--transition-fast);
+	}
+
+	.mode-btn:hover {
+		color: var(--fgColor-muted);
+	}
+
+	.mode-btn--active {
+		background: var(--control-bgColor-rest);
+		color: var(--fgColor-default);
+		box-shadow: var(--shadow-button);
 	}
 
 	/* ─── Code Pane ──────────────────────────────── */
@@ -929,7 +909,7 @@
 		flex: 1;
 		min-height: 0;
 		overflow: hidden;
-		animation: tab-crossfade 150ms ease both;
+		animation: tab-crossfade var(--transition-fast) ease both;
 	}
 
 	@keyframes tab-crossfade {
@@ -942,7 +922,7 @@
 		align-items: center;
 		gap: 0;
 		padding: 4px 10px;
-		background: var(--bgColor-inset);
+		background: var(--bgColor-muted);
 		border-bottom: 1px solid var(--borderColor-muted);
 		flex-shrink: 0;
 		z-index: 10;
@@ -973,34 +953,34 @@
 	/* ─── View Toggle ────────────────────────────── */
 	.view-toggle {
 		display: flex;
-		background: var(--bgColor-inset);
-		border: 1px solid var(--borderColor-default);
-		border-radius: var(--borderRadius-medium);
+		background: var(--surface-glass);
+		border: 1px solid var(--surface-glass-border);
+		border-radius: var(--radius-md);
 		padding: 2px;
 		gap: 2px;
 	}
 
 	.toggle-btn {
-		font-family: var(--fontStack-sansSerif);
-		font-size: var(--base-text-size-xs);
+		font-family: var(--font-display);
+		font-size: 11px;
 		font-weight: 500;
 		padding: 3px 8px;
 		background: transparent;
 		border: none;
-		border-radius: calc(var(--borderRadius-medium) - 2px);
+		border-radius: calc(var(--radius-md) - 2px);
 		color: var(--fgColor-disabled);
 		cursor: pointer;
-		transition: background var(--base-duration-100) var(--base-easing-ease), color var(--base-duration-100) var(--base-easing-ease);
+		transition: background var(--transition-fast), color var(--transition-fast);
 	}
 
 	.toggle-btn--active {
 		background: var(--control-bgColor-rest);
 		color: var(--fgColor-default);
-		box-shadow: var(--shadow-floating-small);
+		box-shadow: var(--shadow-button);
 	}
 
 	.toggle-badge {
-		font-family: var(--fontStack-monospace);
+		font-family: var(--font-code);
 		font-size: 9px;
 		color: var(--fgColor-disabled);
 		margin-left: 2px;
@@ -1027,9 +1007,9 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		border-radius: var(--borderRadius-small);
+		border-radius: var(--radius-sm);
 		cursor: pointer;
-		transition: color var(--base-duration-100) var(--base-easing-ease);
+		transition: color var(--transition-fast);
 	}
 
 	.diff-nav-btn:hover {
@@ -1038,7 +1018,7 @@
 	}
 
 	.diff-nav-count {
-		font-family: var(--fontStack-monospace);
+		font-family: var(--font-code);
 		font-size: 10px;
 		color: var(--fgColor-muted);
 		min-width: 36px;
@@ -1054,14 +1034,14 @@
 		right: 0;
 		z-index: 50;
 		background: var(--bgColor-muted);
-		border: 1px solid var(--borderColor-default);
-		border-radius: var(--borderRadius-medium);
+		border: 1px solid var(--borderColor-muted);
+		border-radius: var(--radius-md);
 		padding: 4px;
 		min-width: 220px;
 		max-width: 360px;
 		max-height: 280px;
 		overflow-y: auto;
-		box-shadow: var(--shadow-floating-small);
+		box-shadow: var(--shadow-panel);
 		display: flex;
 		flex-direction: column;
 		gap: 1px;
@@ -1072,19 +1052,19 @@
 		align-items: center;
 		gap: 8px;
 		padding: 5px 9px;
-		font-family: var(--fontStack-monospace);
+		font-family: var(--font-code);
 		font-size: 11px;
 		color: var(--fgColor-muted);
 		background: transparent;
 		border: none;
-		border-radius: var(--borderRadius-small);
+		border-radius: var(--radius-sm);
 		cursor: pointer;
 		text-align: left;
 		width: 100%;
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
-		transition: background var(--base-duration-100) var(--base-easing-ease);
+		transition: background var(--transition-fast);
 	}
 
 	.section-option:hover {
@@ -1111,25 +1091,26 @@
 	}
 
 	.search-input {
-		font-family: var(--fontStack-sansSerif);
-		font-size: var(--base-text-size-xs);
+		font-family: var(--font-display);
+		font-size: 12px;
 		padding: 3px 8px;
-		background: var(--control-bgColor-rest);
-		border: 1px solid var(--control-borderColor-rest);
-		border-radius: var(--borderRadius-medium);
-		color: var(--control-fgColor-rest);
+		background: var(--surface-glass);
+		border: 1px solid var(--surface-glass-border);
+		border-radius: var(--radius-sm);
+		color: var(--fgColor-default);
 		width: 100%;
 		outline: none;
-		transition: border-color var(--base-duration-200) var(--base-easing-ease);
+		transition: border-color var(--transition-default), box-shadow var(--transition-default);
 	}
 
 	.search-input:focus {
-		border-color: var(--borderColor-accent-emphasis);
-		color: var(--fgColor-default);
+		border-color: var(--fgColor-accent);
+		box-shadow: 0 0 0 2px color-mix(in srgb, var(--fgColor-accent) 15%, transparent);
 	}
 
 	.search-count {
-		font-size: var(--base-text-size-xs);
+		font-family: var(--font-display);
+		font-size: 12px;
 		font-weight: 500;
 		color: var(--fgColor-success);
 		white-space: nowrap;
@@ -1148,6 +1129,7 @@
 		font-size: 10px;
 		padding: 2px 4px;
 		flex-shrink: 0;
+		transition: color var(--transition-fast);
 	}
 
 	.search-clear:hover {
@@ -1169,11 +1151,11 @@
 		background: color-mix(in srgb, var(--bgColor-muted) 50%, transparent);
 		border: none;
 		cursor: pointer;
-		font-family: var(--fontStack-sansSerif);
-		font-size: var(--base-text-size-xs);
+		font-family: var(--font-display);
+		font-size: 12px;
 		color: var(--fgColor-muted);
 		text-align: left;
-		transition: background var(--base-duration-100) var(--base-easing-ease);
+		transition: background var(--transition-fast);
 	}
 
 	.change-summary-toggle:hover {
@@ -1183,7 +1165,7 @@
 	.cs-chevron {
 		flex-shrink: 0;
 		opacity: 0.5;
-		transition: transform var(--base-duration-200) var(--base-easing-ease);
+		transition: transform var(--transition-default);
 	}
 
 	.cs-chevron--open {
@@ -1203,8 +1185,8 @@
 		display: inline-flex;
 		align-items: center;
 		padding: 1px 6px;
-		border-radius: var(--borderRadius-full);
-		font-family: var(--fontStack-monospace);
+		border-radius: 100px;
+		font-family: var(--font-code);
 		font-size: 10px;
 		font-weight: 500;
 		white-space: nowrap;
@@ -1221,7 +1203,7 @@
 		background: none;
 		border: none;
 		color: var(--fgColor-accent);
-		font-family: var(--fontStack-sansSerif);
+		font-family: var(--font-display);
 		font-size: 11px;
 		cursor: pointer;
 		padding: 0;
@@ -1241,7 +1223,7 @@
 		align-items: baseline;
 		gap: 8px;
 		padding: 3px 12px 3px 30px;
-		font-family: var(--fontStack-monospace);
+		font-family: var(--font-code);
 		font-size: 11px;
 		color: var(--fgColor-muted);
 	}
@@ -1271,7 +1253,7 @@
 		align-items: center;
 		gap: 6px;
 		padding: 3px 16px;
-		font-family: var(--fontStack-monospace);
+		font-family: var(--font-display);
 		font-size: 10.5px;
 		color: var(--fgColor-muted);
 		background: var(--bgColor-inset);
@@ -1299,6 +1281,7 @@
 		flex: 1;
 		overflow: auto;
 		min-height: 0;
+		box-shadow: inset 0 1px 4px rgba(0, 0, 0, 0.1);
 		scrollbar-width: thin;
 		scrollbar-color: color-mix(in srgb, var(--fgColor-disabled) 30%, transparent) transparent;
 	}
@@ -1306,8 +1289,8 @@
 	/* ─── Diff View ──────────────────────────────── */
 	.diff-view {
 		flex: 1;
-		font-family: 'IBM Plex Mono', var(--fontStack-monospace);
-		font-size: var(--base-text-size-xs);
+		font-family: var(--font-code);
+		font-size: 12px;
 		font-weight: 300;
 		line-height: 1.7;
 		padding: 12px 0;
@@ -1338,7 +1321,7 @@
 		display: inline-block;
 		width: 3.5ch;
 		text-align: right;
-		font-family: var(--fontStack-monospace);
+		font-family: var(--font-code);
 		font-size: 10px;
 		color: var(--fgColor-disabled);
 		user-select: none;
@@ -1363,7 +1346,7 @@
 		top: 0;
 		z-index: 2;
 		padding: 3px 20px;
-		font-family: var(--fontStack-monospace);
+		font-family: var(--font-code);
 		font-size: 10.5px;
 		color: var(--fgColor-accent);
 		background: color-mix(in srgb, var(--bgColor-accent-muted) 40%, var(--bgColor-default));
@@ -1402,7 +1385,7 @@
 	}
 
 	.code-pre :global(code) {
-		font-family: 'IBM Plex Mono', var(--fontStack-monospace);
+		font-family: var(--font-code);
 		font-size: 12.5px;
 		font-weight: 400;
 		line-height: 1.8;
@@ -1414,7 +1397,7 @@
 		overflow: auto;
 		padding: 16px 24px;
 		flex: 1;
-		font-family: 'IBM Plex Mono', var(--fontStack-monospace);
+		font-family: var(--font-code);
 		font-size: 12.5px;
 		font-weight: 400;
 		line-height: 1.8;
@@ -1438,9 +1421,9 @@
 		padding: 4px;
 		background: transparent;
 		border: 1px solid var(--borderColor-muted);
-		border-radius: var(--borderRadius-small);
+		border-radius: var(--radius-sm);
 		cursor: pointer;
-		transition: border-color var(--base-duration-200) var(--base-easing-ease);
+		transition: border-color var(--transition-default);
 	}
 
 	.theme-btn:hover { border-color: var(--borderColor-default); }
@@ -1460,11 +1443,11 @@
 		right: 0;
 		z-index: 50;
 		background: var(--bgColor-muted);
-		border: 1px solid var(--borderColor-default);
-		border-radius: var(--borderRadius-medium);
+		border: 1px solid var(--borderColor-muted);
+		border-radius: var(--radius-md);
 		padding: 4px;
 		min-width: 140px;
-		box-shadow: var(--shadow-floating-small);
+		box-shadow: var(--shadow-panel);
 		display: flex;
 		flex-direction: column;
 		gap: 1px;
@@ -1475,16 +1458,16 @@
 		align-items: center;
 		gap: 7px;
 		padding: 5px 9px;
-		font-family: var(--fontStack-monospace);
+		font-family: var(--font-display);
 		font-size: 10px;
 		color: var(--fgColor-muted);
 		background: transparent;
 		border: none;
-		border-radius: var(--borderRadius-small);
+		border-radius: var(--radius-sm);
 		cursor: pointer;
 		text-align: left;
 		width: 100%;
-		transition: background var(--base-duration-100) var(--base-easing-ease);
+		transition: background var(--transition-fast);
 	}
 
 	.theme-option:hover {
@@ -1505,6 +1488,7 @@
 	}
 
 	.theme-group-label {
+		font-family: var(--font-display);
 		font-size: 10px;
 		font-weight: 600;
 		color: var(--fgColor-disabled);
@@ -1519,17 +1503,17 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 4px;
-		font-family: var(--fontStack-sansSerif);
-		font-size: var(--base-text-size-xs);
+		font-family: var(--font-display);
+		font-size: 12px;
 		font-weight: 500;
 		color: var(--fgColor-muted);
 		background: var(--button-default-bgColor-rest);
 		border: 1px solid var(--button-default-borderColor-rest);
-		border-radius: var(--borderRadius-medium);
+		border-radius: var(--radius-md);
 		padding: 3px 8px;
 		cursor: pointer;
 		white-space: nowrap;
-		transition: color var(--base-duration-100) var(--base-easing-ease), background var(--base-duration-100) var(--base-easing-ease), border-color var(--base-duration-100) var(--base-easing-ease);
+		transition: color var(--transition-fast), background var(--transition-fast), border-color var(--transition-fast);
 	}
 
 	.ctrl-btn:hover {
@@ -1583,7 +1567,7 @@
 	@media (max-width: 767px) {
 		.file-tab {
 			max-width: 110px;
-			padding: 6px 8px;
+			padding: 6px 8px 8px;
 			font-size: 10px;
 		}
 

@@ -6,20 +6,20 @@ import { transformToCSS } from '$lib/transformers/css.js';
 import { transformToSpacing } from '$lib/transformers/spacing.js';
 import { transformToSwift } from '$lib/transformers/swift.js';
 import { transformToKotlin, type KotlinOutputScope } from '$lib/transformers/kotlin.js';
-import { transformToTypography, countTypographyStyles, detectTypographyConventions } from '$lib/transformers/typography.js';
-import { transformToShadows, countShadowTokens } from '$lib/transformers/shadow.js';
-import { transformToBorders, countBorderTokens } from '$lib/transformers/border.js';
-import { transformToOpacity, countOpacityTokens } from '$lib/transformers/opacity.js';
-import { transformToGradients, countGradientTokens } from '$lib/transformers/gradient.js';
-import { transformToRadius, countRadiusTokens } from '$lib/transformers/radius.js';
-import { transformToMotion, countMotionTokens } from '$lib/transformers/motion.js';
+import { transformToTypography, countTypographyStyles, detectTypographyConventions, type KotlinTypographyScope } from '$lib/transformers/typography.js';
+import { countShadowTokens } from '$lib/transformers/shadow.js';
+import { countBorderTokens } from '$lib/transformers/border.js';
+import { countOpacityTokens } from '$lib/transformers/opacity.js';
+import { countGradientTokens } from '$lib/transformers/gradient.js';
+import { countRadiusTokens } from '$lib/transformers/radius.js';
+import { countMotionTokens } from '$lib/transformers/motion.js';
 import { detectConventions } from '$lib/transformers/naming.js';
 import { buildTokenGraph, detectCycles, formatCycleWarnings, walkAllTokens } from '$lib/resolve-tokens.js';
 import { normalizeTokens, detectTokenFormat } from '$lib/token-adapters.js';
 import { detectRenamesInReference, createNewDetector } from '$lib/transformers/shared.js';
 import { appendRemovedTokenComments } from '$lib/diff-utils.js';
 import type { RequestHandler } from './$types';
-import type { FigmaColorExport, Platform, GenerateWarning } from '$lib/types.js';
+import type { FigmaColorExport, Platform, GenerateWarning, GenerationMode, TransformResult } from '$lib/types.js';
 
 const RefFileEntry = z.object({ filename: z.string(), content: z.string() });
 
@@ -141,6 +141,48 @@ function classifyKotlinRefFiles(entries: RefEntry[] | undefined): {
 		if (/\bobject\s+(?:Light|Dark)ColorTokens\b/.test(content)) hasSemantics = true;
 	}
 	return { hasPrimitives, hasSemantics, semanticCategories: [...new Set(categories)] };
+}
+
+function classifyKotlinTypographyRefFiles(entries: RefEntry[] | undefined): {
+	hasDefinition: boolean;
+	hasAccessor: boolean;
+	definitionContent?: string;
+	definitionFilename?: string;
+	accessorClassName?: string;
+	accessorContainerRef?: string;
+	accessorFilename?: string;
+} {
+	if (!entries?.length) return { hasDefinition: false, hasAccessor: false };
+	let hasDefinition = false, hasAccessor = false;
+	let definitionContent: string | undefined;
+	let definitionFilename: string | undefined;
+	let accessorClassName: string | undefined;
+	let accessorContainerRef: string | undefined;
+	let accessorFilename: string | undefined;
+
+	for (const { filename, content } of entries) {
+		const isEnumAccessor = /\benum\s+class\s+\w+/.test(content) && /MaterialTheme/.test(content);
+		if (isEnumAccessor) {
+			hasAccessor = true;
+			accessorFilename = filename;
+			const enumMatch = content.match(/\benum\s+class\s+(\w+)/);
+			if (enumMatch) accessorClassName = enumMatch[1];
+			const containerMatch = content.match(/MaterialTheme\.(\w+)\./);
+			if (containerMatch) accessorContainerRef = containerMatch[1];
+			continue;
+		}
+
+		const isDefinition =
+			(/\bclass\s+\w+/.test(content) && (/\@Immutable\b/.test(content) || /internal\s+constructor/.test(content))) ||
+			(/\bobject\s+\w+/.test(content) && /\bTextStyle\s*\(/.test(content));
+		if (isDefinition) {
+			hasDefinition = true;
+			definitionContent = content;
+			definitionFilename = filename;
+		}
+	}
+
+	return { hasDefinition, hasAccessor, definitionContent, definitionFilename, accessorClassName, accessorContainerRef, accessorFilename };
 }
 
 function classifyWebTypographyFiles(entries: RefEntry[] | undefined): {
@@ -308,7 +350,16 @@ export const POST: RequestHandler = async ({ request }) => {
 	const wantColors = outputs.includes('colors');
 	const wantTypography = outputs.includes('typography');
 
-	const results = [];
+	const results: TransformResult[] = [];
+
+	function tagMode(items: TransformResult[], mode: GenerationMode): TransformResult[] {
+		for (const item of items) item.mode = mode;
+		return items;
+	}
+
+	// ── Match-existing pass (or sole best-practices pass when no refs) ──────
+	const matchedMode: GenerationMode = bestPractices ? 'best-practices' : 'matched';
+
 	const conventions = detectConventions(
 		webColors.primitivesScss,
 		webColors.colorsScss,
@@ -325,7 +376,7 @@ export const POST: RequestHandler = async ({ request }) => {
 
 		if (wantScss) {
 			results.push(
-				...transformToSCSS(
+				...tagMode(transformToSCSS(
 					lightColors as FigmaColorExport,
 					darkColors as FigmaColorExport,
 					conventions,
@@ -333,18 +384,18 @@ export const POST: RequestHandler = async ({ request }) => {
 					webRenames,
 					webIsNew,
 					bestPractices
-				)
+				), matchedMode)
 			);
 		}
 		if (wantTs) {
 			results.push(
-				...transformToTS(lightColors as FigmaColorExport, darkColors as FigmaColorExport, conventions, undefined, webRenames, webIsNew, bestPractices)
+				...tagMode(transformToTS(lightColors as FigmaColorExport, darkColors as FigmaColorExport, conventions, undefined, webRenames, webIsNew, bestPractices), matchedMode)
 			);
 		}
-		results.push(...transformToSpacing(values, conventions));
+		results.push(...tagMode(transformToSpacing(values, conventions), matchedMode));
 		if (wantCss) {
 			results.push(
-				...transformToCSS(
+				...tagMode(transformToCSS(
 					lightColors as FigmaColorExport,
 					darkColors as FigmaColorExport,
 					conventions,
@@ -352,20 +403,20 @@ export const POST: RequestHandler = async ({ request }) => {
 					webRenames,
 					webIsNew,
 					bestPractices
-				)
+				), matchedMode)
 			);
 		}
 	}
 
 	if (wantColors && platforms.includes('ios')) {
-		results.push(
-			transformToSwift(
-				lightColors as FigmaColorExport,
-				darkColors as FigmaColorExport,
-				referenceColorsSwift,
-				bestPractices
-			)
+		const swiftResult = transformToSwift(
+			lightColors as FigmaColorExport,
+			darkColors as FigmaColorExport,
+			referenceColorsSwift,
+			bestPractices
 		);
+		swiftResult.mode = matchedMode;
+		results.push(swiftResult);
 	}
 
 	if (wantColors && platforms.includes('android')) {
@@ -378,34 +429,42 @@ export const POST: RequestHandler = async ({ request }) => {
 					semanticCategories: kotlinScope.semanticCategories.length > 0 ? kotlinScope.semanticCategories : undefined
 				};
 		results.push(
-			...transformToKotlin(
+			...tagMode(transformToKotlin(
 				lightColors as FigmaColorExport,
 				darkColors as FigmaColorExport,
 				referenceColorsKotlin,
 				bestPractices,
 				scope
-			)
+			), matchedMode)
 		);
 	}
 
 	if (wantTypography && typography) {
+		const kotlinTypoClassification = classifyKotlinTypographyRefFiles(refTypoKotlinEntries);
+		const kotlinTypoRefContent = kotlinTypoClassification.definitionContent ?? referenceTypographyKotlin;
+
 		const typoConventions = detectTypographyConventions(
 			webTypo.typoScss,
 			webTypo.typoTs,
 			bestPractices,
 			referenceTypographySwift,
-			referenceTypographyKotlin
+			kotlinTypoRefContent
 		);
-		results.push(...transformToTypography(typography, platforms, typoConventions));
-	}
 
-	if (wantColors) {
-		results.push(...transformToShadows(values, platforms));
-		results.push(...transformToBorders(values, platforms));
-		results.push(...transformToOpacity(values, platforms));
-		results.push(...transformToGradients(values, platforms));
-		results.push(...transformToRadius(values, platforms));
-		results.push(...transformToMotion(values, platforms));
+		const kotlinTypoScope: KotlinTypographyScope | undefined = bestPractices
+			? undefined
+			: kotlinTypoClassification.hasDefinition || kotlinTypoClassification.hasAccessor
+				? {
+					generateDefinition: kotlinTypoClassification.hasDefinition || (!kotlinTypoClassification.hasDefinition && !kotlinTypoClassification.hasAccessor),
+					generateAccessor: kotlinTypoClassification.hasAccessor,
+					definitionFilename: kotlinTypoClassification.definitionFilename,
+					accessorClassName: kotlinTypoClassification.accessorClassName,
+					accessorContainerRef: kotlinTypoClassification.accessorContainerRef,
+					accessorFilename: kotlinTypoClassification.accessorFilename
+				}
+				: undefined;
+
+		results.push(...tagMode(transformToTypography(typography, platforms, typoConventions, kotlinTypoScope), matchedMode));
 	}
 
 	// ── Additional Theme Generation ──────────────────────────────────────────
@@ -421,8 +480,36 @@ export const POST: RequestHandler = async ({ request }) => {
 				const ext = r.filename.split('.').pop() ?? '';
 				const base = r.filename.replace(/\.[^.]+$/, '');
 				r.filename = `${base}.${themeLabel}.${ext}`;
+				r.mode = matchedMode;
 				results.push(r);
 			}
+		}
+	}
+
+	// ── Best-practices pass (only when reference files exist) ────────────────
+	if (hasAnyRefFile) {
+		const bpConventions = detectConventions(undefined, undefined, undefined, undefined, true);
+
+		if (wantColors && platforms.includes('web')) {
+			if (wantScss) results.push(...tagMode(transformToSCSS(lightColors as FigmaColorExport, darkColors as FigmaColorExport, bpConventions, undefined, new Map(), () => false, true), 'best-practices'));
+			if (wantTs) results.push(...tagMode(transformToTS(lightColors as FigmaColorExport, darkColors as FigmaColorExport, bpConventions, undefined, new Map(), () => false, true), 'best-practices'));
+			results.push(...tagMode(transformToSpacing(values, bpConventions), 'best-practices'));
+			if (wantCss) results.push(...tagMode(transformToCSS(lightColors as FigmaColorExport, darkColors as FigmaColorExport, bpConventions, values, new Map(), () => false, true), 'best-practices'));
+		}
+
+		if (wantColors && platforms.includes('ios')) {
+			const bpSwift = transformToSwift(lightColors as FigmaColorExport, darkColors as FigmaColorExport, undefined, true);
+			bpSwift.mode = 'best-practices';
+			results.push(bpSwift);
+		}
+
+		if (wantColors && platforms.includes('android')) {
+			results.push(...tagMode(transformToKotlin(lightColors as FigmaColorExport, darkColors as FigmaColorExport, undefined, true, undefined), 'best-practices'));
+		}
+
+		if (wantTypography && typography) {
+			const bpTypoConventions = detectTypographyConventions(undefined, undefined, true, undefined, undefined);
+			results.push(...tagMode(transformToTypography(typography, platforms, bpTypoConventions, undefined), 'best-practices'));
 		}
 	}
 
@@ -444,13 +531,30 @@ export const POST: RequestHandler = async ({ request }) => {
 	if (webTypo.typoScss) referenceMap['Typography.scss'] = webTypo.typoScss;
 	if (webTypo.typoTs) referenceMap['Typography.ts'] = webTypo.typoTs;
 	if (referenceTypographySwift) referenceMap['Typography.swift'] = referenceTypographySwift;
-	if (referenceTypographyKotlin) referenceMap['Typography.kt'] = referenceTypographyKotlin;
+	if (refTypoKotlinEntries?.length) {
+		if (refTypoKotlinEntries.length === 1) {
+			referenceMap[refTypoKotlinEntries[0].filename] = refTypoKotlinEntries[0].content;
+		} else {
+			for (const entry of refTypoKotlinEntries) {
+				referenceMap[entry.filename] = entry.content;
+			}
+		}
+	}
 
-	// ── Removed Token Comments ─────────────────────────────────────────────────
+	// ── Removed Token Comments (matched files only) ────────────────────────────
 	for (const result of results) {
+		if (result.mode === 'best-practices') continue;
 		const ref = referenceMap[result.filename];
 		if (ref) {
 			result.content = appendRemovedTokenComments(result.content, ref, result.format);
+		}
+	}
+
+	// ── Cross-reference: use matched output as referenceContent for BP files ─
+	const matchedContentMap: Record<string, string> = {};
+	for (const result of results) {
+		if (result.mode === 'matched') {
+			matchedContentMap[result.filename] = result.content;
 		}
 	}
 
@@ -495,12 +599,15 @@ export const POST: RequestHandler = async ({ request }) => {
 			radiusTokens,
 			motionTokens
 		},
-		files: results.map(({ filename, content, format, platform }) => ({
+		files: results.map(({ filename, content, format, platform, mode }) => ({
 			filename,
 			content,
 			format,
 			platform,
-			referenceContent: referenceMap[filename]
+			mode,
+			referenceContent: mode === 'best-practices'
+				? matchedContentMap[filename]
+				: referenceMap[filename]
 		})),
 		...(warnings.length > 0 ? { warnings } : {})
 	});

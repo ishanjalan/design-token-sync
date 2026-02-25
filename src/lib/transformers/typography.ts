@@ -26,7 +26,8 @@ export { fileHeaderLines } from './shared.js';
 import { detectScssConventions, generateScss } from './typography-scss.js';
 import { detectTsConventions, generateTs } from './typography-ts.js';
 import { detectSwiftConventions, generateSwift } from './typography-swift.js';
-import { detectKotlinConventions, generateKotlin } from './typography-kotlin.js';
+import { detectKotlinConventions, generateKotlin, type KotlinTypographyScope } from './typography-kotlin.js';
+export type { KotlinTypographyScope } from './typography-kotlin.js';
 
 // ─── Exported types ──────────────────────────────────────────────────────────
 
@@ -177,7 +178,8 @@ export function detectTypographyConventions(
 export function transformToTypography(
 	typographyJson: Record<string, unknown>,
 	platforms: Platform[],
-	conventions?: DetectedTypographyConventions
+	conventions?: DetectedTypographyConventions,
+	kotlinTypoScope?: KotlinTypographyScope
 ): TransformResult[] {
 	const conv = conventions ?? BEST_PRACTICE_TYPO_CONVENTIONS;
 
@@ -218,7 +220,7 @@ export function transformToTypography(
 
 	if (platforms.includes('android')) {
 		const android = entries.filter((e) => e.targetPlatform === 'android');
-		if (android.length > 0) results.push(generateKotlin(android, conv.kotlin));
+		if (android.length > 0) results.push(...generateKotlin(android, conv.kotlin, kotlinTypoScope));
 	}
 
 	return results;

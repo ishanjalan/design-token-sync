@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { Check, X, RotateCcw, ChevronRight, ChevronDown, AlertTriangle, RefreshCw, Trash2, Upload } from 'lucide-svelte';
-	import type { Platform, DropZoneKey, FileSlot, OutputCategory } from '$lib/types.js';
+	import type { Platform, DropZoneKey, FileSlot } from '$lib/types.js';
 	import type { FileInsight } from '$lib/file-validation.js';
 
 	interface PlatformOption {
@@ -35,8 +35,6 @@
 		onBulkDragOver: (e: DragEvent) => void;
 		onBulkDragLeave: (e: DragEvent) => void;
 		onBulkDrop: (e: DragEvent) => void;
-		selectedOutputs: OutputCategory[];
-		onToggleOutput: (cat: OutputCategory) => void;
 		onClearAll: () => void;
 		onGenerate: () => void;
 		storedTokenVersion: number | null;
@@ -54,7 +52,6 @@
 		requiredFilled, iconFigma,
 		onDragEnter, onDragOver, onDragLeave, onDrop, onFileInput, onClearFile,
 		onBulkDragEnter, onBulkDragOver, onBulkDragLeave, onBulkDrop,
-		selectedOutputs, onToggleOutput,
 		onClearAll, onGenerate,
 		storedTokenVersion, storedTokenPushedAt, storedTokenVersions, storedTokensLoading,
 		tokenChangeSummary,
@@ -105,27 +102,6 @@
 		</div>
 	</div>
 
-	<div class="output-area">
-		<span class="output-label">Generate</span>
-		<div class="output-toggles">
-			<button
-				class="output-chip"
-				class:output-chip--active={selectedOutputs.includes('colors')}
-				onclick={() => onToggleOutput('colors')}
-			>
-				<span class="output-chip-dot" style="background: var(--fgColor-accent)"></span>
-				Colors
-			</button>
-			<button
-				class="output-chip"
-				class:output-chip--active={selectedOutputs.includes('typography')}
-				onclick={() => onToggleOutput('typography')}
-			>
-				<span class="output-chip-dot" style="background: #F5A623"></span>
-				Typography
-			</button>
-		</div>
-	</div>
 
 	<div
 		class="file-list"
@@ -415,13 +391,13 @@
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		padding: 10px 14px;
+		padding: 14px 16px;
 		border-bottom: 1px solid var(--borderColor-muted);
 	}
 
 	.panel-title {
-		font-family: var(--fontStack-sansSerif);
-		font-size: var(--base-text-size-xs);
+		font-family: var(--font-display);
+		font-size: 13px;
 		font-weight: 600;
 		color: var(--fgColor-muted);
 	}
@@ -440,16 +416,15 @@
 		height: 24px;
 		background: none;
 		border: 1px solid transparent;
-		border-radius: var(--borderRadius-small);
+		border-radius: var(--radius-sm);
 		color: var(--fgColor-disabled);
 		cursor: pointer;
-		transition: color 100ms ease, border-color 100ms ease, background 100ms ease;
+		transition: color var(--transition-fast), border-color var(--transition-fast), background var(--transition-fast);
 	}
 
 	.panel-icon-btn:hover {
 		color: var(--fgColor-muted);
-		border-color: var(--borderColor-muted);
-		background: var(--bgColor-muted);
+		background: var(--control-bgColor-hover);
 	}
 
 	.sr-only {
@@ -458,69 +433,6 @@
 		height: 1px;
 		clip: rect(0 0 0 0);
 		overflow: hidden;
-	}
-
-	/* ─── Output Toggles ────────────────────────── */
-	.output-area {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		padding: 4px 12px;
-		margin: 0 10px 6px;
-	}
-
-	.output-label {
-		font-size: 10px;
-		font-weight: 600;
-		color: var(--fgColor-muted);
-		text-transform: uppercase;
-		letter-spacing: 0.04em;
-	}
-
-	.output-toggles {
-		display: flex;
-		gap: 4px;
-	}
-
-	.output-chip {
-		display: flex;
-		align-items: center;
-		gap: 5px;
-		padding: 3px 10px;
-		background: var(--bgColor-inset);
-		border: 1px solid var(--borderColor-muted);
-		border-radius: var(--borderRadius-medium);
-		font-family: var(--fontStack-sansSerif);
-		font-size: 11px;
-		font-weight: 500;
-		color: var(--fgColor-muted);
-		cursor: pointer;
-		transition: background 150ms ease, border-color 150ms ease, color 150ms ease;
-	}
-
-	.output-chip:hover {
-		background: var(--control-bgColor-hover);
-		border-color: var(--borderColor-default);
-	}
-
-	.output-chip--active {
-		background: var(--control-bgColor-rest);
-		border-color: var(--borderColor-default);
-		color: var(--fgColor-default);
-		font-weight: 600;
-		box-shadow: var(--shadow-floating-small);
-	}
-
-	.output-chip-dot {
-		width: 6px;
-		height: 6px;
-		border-radius: 50%;
-		opacity: 0.4;
-		transition: opacity 150ms ease;
-	}
-
-	.output-chip--active .output-chip-dot {
-		opacity: 1;
 	}
 
 	/* ─── File List ──────────────────────────────── */
@@ -540,13 +452,16 @@
 		align-items: center;
 		justify-content: center;
 		background: color-mix(in srgb, var(--bgColor-accent-muted) 60%, transparent);
-		backdrop-filter: blur(4px);
+		backdrop-filter: blur(8px);
+		-webkit-backdrop-filter: blur(8px);
 		z-index: 10;
-		border-radius: var(--borderRadius-medium);
+		border-radius: var(--radius-md);
+		border: 2px dashed var(--brand-color);
 	}
 
 	.bulk-label {
-		font-size: var(--base-text-size-sm);
+		font-family: var(--font-display);
+		font-size: 13px;
 		font-weight: 600;
 		color: var(--fgColor-accent);
 	}
@@ -565,10 +480,10 @@
 		border: none;
 		width: 100%;
 		text-align: left;
-		font-family: var(--fontStack-sansSerif);
-		font-size: var(--base-text-size-xs);
+		font-family: var(--font-display);
+		font-size: 11px;
 		color: var(--fgColor-muted);
-		transition: background var(--base-duration-100) var(--base-easing-ease);
+		transition: background var(--transition-fast);
 	}
 
 	.tokens-collapsed-bar:hover {
@@ -590,7 +505,7 @@
 	.tokens-collapsed-chevron {
 		font-size: 10px;
 		color: var(--fgColor-disabled);
-		transition: transform var(--base-duration-100) var(--base-easing-ease);
+		transition: transform var(--transition-fast);
 	}
 
 	.section-collapse-btn {
@@ -601,7 +516,7 @@
 		cursor: pointer;
 		padding: 0 2px;
 		line-height: 1;
-		transition: color var(--base-duration-100) var(--base-easing-ease);
+		transition: color var(--transition-fast);
 	}
 
 	.section-collapse-btn:hover {
@@ -612,10 +527,11 @@
 		display: flex;
 		align-items: center;
 		gap: 8px;
-		padding: 7px 14px;
+		padding: 10px 16px;
 		background: var(--bgColor-inset);
 		border-bottom: 1px solid var(--borderColor-muted);
-		font-size: var(--base-text-size-xs);
+		font-family: var(--font-display);
+		font-size: 11px;
 		font-weight: 500;
 		color: var(--fgColor-disabled);
 	}
@@ -631,6 +547,7 @@
 
 	.ref-callout {
 		padding: 8px 14px;
+		font-family: var(--font-display);
 		font-size: 11px;
 		color: var(--callout-accent, var(--fgColor-accent));
 		background: color-mix(in srgb, var(--callout-accent, var(--fgColor-accent)) 8%, transparent);
@@ -658,12 +575,13 @@
 	}
 
 	.section-sub {
-		font-size: var(--base-text-size-xs);
+		font-family: var(--font-display);
+		font-size: 11px;
 		color: var(--fgColor-disabled);
 		opacity: 0.6;
 	}
 
-	/* ─── File Rows ──────────────────────────────── */
+	/* ─── File Rows (slot-row equivalent) ──────────────────────────────── */
 	.file-row {
 		display: flex;
 		align-items: flex-start;
@@ -671,8 +589,9 @@
 		padding: 10px 14px;
 		cursor: pointer;
 		border-bottom: 1px solid var(--borderColor-muted);
-		transition: background var(--base-duration-100) var(--base-easing-ease);
+		transition: background var(--transition-fast);
 		position: relative;
+		border-radius: var(--radius-sm);
 	}
 
 	.file-row:last-child {
@@ -680,7 +599,7 @@
 	}
 
 	.file-row:hover {
-		background: var(--control-bgColor-rest);
+		background: var(--control-bgColor-hover);
 	}
 
 	.file-row--ref {
@@ -690,11 +609,11 @@
 	.file-row--dropzone {
 		border: 1px dashed var(--borderColor-default);
 		border-bottom: 1px dashed var(--borderColor-default);
-		border-radius: var(--borderRadius-small);
-		margin: 4px 10px;
+		border-radius: var(--radius-sm);
+		margin: 4px 12px;
 		padding: 10px 12px;
 		background: color-mix(in srgb, var(--bgColor-inset) 50%, transparent);
-		transition: background var(--base-duration-100) var(--base-easing-ease), border-color var(--base-duration-100) var(--base-easing-ease);
+		transition: background var(--transition-fast), border-color var(--transition-fast);
 	}
 
 	.file-row--dropzone:hover {
@@ -758,17 +677,17 @@
 		flex-shrink: 0;
 		color: var(--fgColor-disabled);
 		margin-top: 1px;
-		transition: color var(--base-duration-100) var(--base-easing-ease);
+		transition: color var(--transition-fast);
 	}
 
 	.ext-dot {
-		width: 6px;
-		height: 6px;
+		width: 8px;
+		height: 8px;
 		border-radius: 50%;
 		flex-shrink: 0;
 		opacity: 0.5;
 		margin-top: 5px;
-		transition: opacity var(--base-duration-200) var(--base-easing-ease);
+		transition: opacity var(--transition-default);
 	}
 
 	.file-row--filled .ext-dot {
@@ -784,14 +703,14 @@
 	}
 
 	.file-label {
-		font-family: var(--fontStack-monospace);
-		font-size: var(--base-text-size-xs);
+		font-family: var(--font-code);
+		font-size: 11px;
 		font-weight: 500;
 		color: var(--fgColor-muted);
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
-		transition: color var(--base-duration-200) var(--base-easing-ease);
+		transition: color var(--transition-default);
 	}
 
 	.file-row--filled .file-label {
@@ -799,7 +718,7 @@
 	}
 
 	.file-hint {
-		font-family: var(--fontStack-sansSerif);
+		font-family: var(--font-display);
 		font-size: 10px;
 		color: var(--fgColor-disabled);
 	}
@@ -813,7 +732,8 @@
 	}
 
 	.file-cta {
-		font-size: var(--base-text-size-xs);
+		font-family: var(--font-display);
+		font-size: 11px;
 		color: var(--fgColor-disabled);
 		white-space: nowrap;
 	}
@@ -826,14 +746,15 @@
 		font-size: 11px;
 		font-weight: 500;
 		color: var(--fgColor-muted);
-		transition: color var(--base-duration-100) var(--base-easing-ease);
+		transition: color var(--transition-fast);
 	}
 
 	.file-loaded {
 		display: flex;
 		align-items: center;
 		gap: 4px;
-		font-size: var(--base-text-size-xs);
+		font-family: var(--font-display);
+		font-size: 11px;
 		color: var(--fgColor-success);
 		max-width: 140px;
 		overflow: hidden;
@@ -846,7 +767,7 @@
 	}
 
 	.restored-icon {
-		font-size: var(--base-text-size-xs);
+		font-size: 11px;
 		opacity: 0.8;
 	}
 
@@ -858,7 +779,7 @@
 		font-size: 10px;
 		padding: 2px 4px;
 		border-radius: 2px;
-		transition: color var(--base-duration-100) var(--base-easing-ease), background var(--base-duration-100) var(--base-easing-ease);
+		transition: color var(--transition-fast), background var(--transition-fast);
 	}
 
 	.file-clear:hover {
@@ -875,6 +796,7 @@
 	}
 
 	.file-insight {
+		font-family: var(--font-display);
 		font-size: 10px;
 		font-weight: 500;
 		color: var(--fgColor-disabled);
@@ -892,7 +814,7 @@
 
 	/* ─── Error Area ─────────────────────────────── */
 	.error-area {
-		padding: 10px 14px;
+		padding: 12px 16px;
 		border-top: 1px solid var(--borderColor-muted);
 	}
 
@@ -902,8 +824,9 @@
 		padding: 8px 10px;
 		background: var(--bgColor-danger-muted);
 		border: 1px solid var(--borderColor-danger-muted);
-		border-radius: var(--borderRadius-small);
-		font-size: var(--base-text-size-xs);
+		border-radius: var(--radius-sm);
+		font-family: var(--font-display);
+		font-size: 11px;
 		color: var(--fgColor-danger);
 	}
 
@@ -927,7 +850,7 @@
 		padding: 6px 12px;
 		margin: 0 0 2px;
 		background: color-mix(in srgb, var(--bgColor-accent-muted) 40%, transparent);
-		border-radius: 6px;
+		border-radius: var(--radius-sm);
 		gap: 8px;
 	}
 
@@ -939,23 +862,25 @@
 	}
 
 	.stored-version-badge {
-		font-family: var(--fontStack-monospace);
+		font-family: var(--font-code);
 		font-size: 11px;
 		font-weight: 600;
 		color: var(--fgColor-accent);
 		background: color-mix(in srgb, var(--bgColor-accent-muted) 60%, transparent);
 		padding: 1px 6px;
-		border-radius: 4px;
+		border-radius: var(--radius-sm);
 		white-space: nowrap;
 	}
 
 	.stored-date {
+		font-family: var(--font-display);
 		font-size: 10px;
 		color: var(--fgColor-muted);
 		white-space: nowrap;
 	}
 
 	.stored-latest-tag {
+		font-family: var(--font-display);
 		font-size: 9px;
 		font-weight: 600;
 		text-transform: uppercase;
@@ -963,11 +888,12 @@
 		color: var(--fgColor-success);
 		background: color-mix(in srgb, var(--bgColor-success-muted) 50%, transparent);
 		padding: 1px 5px;
-		border-radius: 3px;
+		border-radius: 100px;
 		white-space: nowrap;
 	}
 
 	.token-change-summary {
+		font-family: var(--font-display);
 		font-size: 10px;
 		font-weight: 500;
 		color: var(--fgColor-attention);
@@ -981,22 +907,22 @@
 	}
 
 	.stored-action-btn {
-		font-family: var(--fontStack-monospace);
+		font-family: var(--font-code);
 		font-size: 10px;
 		color: var(--fgColor-muted);
-		background: none;
-		border: 1px solid var(--borderColor-muted);
-		border-radius: 4px;
+		background: var(--surface-glass);
+		border: 1px solid var(--surface-glass-border);
+		border-radius: var(--radius-sm);
 		padding: 2px 8px;
 		cursor: pointer;
-		transition: all 0.15s ease;
+		transition: all var(--transition-fast);
 		white-space: nowrap;
 	}
 
 	.stored-action-btn:hover:not(:disabled) {
 		color: var(--fgColor-default);
 		border-color: var(--borderColor-default);
-		background: var(--bgColor-muted);
+		background: var(--control-bgColor-hover);
 	}
 
 	.stored-action-btn:disabled {
@@ -1015,8 +941,8 @@
 		min-width: 180px;
 		background: var(--overlay-bgColor);
 		border: 1px solid var(--borderColor-muted);
-		border-radius: 8px;
-		box-shadow: var(--shadow-floating-large);
+		border-radius: var(--radius-md);
+		box-shadow: var(--shadow-panel);
 		z-index: 20;
 		overflow: hidden;
 		max-height: 200px;
@@ -1029,12 +955,13 @@
 		justify-content: space-between;
 		width: 100%;
 		padding: 8px 12px;
+		font-family: var(--font-display);
 		font-size: 11px;
 		background: none;
 		border: none;
 		cursor: pointer;
 		color: var(--fgColor-default);
-		transition: background 0.1s ease;
+		transition: background var(--transition-fast);
 	}
 
 	.version-picker-item:hover {
@@ -1046,12 +973,13 @@
 	}
 
 	.version-picker-v {
-		font-family: var(--fontStack-monospace);
+		font-family: var(--font-code);
 		font-weight: 600;
 		color: var(--fgColor-accent);
 	}
 
 	.version-picker-date {
+		font-family: var(--font-display);
 		color: var(--fgColor-muted);
 		font-size: 10px;
 	}

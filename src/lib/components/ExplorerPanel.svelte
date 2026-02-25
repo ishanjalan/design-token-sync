@@ -71,7 +71,7 @@
 		align-items: center;
 		justify-content: space-between;
 		padding: 12px 14px 8px;
-		font-family: 'JetBrains Mono', var(--fontStack-monospace);
+		font-family: var(--font-display);
 		font-size: 10px;
 		font-weight: 600;
 		letter-spacing: 0.06em;
@@ -80,12 +80,12 @@
 	}
 
 	.explorer-count {
-		font-family: var(--fontStack-monospace);
-		font-size: 9px;
+		font-family: var(--font-code);
+		font-size: 10px;
 		color: var(--fgColor-disabled);
 		background: var(--bgColor-neutral-muted);
 		padding: 1px 6px;
-		border-radius: var(--borderRadius-full);
+		border-radius: 100px;
 	}
 
 	.explorer-item {
@@ -94,33 +94,31 @@
 		justify-content: space-between;
 		gap: 8px;
 		padding: 8px 14px;
+		margin: 2px 8px;
 		background: none;
 		border: none;
 		border-left: 2px solid transparent;
-		border-bottom: 1px solid var(--borderColor-muted);
-		font-family: var(--fontStack-monospace);
-		font-size: var(--base-text-size-xs);
+		border-radius: var(--radius-sm);
+		color: var(--fgColor-disabled);
+		font-family: var(--font-display);
+		font-size: 12px;
 		text-align: left;
 		cursor: pointer;
-		color: var(--fgColor-disabled);
-		transition:
-			background var(--base-duration-100) var(--base-easing-ease),
-			border-color var(--base-duration-100) var(--base-easing-ease),
-			color var(--base-duration-100) var(--base-easing-ease);
+		transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
 		animation: file-reveal 0.3s ease both;
 	}
 
 	.explorer-item:last-child {
-		border-bottom: none;
+		margin-bottom: 8px;
 	}
 
 	.explorer-item:hover {
-		background: var(--bgColor-muted);
+		background: var(--control-bgColor-hover);
 		color: var(--fgColor-muted);
 	}
 
 	.explorer-item--active {
-		background: var(--bgColor-muted);
+		background: var(--control-bgColor-hover);
 		border-left-color: var(--brand-color);
 		color: var(--fgColor-default);
 	}
@@ -137,12 +135,12 @@
 	}
 
 	.explorer-dot {
-		width: 6px;
-		height: 6px;
+		width: 7px;
+		height: 7px;
 		border-radius: 50%;
 		flex-shrink: 0;
 		opacity: 0.5;
-		transition: opacity var(--base-duration-200) var(--base-easing-ease);
+		transition: opacity var(--transition-default);
 	}
 
 	.explorer-item--active .explorer-dot {
@@ -174,7 +172,8 @@
 	}
 
 	.explorer-lines {
-		font-size: 9px;
+		font-family: var(--font-code);
+		font-size: 10px;
 		color: var(--fgColor-disabled);
 		white-space: nowrap;
 	}

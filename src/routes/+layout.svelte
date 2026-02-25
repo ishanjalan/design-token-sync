@@ -19,20 +19,13 @@
 	<meta name="description" content="Tokensmith — Design token pipeline. Figma → SCSS · TS · Swift · Kotlin" />
 	<link rel="preconnect" href="https://fonts.googleapis.com" />
 	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
-	<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+	<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
 </svelte:head>
 
 {@render children()}
 
 <style>
-	@import '@primer/primitives/dist/css/base/typography/typography.css';
-	@import '@primer/primitives/dist/css/base/motion/motion.css';
-	@import '@primer/primitives/dist/css/functional/themes/light.css';
-	@import '@primer/primitives/dist/css/functional/themes/dark.css';
-	@import '@primer/primitives/dist/css/functional/typography/typography.css';
-	@import '@primer/primitives/dist/css/functional/size/size.css';
-	@import '@primer/primitives/dist/css/functional/size/border.css';
-	@import '@primer/primitives/dist/css/functional/size/radius.css';
+	@import '$lib/styles/shared.css';
 
 	@media (prefers-reduced-motion: reduce) {
 		:global(*),

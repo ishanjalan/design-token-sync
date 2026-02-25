@@ -99,6 +99,8 @@
 		height: 100dvh;
 		overflow: hidden;
 		background: var(--bgColor-default);
+		color: var(--fgColor-default);
+		font-family: var(--font-display);
 	}
 
 	.shell--resizing {
@@ -106,27 +108,23 @@
 		user-select: none;
 	}
 
-	/* ─── Header ────────────────────────────────────────────────────────── */
 	.shell-header {
 		z-index: 20;
-		background: color-mix(in srgb, var(--bgColor-default) 92%, transparent);
-		backdrop-filter: blur(12px);
-		-webkit-backdrop-filter: blur(12px);
+		background: var(--bgColor-default);
 		border-bottom: 1px solid var(--borderColor-muted);
+		background-image: var(--surface-glow);
 	}
 
-	/* ─── Main area ─────────────────────────────────────────────────────── */
 	.shell-main {
 		display: flex;
 		overflow: hidden;
 		min-height: 0;
 	}
 
-	/* ─── Activity Rail ─────────────────────────────────────────────────── */
 	.shell-rail {
-		width: 44px;
+		width: 48px;
 		flex-shrink: 0;
-		background: var(--bgColor-inset);
+		background: var(--bgColor-default);
 		border-right: 1px solid var(--borderColor-muted);
 		display: flex;
 		flex-direction: column;
@@ -135,48 +133,39 @@
 		gap: 2px;
 	}
 
-	/* ─── Side Panel ────────────────────────────────────────────────────── */
 	.shell-side {
 		flex-shrink: 0;
-		background: var(--bgColor-inset);
+		background: var(--bgColor-muted);
 		border-right: 1px solid var(--borderColor-muted);
-		box-shadow: 2px 0 8px color-mix(in srgb, black 6%, transparent);
 		overflow-y: auto;
 		overflow-x: hidden;
 		display: flex;
 		flex-direction: column;
 		scrollbar-width: thin;
-		scrollbar-color: color-mix(in srgb, var(--fgColor-disabled) 30%, transparent) transparent;
-		animation: panel-slide-in 200ms ease both;
+		scrollbar-color: rgba(255,255,255,0.08) transparent;
+		animation: panel-slide-in var(--transition-slow) both;
 	}
 
 	@keyframes panel-slide-in {
-		from {
-			opacity: 0;
-			transform: translateX(-12px);
-		}
-		to {
-			opacity: 1;
-			transform: translateX(0);
-		}
+		from { opacity: 0; transform: translateX(-8px); }
+		to { opacity: 1; transform: translateX(0); }
 	}
 
-	/* ─── Resize Handle ─────────────────────────────────────────────────── */
 	.shell-resize-handle {
 		width: 4px;
 		flex-shrink: 0;
 		cursor: col-resize;
 		background: transparent;
-		transition: background var(--base-duration-100) var(--base-easing-ease);
+		transition: background var(--transition-fast);
 		z-index: 5;
 	}
 
 	.shell-resize-handle:hover,
 	.shell--resizing .shell-resize-handle {
-		background: var(--borderColor-accent-emphasis);
+		background: var(--brand-color);
+		box-shadow: 0 0 8px color-mix(in srgb, var(--brand-color) 30%, transparent);
 	}
 
-	/* ─── Editor Area ───────────────────────────────────────────────────── */
 	.shell-editor {
 		flex: 1;
 		min-width: 0;
@@ -186,127 +175,101 @@
 		position: relative;
 	}
 
-	/* ─── Status Bar ────────────────────────────────────────────────────── */
 	.shell-status {
-		background: var(--bgColor-inset);
+		background: var(--bgColor-default);
 		border-top: 1px solid var(--borderColor-muted);
 		display: flex;
 		align-items: center;
 		padding: 0 12px;
-		font-family: var(--fontStack-monospace);
-		font-size: 10px;
-		color: var(--fgColor-disabled);
+		font-family: var(--font-display);
+		font-size: 11px;
+		color: var(--fgColor-muted);
 		gap: 16px;
 		overflow: hidden;
 	}
 
-	/* ─── Overlay (for medium / small overlaying panels) ─────────── */
 	.shell-overlay {
 		display: none;
 	}
 
-	/* ─── Bottom Tab Bar ───────────────────────────────────────── */
 	.shell-bottom-tab {
-		background: var(--bgColor-inset);
+		background: var(--bgColor-default);
 		border-top: 1px solid var(--borderColor-muted);
 		display: flex;
 		align-items: center;
 		justify-content: space-around;
-		height: 44px;
+		height: 48px;
 	}
 
-	.mobile-only {
-		display: none;
-	}
+	.mobile-only { display: none; }
 
-	/* ─── Responsive: medium (768–1199px) ──────────────────────────── */
 	@media (max-width: 1199px) {
-		.shell-main {
-			position: relative;
-		}
+		.shell-main { position: relative; }
 
 		.shell-overlay {
 			display: block;
 			position: absolute;
 			inset: 0;
 			z-index: 14;
-			background: color-mix(in srgb, var(--bgColor-default) 50%, transparent);
-			backdrop-filter: blur(2px);
-			-webkit-backdrop-filter: blur(2px);
+			background: rgba(0,0,0,0.5);
+			backdrop-filter: blur(4px);
+			-webkit-backdrop-filter: blur(4px);
+			animation: overlay-fade var(--transition-default) both;
+		}
+
+		@keyframes overlay-fade {
+			from { opacity: 0; }
+			to { opacity: 1; }
 		}
 
 		.shell-side {
 			position: absolute;
 			top: 0;
-			left: 44px;
+			left: 48px;
 			bottom: 0;
 			z-index: 15;
-			backdrop-filter: blur(8px);
-			-webkit-backdrop-filter: blur(8px);
-			box-shadow: 4px 0 16px color-mix(in srgb, black 12%, transparent);
+			background: var(--bgColor-muted);
+			backdrop-filter: blur(20px);
+			-webkit-backdrop-filter: blur(20px);
+			box-shadow: var(--shadow-panel);
 		}
 
-		.shell-side--no-rail {
-			left: 0;
-		}
-
-		.shell-resize-handle {
-			display: none;
-		}
+		.shell-side--no-rail { left: 0; }
+		.shell-resize-handle { display: none; }
 	}
 
-	/* ─── Responsive: small (below 768px) ─────────────────────────── */
 	@media (max-width: 767px) {
-		.shell {
-			grid-template-rows: 48px 1fr auto;
-		}
-
-		.shell-rail {
-			display: none;
-		}
+		.shell { grid-template-rows: 48px 1fr auto; }
+		.shell-rail { display: none; }
 
 		.shell-overlay {
 			display: block;
 			position: fixed;
-			inset: 48px 0 44px 0;
+			inset: 48px 0 48px 0;
 			z-index: 19;
-			background: color-mix(in srgb, var(--bgColor-default) 60%, transparent);
+			background: rgba(0,0,0,0.6);
 			backdrop-filter: blur(4px);
 			-webkit-backdrop-filter: blur(4px);
 		}
 
 		.shell-side {
 			position: fixed;
-			inset: 48px 0 44px 0;
+			inset: 48px 0 48px 0;
 			width: 100% !important;
 			left: 0;
 			z-index: 20;
 			background: var(--bgColor-default);
 			backdrop-filter: none;
-			animation: drawer-slide-up 250ms ease both;
+			animation: drawer-slide-up 250ms cubic-bezier(0.4, 0, 0.2, 1) both;
 		}
 
-		.shell-resize-handle {
-			display: none;
-		}
-
-		.desktop-only {
-			display: none;
-		}
-
-		.mobile-only {
-			display: flex;
-		}
+		.shell-resize-handle { display: none; }
+		.desktop-only { display: none; }
+		.mobile-only { display: flex; }
 	}
 
 	@keyframes drawer-slide-up {
-		from {
-			opacity: 0;
-			transform: translateY(100%);
-		}
-		to {
-			opacity: 1;
-			transform: translateY(0);
-		}
+		from { opacity: 0; transform: translateY(100%); }
+		to { opacity: 1; transform: translateY(0); }
 	}
 </style>

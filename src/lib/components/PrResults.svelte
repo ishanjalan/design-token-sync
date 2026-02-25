@@ -45,8 +45,11 @@
 
 <style>
 	.pr-results {
-		border-top: 1px solid var(--borderColor-muted);
-		background: var(--bgColor-inset);
+		background: var(--surface-glass);
+		backdrop-filter: blur(12px);
+		-webkit-backdrop-filter: blur(12px);
+		border: 1px solid var(--surface-glass-border);
+		border-radius: var(--radius-md);
 		padding: 14px 20px;
 	}
 	.pr-results-header {
@@ -54,9 +57,9 @@
 		align-items: center;
 		justify-content: space-between;
 		margin-bottom: 10px;
-		font-family: var(--fontStack-sansSerif);
-		font-size: var(--base-text-size-xs);
-		font-weight: var(--base-text-weight-semibold);
+		font-family: var(--font-display);
+		font-size: 11px;
+		font-weight: 600;
 		color: var(--fgColor-disabled);
 		letter-spacing: 0;
 		text-transform: none;
@@ -66,10 +69,19 @@
 		align-items: center;
 		gap: 10px;
 		padding: 5px 0;
+		border-radius: var(--radius-sm);
+		border-left: 3px solid transparent;
+	}
+	.pr-result-row:has(.pr-status-dot--ok) {
+		border-left-color: var(--fgColor-success);
+	}
+	.pr-result-row--failed {
+		border-left-color: var(--fgColor-danger);
+		opacity: 0.85;
 	}
 	.pr-platform {
 		font-size: 9px;
-		font-weight: var(--base-text-weight-semibold);
+		font-weight: 600;
 		letter-spacing: 0.08em;
 		text-transform: uppercase;
 		flex-shrink: 0;
@@ -77,18 +89,16 @@
 	}
 	.pr-link {
 		font-size: 10px;
-		color: var(--fgColor-accent);
+		color: var(--brand-color);
 		text-decoration: none;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
 		letter-spacing: 0.02em;
+		transition: text-decoration var(--transition-fast);
 	}
 	.pr-link:hover {
 		text-decoration: underline;
-	}
-	.pr-result-row--failed {
-		opacity: 0.85;
 	}
 	.pr-status-dot {
 		width: 8px;
@@ -109,40 +119,45 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
-		font-family: var(--fontStack-monospace);
+		font-family: var(--font-code);
 	}
 	.pr-retry-btn {
-		background: none;
-		border: 1px solid var(--borderColor-default);
-		color: var(--fgColor-accent);
-		font-size: 10px;
-		padding: 2px 8px;
-		border-radius: var(--borderRadius-small);
-		cursor: pointer;
-		flex-shrink: 0;
-		transition: background var(--base-duration-100) var(--base-easing-ease);
-	}
-	.pr-retry-btn:hover {
-		background: var(--bgColor-accent-muted);
-	}
-
-	.ctrl-btn {
-		font-family: 'IBM Plex Mono', monospace;
+		font-family: var(--font-code);
 		font-size: 10px;
 		letter-spacing: 0.04em;
 		color: var(--fgColor-muted);
-		background: none;
-		border: 1px solid var(--borderColor-default);
-		border-radius: var(--borderRadius-small);
+		background: var(--surface-glass);
+		border: 1px solid var(--surface-glass-border);
+		border-radius: var(--radius-sm);
+		padding: 3px 10px;
+		cursor: pointer;
+		flex-shrink: 0;
+		transition:
+			background var(--transition-fast),
+			color var(--transition-fast);
+	}
+	.pr-retry-btn:hover {
+		background: var(--control-bgColor-hover);
+		color: var(--fgColor-default);
+	}
+
+	.ctrl-btn {
+		font-family: var(--font-code);
+		font-size: 10px;
+		letter-spacing: 0.04em;
+		color: var(--fgColor-muted);
+		background: var(--surface-glass);
+		border: 1px solid var(--surface-glass-border);
+		border-radius: var(--radius-sm);
 		padding: 3px 10px;
 		cursor: pointer;
 		transition:
-			background var(--base-duration-100) var(--base-easing-ease),
-			color var(--base-duration-100) var(--base-easing-ease);
+			background var(--transition-fast),
+			color var(--transition-fast);
 		white-space: nowrap;
 	}
 	.ctrl-btn:hover {
-		background: var(--bgColor-neutral-muted);
+		background: var(--control-bgColor-hover);
 		color: var(--fgColor-default);
 	}
 </style>
