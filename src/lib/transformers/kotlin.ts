@@ -30,7 +30,8 @@ import {
 	newTokenComment,
 	detectKotlinColorBugs,
 	bugWarningBlock,
-	fileHeaderLines
+	fileHeaderLines,
+	extractKotlinColorClassInfo
 } from './shared.js';
 
 interface PrimitiveEntry {
@@ -120,15 +121,11 @@ export function detectKotlinConventions(reference?: string, bestPractices: boole
 	const hasPaletteObjects = /\bobject\s+\w+Palette\s*\{/.test(reference);
 	const primitiveStyle = hasPaletteObjects ? 'palette-objects' as const : 'object' as const;
 
-	const categoryMatches = [...reference.matchAll(/\bclass\s+R(\w+)Colors\b/g)];
-	const semanticCategories = categoryMatches.map((m) => m[1].toLowerCase());
+	const { prefix: classPrefix, categories: semanticCategories } = extractKotlinColorClassInfo(reference);
 	const hasMultipleSemanticFiles = semanticCategories.length > 0;
 
-	const prefixMatch = reference.match(/\bclass\s+(R)\w+Colors\b/);
-	const classPrefix = prefixMatch ? prefixMatch[1] : '';
-
 	const usesCompositionLocal = /compositionLocalOf/.test(reference);
-	const usesEnum = /\benum\s+class\s+R\w+Color\b/.test(reference);
+	const usesEnum = /\benum\s+class\s+\w+Color\b/.test(reference);
 	const usesMutableState = /mutableStateOf/.test(reference);
 	const usesInternalSet = /\binternal\s+set\b/.test(reference);
 	const usesCopyMethod = /\bfun\s+copy\(/.test(reference);

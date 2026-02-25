@@ -33,20 +33,41 @@ export interface CycleWarning {
 
 type AnyToken = Record<string, unknown>;
 
+const KNOWN_TOKEN_TYPES = new Set([
+	'color', 'number', 'shadow', 'border', 'typography',
+	'gradient', 'transition', 'cubic-bezier', 'duration',
+	'dimension', 'fontFamily', 'fontWeight', 'fontSize',
+	'lineHeight', 'letterSpacing', 'string', 'boolean', 'other'
+]);
+
 export function walkAllTokens(
 	obj: unknown,
 	fn: (path: string[], token: AnyToken, type: string) => void,
-	path: string[] = []
+	path: string[] = [],
+	unknownTypes?: Map<string, number>
 ): void {
 	if (!obj || typeof obj !== 'object') return;
 	const o = obj as AnyToken;
 	if (typeof o.$type === 'string') {
+		if (unknownTypes !== undefined && !KNOWN_TOKEN_TYPES.has(o.$type as string)) {
+			unknownTypes.set(o.$type as string, (unknownTypes.get(o.$type as string) ?? 0) + 1);
+		}
 		fn(path, o, o.$type as string);
 		return;
 	}
 	for (const [key, val] of Object.entries(o)) {
-		if (!key.startsWith('$')) walkAllTokens(val, fn, [...path, key]);
+		if (!key.startsWith('$')) walkAllTokens(val, fn, [...path, key], unknownTypes);
 	}
+}
+
+/**
+ * Walk all tokens and collect unknown $type values.
+ * Returns a map of unknown type name → count.
+ */
+export function collectUnknownTokenTypes(obj: unknown): Map<string, number> {
+	const unknownTypes = new Map<string, number>();
+	walkAllTokens(obj, () => {}, [], unknownTypes);
+	return unknownTypes;
 }
 
 export function getTokenAtPath(obj: unknown, path: string[]): AnyToken | null {

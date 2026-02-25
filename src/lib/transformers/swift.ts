@@ -111,19 +111,6 @@ export function detectSwiftConventions(reference?: string, bestPractices: boolea
 	const containerStyle: 'extension' | 'enum' =
 		enumMatches && enumMatches.length > 0 && !hasExtension ? 'enum' : 'extension';
 
-	// Primitive enum name + access modifier
-	let primitiveEnumName = '';
-	let primitiveAccess = '';
-	if (containerStyle === 'enum') {
-		const primEnumMatch = reference.match(
-			/(?:(fileprivate|private|internal|public)\s+)?enum\s+(\w+)\s*\{/
-		);
-		if (primEnumMatch) {
-			primitiveAccess = primEnumMatch[1] ?? '';
-			primitiveEnumName = primEnumMatch[2];
-		}
-	}
-
 	// Semantic format: flat Light/Dark suffix pairs vs dynamic Color(light:, dark:)
 	const flatLightDarkCount = (
 		reference.match(/\w+Light\s*=\s*"#[0-9A-Fa-f]/g) ?? []
@@ -132,21 +119,39 @@ export function detectSwiftConventions(reference?: string, bestPractices: boolea
 	const semanticFormat: 'dynamic' | 'flatLightDark' =
 		flatLightDarkCount > dynamicColorCount ? 'flatLightDark' : 'dynamic';
 
-	// Enum names: second = semantic data layer, third = API layer (ColorStyle)
+	// Enum name detection: classify by content, not position
+	let primitiveEnumName = '';
+	let primitiveAccess = '';
 	let semanticEnumName = '';
 	let apiEnumName = 'ColorStyle';
 	if (containerStyle === 'enum') {
-		const allEnums = [
-			...reference.matchAll(
-				/(?:(?:fileprivate|private|internal|public)\s+)?enum\s+(\w+)\s*\{/g
-			)
-		];
-		const otherEnums = allEnums.filter((m) => m[1] !== primitiveEnumName);
-		if (otherEnums.length >= 1) {
-			semanticEnumName = otherEnums[0][1];
-		}
-		if (otherEnums.length >= 2) {
-			apiEnumName = otherEnums[1][1];
+		const enumRegex = /(?:(fileprivate|private|internal|public)\s+)?enum\s+(\w+)\s*\{/g;
+		let enumMatch;
+		while ((enumMatch = enumRegex.exec(reference)) !== null) {
+			const access = enumMatch[1] ?? '';
+			const name = enumMatch[2];
+			const startIdx = enumMatch.index + enumMatch[0].length;
+			let depth = 1, i = startIdx;
+			while (i < reference.length && depth > 0) {
+				if (reference[i] === '{') depth++;
+				else if (reference[i] === '}') depth--;
+				i++;
+			}
+			const body = reference.slice(startIdx, i - 1);
+			const hasHex = /=\s*"#[0-9A-Fa-f]{6,8}"/.test(body);
+			const hasLightDark = /\w+Light\s*=/.test(body) && /\w+Dark\s*=/.test(body);
+			const hasUIColor = /:\s*UIColor/.test(body) || /UIColor\s*=/.test(body);
+			// Priority: UIColor API > Light/Dark semantic > primitive (hex only)
+			if (hasUIColor) {
+				apiEnumName = name;
+			} else if (hasLightDark) {
+				if (!semanticEnumName) semanticEnumName = name;
+			} else if (hasHex) {
+				if (!primitiveEnumName) {
+					primitiveEnumName = name;
+					primitiveAccess = access;
+				}
+			}
 		}
 	}
 
@@ -450,9 +455,18 @@ function generateSwift(
 					for (const cl of newTokenComment('//')) lines.push(`${ind}${cl}`);
 				}
 				if (tok.isStatic || tok.lightName === tok.darkName) {
-					lines.push(`${ind}public static var ${tok.swiftName}: UIColor = color(${semName}.${tok.swiftName})`);
+					const colorExpr = `color(${semName}.${tok.swiftName})`;
+					const needsAlpha = tok.lightAlpha != null && tok.lightAlpha < 1;
+					const expr = needsAlpha ? `${colorExpr}.withAlphaComponent(${roundAlpha(tok.lightAlpha ?? 1)})` : colorExpr;
+					lines.push(`${ind}public static var ${tok.swiftName}: UIColor = ${expr}`);
 				} else {
-					lines.push(`${ind}public static var ${tok.swiftName}: UIColor = color(${semName}.${tok.swiftName}Light) | color(${semName}.${tok.swiftName}Dark)`);
+					const lightExpr = `color(${semName}.${tok.swiftName}Light)`;
+					const darkExpr = `color(${semName}.${tok.swiftName}Dark)`;
+					const needsLightAlpha = tok.lightAlpha != null && tok.lightAlpha < 1;
+					const needsDarkAlpha = tok.darkAlpha != null && tok.darkAlpha < 1;
+					const lightFull = needsLightAlpha ? `${lightExpr}.withAlphaComponent(${roundAlpha(tok.lightAlpha ?? 1)})` : lightExpr;
+					const darkFull = needsDarkAlpha ? `${darkExpr}.withAlphaComponent(${roundAlpha(tok.darkAlpha ?? 1)})` : darkExpr;
+					lines.push(`${ind}public static var ${tok.swiftName}: UIColor = ${lightFull} | ${darkFull}`);
 				}
 			}
 		}

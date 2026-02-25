@@ -14,7 +14,7 @@
 		filterDiffLines
 	} from '$lib/diff-utils.js';
 	import type { Swatch, SwatchComparison } from '$lib/swatch-utils.js';
-	import { buildSearchHighlight } from '$lib/search-utils.js';
+	import { buildSearchHighlight, searchDiffLines } from '$lib/search-utils.js';
 	import CodeMinimap from './CodeMinimap.svelte';
 	import PlatformConsistency from './PlatformConsistency.svelte';
 	import SwatchPanel from './SwatchPanel.svelte';
@@ -136,6 +136,31 @@
 	let showSuccessBanner = $state(false);
 	let prevResultId = $state<number | null>(null);
 	let dismissTimer: ReturnType<typeof setTimeout> | null = null;
+
+	// ── Diff in-panel search ───────────────────────────────────────────────────
+	let diffMatchIdx = $state(0);
+
+	const activeDiffMatchIndices = $derived(
+		searchQuery && activeTab && diffs[activeTab] && viewModes[activeTab] === 'diff'
+			? searchDiffLines(diffs[activeTab], searchQuery)
+			: []
+	);
+
+	// Reset to first match whenever query or active file changes
+	$effect(() => {
+		void searchQuery;
+		void activeTab;
+		diffMatchIdx = 0;
+	});
+
+	// Scroll to current match whenever it changes
+	$effect(() => {
+		if (!searchQuery || activeDiffMatchIndices.length === 0) return;
+		const lineIdx = activeDiffMatchIndices[diffMatchIdx % activeDiffMatchIndices.length];
+		if (lineIdx == null) return;
+		const el = document.getElementById(`diff-line-${activeTab}-${lineIdx}`);
+		if (el) el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+	});
 
 	$effect(() => {
 		const id = result?.files?.length ?? 0;
@@ -380,9 +405,23 @@
 									placeholder="Search ({searchShortcutHint})"
 									value={searchQuery}
 									oninput={(e) => onSearchChange((e.target as HTMLInputElement).value)}
+									onkeydown={(e) => {
+										if (e.key === 'Enter' && activeDiffMatchIndices.length > 0) {
+											e.preventDefault();
+											diffMatchIdx = e.shiftKey
+												? (diffMatchIdx - 1 + activeDiffMatchIndices.length) % activeDiffMatchIndices.length
+												: (diffMatchIdx + 1) % activeDiffMatchIndices.length;
+										} else if (e.key === 'Escape') {
+											onSearchChange('');
+										}
+									}}
 								/>
 								{#if searchQuery}
-									{#if sr}
+									{#if activeDiffMatchIndices.length > 0}
+										<span class="search-count">{diffMatchIdx % activeDiffMatchIndices.length + 1} / {activeDiffMatchIndices.length}</span>
+									{:else if viewModes[activeTab] === 'diff' && diffs[activeTab]}
+										<span class="search-count search-count--zero">0 found</span>
+									{:else if sr}
 										<span class="search-count" class:search-count--zero={sr.count === 0}>{sr.count} found</span>
 									{/if}
 									<button class="search-clear" onclick={() => onSearchChange('')}><X size={10} strokeWidth={2} /></button>
@@ -463,7 +502,7 @@
 					<!-- Code body + Minimap -->
 					<div class="code-body-wrap">
 						<div class="code-body-scroll" id="code-scroll-region" onscroll={onCodeScroll}>
-							{#if searchQuery && sr}
+							{#if searchQuery && sr && !(mode === 'diff' && hasDiff)}
 								<!-- eslint-disable-next-line svelte/no-at-html-tags -->
 								<pre class="code-pre code-pre--search">{@html sr.html}</pre>
 							{:else if mode === 'diff' && hasDiff}
@@ -479,7 +518,12 @@
 										{@const oldNum = line.type === 'add' ? '' : (line.oldLineNum ?? '')}
 										{@const newNum = line.type === 'remove' ? '' : (line.newLineNum ?? '')}
 										{@const diffColor = extractDiffColor(line.text)}
-										<div class="diff-line diff-line--{line.type}" id="diff-line-{file.filename}-{li}">
+										{@const isSearchMatch = searchQuery ? activeDiffMatchIndices.includes(li) : false}
+										{@const isCurrentMatch = searchQuery && li === activeDiffMatchIndices[diffMatchIdx % Math.max(1, activeDiffMatchIndices.length)]}
+										<div class="diff-line diff-line--{line.type}"
+											class:diff-line--search-match={isSearchMatch}
+											class:diff-line--search-current={isCurrentMatch}
+											id="diff-line-{file.filename}-{li}">
 											<span class="diff-ln diff-ln--old">{oldNum}</span>
 											<span class="diff-ln diff-ln--new">{newNum}</span>
 											<span class="diff-sig">{line.type === 'add' ? '+' : line.type === 'remove' ? '-' : ' '}</span>
@@ -1340,6 +1384,16 @@
 	.diff-word--changed { border-radius: 2px; padding: 0 1px; }
 	.diff-line--add .diff-word--changed { background: color-mix(in srgb, var(--bgColor-success-emphasis) 30%, transparent); }
 	.diff-line--remove .diff-word--changed { background: color-mix(in srgb, var(--bgColor-danger-emphasis) 30%, transparent); }
+
+	.diff-line--search-match {
+		outline: 1px solid color-mix(in srgb, var(--fgColor-attention, #9a6700) 40%, transparent);
+		outline-offset: -1px;
+	}
+	.diff-line--search-current {
+		background: color-mix(in srgb, var(--bgColor-attention-muted, #fff3b0) 55%, transparent) !important;
+		outline: 1px solid var(--fgColor-attention, #9a6700);
+		outline-offset: -1px;
+	}
 
 	.diff-hunk-header {
 		position: sticky;

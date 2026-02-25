@@ -33,17 +33,28 @@ export function detectConventions(
 	const allScss = [primitivesScss, colorsScss].filter(Boolean).join('\n');
 	const allTs = [primitivesTs, colorsTs].filter(Boolean).join('\n');
 
+	const sepConf = detectScssSeparator(allScss || undefined);
+	const caseConf = detectTsNamingCase(allTs || undefined);
+	const hexConf = detectTsHexCasing(allTs || undefined);
+
+	// Confidence is the minimum across dimensions that have actual data.
+	const confidences: number[] = [];
+	if (allScss) confidences.push(sepConf.confidence);
+	if (allTs) confidences.push(caseConf.confidence, hexConf.confidence);
+	const confidence = confidences.length > 0 ? Math.min(...confidences) : 1.0;
+
 	return {
 		scssPrefix: '$',
-		scssSeparator: detectScssSeparator(allScss || undefined),
+		scssSeparator: sepConf.value,
 		tsPrefix: 'export const ',
-		tsNamingCase: detectTsNamingCase(allTs || undefined),
+		tsNamingCase: caseConf.value,
 		importStyle: detectImportStyle(allScss || undefined),
 		importSuffix: detectImportSuffix(allScss || undefined),
 		scssColorStructure: detectScssColorStructure(colorsScss),
 		hasTypeAnnotations: detectTypeAnnotations(allTs || undefined),
-		tsHexCasing: detectTsHexCasing(allTs || undefined),
-		tsUsesAsConst: detectTsAsConst(allTs || undefined)
+		tsHexCasing: hexConf.value,
+		tsUsesAsConst: detectTsAsConst(allTs || undefined),
+		confidence
 	};
 }
 
@@ -84,29 +95,37 @@ export function cssVarToTsName(cssVar: string, namingCase: NamingCase): string {
 
 // ─── Detection Helpers ────────────────────────────────────────────────────────
 
-function detectScssSeparator(scss: string | undefined): 'hyphen' | 'underscore' | 'none' {
-	if (!scss) return 'hyphen';
+type WithConf<T> = { value: T; confidence: number };
+
+function detectScssSeparator(scss: string | undefined): WithConf<'hyphen' | 'underscore' | 'none'> {
+	if (!scss) return { value: 'hyphen', confidence: 1.0 };
 	const hyphens = (scss.match(/\$\w+-\w+/g) ?? []).length;
 	const underscores = (scss.match(/\$\w+_\w+/g) ?? []).length;
-	return underscores > hyphens ? 'underscore' : 'hyphen';
+	const total = hyphens + underscores;
+	if (total === 0) return { value: 'hyphen', confidence: 1.0 };
+	const value = underscores > hyphens ? 'underscore' : 'hyphen';
+	return { value, confidence: Math.max(hyphens, underscores) / total };
 }
 
-function detectTsNamingCase(ts: string | undefined): NamingCase {
-	if (!ts) return 'screaming_snake';
+function detectTsNamingCase(ts: string | undefined): WithConf<NamingCase> {
+	if (!ts) return { value: 'screaming_snake', confidence: 1.0 };
 
 	// Count export const NAME patterns
 	const screamingSnake = (ts.match(/export\s+const\s+[A-Z][A-Z0-9_]+\s*=/g) ?? []).length;
 	const camelCase = (ts.match(/export\s+const\s+[a-z][a-zA-Z0-9]+\s*=/g) ?? []).length;
 	const pascalCase = (ts.match(/export\s+const\s+[A-Z][a-zA-Z0-9]+[a-z][a-zA-Z0-9]*\s*=/g) ?? [])
 		.length;
+	const total = screamingSnake + camelCase + pascalCase;
+	if (total === 0) return { value: 'screaming_snake', confidence: 1.0 };
 
-	if (screamingSnake >= camelCase && screamingSnake >= pascalCase) return 'screaming_snake';
-	if (pascalCase > camelCase) return 'pascal';
+	let value: NamingCase;
+	if (screamingSnake >= camelCase && screamingSnake >= pascalCase) value = 'screaming_snake';
+	else if (pascalCase > camelCase) value = 'pascal';
 	/* v8 ignore else -- @preserve */
-	if (camelCase > 0) return 'camel';
+	else value = 'camel';
 	// unreachable: camelCase===0 + screamingSnake<camelCase is a logical contradiction
 	/* v8 ignore next -- @preserve */
-	return 'screaming_snake';
+	return { value, confidence: Math.max(screamingSnake, camelCase, pascalCase) / total };
 }
 
 function detectImportStyle(scss: string | undefined): 'use' | 'import' {
@@ -138,11 +157,14 @@ function detectScssColorStructure(colorsScss: string | undefined): ScssColorStru
 	return 'inline';
 }
 
-function detectTsHexCasing(ts: string | undefined): 'upper' | 'lower' {
-	if (!ts) return 'lower';
+function detectTsHexCasing(ts: string | undefined): WithConf<'upper' | 'lower'> {
+	if (!ts) return { value: 'lower', confidence: 1.0 };
 	const upperCount = (ts.match(/'#[0-9A-F]{6}'/g) ?? []).length;
 	const lowerCount = (ts.match(/'#[0-9a-f]{6}'/g) ?? []).length;
-	return upperCount > lowerCount ? 'upper' : 'lower';
+	const total = upperCount + lowerCount;
+	if (total === 0) return { value: 'lower', confidence: 1.0 };
+	const value = upperCount > lowerCount ? 'upper' : 'lower';
+	return { value, confidence: Math.max(upperCount, lowerCount) / total };
 }
 
 function detectTsAsConst(ts: string | undefined): boolean {

@@ -261,6 +261,39 @@ export function resolveColorValue(token: FigmaColorToken): string | null {
 	return v.hex.toLowerCase();
 }
 
+/**
+ * Extract the class prefix and token category names from Kotlin color file content.
+ * Handles any prefix convention (R, App, Theme, etc.) by detecting the common prefix
+ * across all `class XxxColors` declarations.
+ *
+ * e.g. class RFillColors, class RBorderColors → { prefix: "R", categories: ["fill", "border"] }
+ * e.g. class AppFillColors, class AppBorderColors → { prefix: "App", categories: ["fill", "border"] }
+ */
+export function extractKotlinColorClassInfo(text: string): { prefix: string; categories: string[] } {
+	const classNames = [...text.matchAll(/\bclass\s+([A-Z]\w+Colors)\b/g)].map((m) => m[1]);
+	if (classNames.length === 0) return { prefix: 'R', categories: [] };
+
+	// Strip "Colors" suffix to get base names (e.g. "RFill", "AppFill")
+	const bases = classNames.map((n) => n.slice(0, -6));
+
+	// Find the common prefix across all base names
+	let prefix = bases[0];
+	for (const name of bases.slice(1)) {
+		while (prefix.length > 0 && !name.startsWith(prefix)) {
+			prefix = prefix.slice(0, -1);
+		}
+	}
+
+	// If no common prefix was found, fall back to the leading uppercase characters
+	if (prefix.length === 0) {
+		const upperMatch = bases[0].match(/^[A-Z]+/);
+		prefix = upperMatch ? upperMatch[0] : 'R';
+	}
+
+	const categories = [...new Set(bases.map((n) => n.slice(prefix.length).toLowerCase()).filter(Boolean))];
+	return { prefix, categories };
+}
+
 /** Category ordering constant. */
 export const CATEGORY_ORDER = ['fill', 'text', 'icon', 'background', 'stroke'] as const;
 

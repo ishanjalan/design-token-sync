@@ -66,15 +66,31 @@ async function createBranch(
 	repo: string,
 	newBranch: string,
 	fromSha: string
-): Promise<void> {
+): Promise<string> {
 	const res = await ghFetch(token, `/repos/${owner}/${repo}/git/refs`, {
 		method: 'POST',
 		body: JSON.stringify({ ref: `refs/heads/${newBranch}`, sha: fromSha })
 	});
+	if (res.status === 422) {
+		// Branch already exists — retry with a short random suffix
+		const suffix = Math.random().toString(36).slice(2, 6);
+		const retryBranch = `${newBranch}-${suffix}`;
+		const retry = await ghFetch(token, `/repos/${owner}/${repo}/git/refs`, {
+			method: 'POST',
+			body: JSON.stringify({ ref: `refs/heads/${retryBranch}`, sha: fromSha })
+		});
+		if (!retry.ok) {
+			throw new Error(
+				`Branch "${newBranch}" already exists. Merge or delete the open PR for that branch before syncing again.`
+			);
+		}
+		return retryBranch;
+	}
 	if (!res.ok) {
 		const text = await res.text();
 		throw new Error(`Failed to create branch ${newBranch}: ${res.status} ${text}`);
 	}
+	return newBranch;
 }
 
 async function getFileSha(
@@ -168,8 +184,8 @@ export const POST: RequestHandler = async ({ request }) => {
 			// Get the base branch SHA
 			const baseSha = await getBranchSha(token, owner, repo, baseBranch);
 
-			// Create a new feature branch
-			await createBranch(token, owner, repo, branchName, baseSha);
+			// Create a new feature branch (returned name may have a suffix if there was a conflict)
+			const actualBranch = await createBranch(token, owner, repo, branchName, baseSha);
 
 			// Upsert each file
 			for (const file of files) {
@@ -181,7 +197,7 @@ export const POST: RequestHandler = async ({ request }) => {
 					repo,
 					filePath,
 					file.content,
-					branchName,
+					actualBranch,
 					`design-tokens: update ${file.filename}`
 				);
 			}
@@ -212,7 +228,7 @@ export const POST: RequestHandler = async ({ request }) => {
 				token,
 				owner,
 				repo,
-				branchName,
+				actualBranch,
 				baseBranch,
 				`design-tokens: sync ${platform} tokens`,
 				prBody

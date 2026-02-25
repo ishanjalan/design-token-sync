@@ -121,6 +121,8 @@ export interface DetectedConventions {
 	hasTypeAnnotations: boolean;
 	tsHexCasing: 'upper' | 'lower';
 	tsUsesAsConst: boolean;
+	/** 0–1 majority-vote confidence; only present in matched mode. */
+	confidence?: number;
 }
 
 export const BEST_PRACTICE_WEB_CONVENTIONS: DetectedConventions = {

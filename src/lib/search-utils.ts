@@ -1,3 +1,18 @@
+/**
+ * Returns the indices of diff lines whose text contains the search query.
+ * Used for in-panel diff search (highlight + scroll to match).
+ */
+export function searchDiffLines(lines: { text: string }[], query: string): number[] {
+	if (!query.trim()) return [];
+	const re = new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+	const matches: number[] = [];
+	for (let i = 0; i < lines.length; i++) {
+		re.lastIndex = 0;
+		if (re.test(lines[i].text)) matches.push(i);
+	}
+	return matches;
+}
+
 function escapeHtml(str: string): string {
 	return str
 		.replace(/&/g, '&amp;')

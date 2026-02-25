@@ -6,17 +6,17 @@ import { transformToCSS } from '$lib/transformers/css.js';
 import { transformToSpacing } from '$lib/transformers/spacing.js';
 import { transformToSwift } from '$lib/transformers/swift.js';
 import { transformToKotlin, detectKotlinConventions, detectKotlinCategoryGaps, type KotlinOutputScope } from '$lib/transformers/kotlin.js';
-import { transformToTypography, countTypographyStyles, detectTypographyConventions, type KotlinTypographyScope } from '$lib/transformers/typography.js';
-import { countShadowTokens } from '$lib/transformers/shadow.js';
-import { countBorderTokens } from '$lib/transformers/border.js';
-import { countOpacityTokens } from '$lib/transformers/opacity.js';
-import { countGradientTokens } from '$lib/transformers/gradient.js';
-import { countRadiusTokens } from '$lib/transformers/radius.js';
-import { countMotionTokens } from '$lib/transformers/motion.js';
+import { transformToTypography, countTypographyStyles, detectTypographyConventions, type KotlinTypographyScope, type TransformToTypographyResult } from '$lib/transformers/typography.js';
+import { transformToShadows, countShadowTokens } from '$lib/transformers/shadow.js';
+import { transformToBorders, countBorderTokens } from '$lib/transformers/border.js';
+import { transformToOpacity, countOpacityTokens } from '$lib/transformers/opacity.js';
+import { transformToGradients, countGradientTokens } from '$lib/transformers/gradient.js';
+import { transformToRadius, countRadiusTokens } from '$lib/transformers/radius.js';
+import { transformToMotion, countMotionTokens } from '$lib/transformers/motion.js';
 import { detectConventions } from '$lib/transformers/naming.js';
-import { buildTokenGraph, detectCycles, formatCycleWarnings, walkAllTokens } from '$lib/resolve-tokens.js';
+import { buildTokenGraph, detectCycles, formatCycleWarnings, walkAllTokens, collectUnknownTokenTypes } from '$lib/resolve-tokens.js';
 import { normalizeTokens, detectTokenFormat } from '$lib/token-adapters.js';
-import { detectRenamesInReference, createNewDetector } from '$lib/transformers/shared.js';
+import { detectRenamesInReference, createNewDetector, extractKotlinColorClassInfo } from '$lib/transformers/shared.js';
 import { appendRemovedTokenComments } from '$lib/diff-utils.js';
 import type { RequestHandler } from './$types';
 import type { FigmaColorExport, Platform, GenerateWarning, GenerationMode, TransformResult } from '$lib/types.js';
@@ -121,11 +121,14 @@ function classifyKotlinRefFiles(entries: RefEntry[] | undefined): {
 	hasPrimitives: boolean;
 	hasSemantics: boolean;
 	semanticCategories: string[];
+	classificationWarning?: string;
 } {
 	if (!entries?.length) return { hasPrimitives: false, hasSemantics: false, semanticCategories: [] };
 	let hasPrimitives = false,
 		hasSemantics = false;
 	const categories: string[] = [];
+	// Accumulate all content to run extractKotlinColorClassInfo across the full reference set
+	const allContent = entries.map((e) => e.content).join('\n');
 	for (const { content } of entries) {
 		if (
 			/\bobject\s+\w+Palette\b/.test(content) ||
@@ -133,14 +136,26 @@ function classifyKotlinRefFiles(entries: RefEntry[] | undefined): {
 			/\bobject\s+(?:Primitives|.*Primitives)\s*\{/.test(content)
 		)
 			hasPrimitives = true;
-		const catMatches = [...content.matchAll(/\bclass\s+R(\w+)Colors\b/g)];
-		if (catMatches.length) {
-			hasSemantics = true;
-			categories.push(...catMatches.map((m) => m[1].toLowerCase()));
-		}
 		if (/\bobject\s+(?:Light|Dark)ColorTokens\b/.test(content)) hasSemantics = true;
 	}
-	return { hasPrimitives, hasSemantics, semanticCategories: [...new Set(categories)] };
+	// Use dynamic prefix detection to handle R*, App*, Theme*, etc.
+	const { prefix, categories: detectedCats } = extractKotlinColorClassInfo(allContent);
+	if (detectedCats.length > 0) {
+		hasSemantics = true;
+		categories.push(...detectedCats);
+	}
+
+	// If the uploaded files look like Kotlin color files but no color classes were detected,
+	// warn the user about the expected naming pattern.
+	const hasKotlinColorContent = /\bColor\s*\(/.test(allContent);
+	const classificationWarning =
+		hasKotlinColorContent && !hasSemantics && !hasPrimitives
+			? `Kotlin reference files were uploaded but no color class pattern was detected. ` +
+			  `Expected a naming convention like \`class ${prefix}FillColors\`, \`class ${prefix}TextColors\`, etc. ` +
+			  `Check that your reference file uses a consistent \`class <Prefix><Category>Colors\` naming pattern.`
+			: undefined;
+
+	return { hasPrimitives, hasSemantics, semanticCategories: [...new Set(categories)], classificationWarning };
 }
 
 function classifyKotlinTypographyRefFiles(entries: RefEntry[] | undefined): {
@@ -369,6 +384,13 @@ export const POST: RequestHandler = async ({ request }) => {
 		bestPractices
 	);
 
+	if (!bestPractices && conventions.confidence !== undefined && conventions.confidence < 0.7) {
+		warnings.push({
+			type: 'lint',
+			message: `Convention detection confidence is ${Math.round(conventions.confidence * 100)}% — your reference file may have mixed conventions. Check naming case, separator style, and hex casing for consistency.`
+		});
+	}
+
 	if (wantColors && platforms.includes('web')) {
 		const webRefContent = [webColors.primitivesScss, webColors.colorsScss, webColors.primitivesTs, webColors.colorsTs]
 			.filter(Boolean).join('\n');
@@ -422,6 +444,9 @@ export const POST: RequestHandler = async ({ request }) => {
 
 	if (wantColors && platforms.includes('android')) {
 		const kotlinScope = classifyKotlinRefFiles(refColorsKotlinEntries);
+		if (kotlinScope.classificationWarning) {
+			warnings.push({ type: 'missing-category', message: kotlinScope.classificationWarning });
+		}
 		const scope: KotlinOutputScope | undefined = bestPractices
 			? undefined
 			: {
@@ -439,7 +464,8 @@ export const POST: RequestHandler = async ({ request }) => {
 			), matchedMode)
 		);
 
-		// P6: Warn when token data has categories not covered by the uploaded reference files
+		// P6: Warn when token data has categories not covered by the uploaded reference files,
+		// and fall back to best-practices generation for those gap categories.
 		if (!bestPractices && referenceColorsKotlin) {
 			const kotlinConventions = detectKotlinConventions(referenceColorsKotlin, false);
 			if (kotlinConventions.architecture === 'multi-file' && kotlinConventions.semanticCategories.length > 0) {
@@ -451,11 +477,54 @@ export const POST: RequestHandler = async ({ request }) => {
 				for (const cat of gaps) {
 					warnings.push({
 						type: 'missing-category',
-						message: `Token category "${cat}" has no matching reference file. Upload a reference file for this category (e.g., R${cat.charAt(0).toUpperCase() + cat.slice(1)}Colors.kt) to generate it.`
+						message: `Token category "${cat}" has no matching reference file — generating with best-practices conventions. Upload a reference file (e.g., R${cat.charAt(0).toUpperCase() + cat.slice(1)}Colors.kt) to match your existing style.`
 					});
+				}
+				if (gaps.length > 0) {
+					// Generate gap categories with best-practices conventions so users get output
+					const gapScope = { generatePrimitives: false, generateSemantics: true, semanticCategories: gaps };
+					results.push(
+						...tagMode(transformToKotlin(
+							lightColors as FigmaColorExport,
+							darkColors as FigmaColorExport,
+							undefined,
+							true,
+							gapScope
+						), 'best-practices')
+					);
 				}
 			}
 		}
+	}
+
+	// ── Token-type transforms (shadow, border, radius, opacity, gradient, motion) ──
+	// Honoring the "what's inputted → should be outputted" principle:
+	// In match-existing mode, only generate a token type if the uploaded reference
+	// files already contain definitions of that type. In best-practices mode (no refs),
+	// generate all token types that have data in the token export.
+	if (wantColors) {
+		const allRefContent = [
+			webColors.primitivesScss, webColors.colorsScss,
+			webColors.primitivesTs, webColors.colorsTs,
+			webTypo.typoScss, webTypo.typoTs,
+			referenceColorsSwift, referenceTypographySwift,
+			referenceColorsKotlin, referenceTypographyKotlin
+		].filter(Boolean).join('\n');
+
+		const refHas = (pattern: RegExp): boolean => bestPractices || pattern.test(allRefContent);
+
+		if (refHas(/\$shadow-|--shadow-|\bShadowToken\b|\bShadowSpec\b/))
+			results.push(...tagMode(transformToShadows(values, platforms), matchedMode));
+		if (refHas(/\$border-|--border-|\bBorderToken\b|\bobject\s+Borders\b/))
+			results.push(...tagMode(transformToBorders(values, platforms), matchedMode));
+		if (refHas(/\$radius-|--radius-|\bCornerRadius\b/))
+			results.push(...tagMode(transformToRadius(values, platforms), matchedMode));
+		if (refHas(/\$opacity-|--opacity-|\benum\s+Opacity\b|\bobject\s+Opacity\b/))
+			results.push(...tagMode(transformToOpacity(values, platforms), matchedMode));
+		if (refHas(/\$gradient-|\bGradientTokens\b/))
+			results.push(...tagMode(transformToGradients(values, platforms), matchedMode));
+		if (refHas(/\$duration-|\$easing-|\bMotionTokens\b/))
+			results.push(...tagMode(transformToMotion(values, platforms), matchedMode));
 	}
 
 	if (wantTypography && typography) {
@@ -483,7 +552,15 @@ export const POST: RequestHandler = async ({ request }) => {
 				}
 				: undefined;
 
-		results.push(...tagMode(transformToTypography(typography, platforms, typoConventions, kotlinTypoScope), matchedMode));
+		const typoResult: TransformToTypographyResult = transformToTypography(typography, platforms, typoConventions, kotlinTypoScope, true);
+		results.push(...tagMode(typoResult.files, matchedMode));
+		if (typoResult.weightFallbackNames.length > 0) {
+			warnings.push({
+				type: 'lint',
+				message: `${typoResult.weightFallbackNames.length} typography token(s) had string font-weight values (e.g. "Regular") — mapped to numeric. Use numeric weights in your token export for precise results.`,
+				details: typoResult.weightFallbackNames
+			});
+		}
 	}
 
 	// ── Additional Theme Generation ──────────────────────────────────────────
@@ -493,7 +570,14 @@ export const POST: RequestHandler = async ({ request }) => {
 			const themeResults = [
 				...(wantScss ? transformToSCSS(theme.tokens as FigmaColorExport, theme.tokens as FigmaColorExport, conventions) : []),
 				...(wantTs ? transformToTS(theme.tokens as FigmaColorExport, theme.tokens as FigmaColorExport, conventions) : []),
-				...(wantCss ? transformToCSS(theme.tokens as FigmaColorExport, theme.tokens as FigmaColorExport, conventions) : [])
+				...(wantCss ? transformToCSS(theme.tokens as FigmaColorExport, theme.tokens as FigmaColorExport, conventions) : []),
+				// Token-type transforms — same gating as main pass, using theme's values (falls back to base values)
+				...transformToShadows(values, platforms),
+				...transformToBorders(values, platforms),
+				...transformToRadius(values, platforms),
+				...transformToOpacity(values, platforms),
+				...transformToGradients(values, platforms),
+				...transformToMotion(values, platforms)
 			];
 			for (const r of themeResults) {
 				const ext = r.filename.split('.').pop() ?? '';
@@ -528,7 +612,8 @@ export const POST: RequestHandler = async ({ request }) => {
 
 		if (wantTypography && typography) {
 			const bpTypoConventions = detectTypographyConventions(undefined, undefined, true, undefined, undefined);
-			results.push(...tagMode(transformToTypography(typography, platforms, bpTypoConventions, undefined), 'best-practices'));
+			const bpTypoResult: TransformToTypographyResult = transformToTypography(typography, platforms, bpTypoConventions, undefined, true);
+			results.push(...tagMode(bpTypoResult.files, 'best-practices'));
 		}
 	}
 
@@ -575,6 +660,15 @@ export const POST: RequestHandler = async ({ request }) => {
 		if (result.mode === 'matched') {
 			matchedContentMap[result.filename] = result.content;
 		}
+	}
+
+	// ── Unknown Token Types ───────────────────────────────────────────────────
+	const unknownTypes = collectUnknownTokenTypes(values);
+	for (const [type, count] of unknownTypes) {
+		warnings.push({
+			type: 'lint',
+			message: `${count} token${count === 1 ? '' : 's'} with unknown type "${type}" ${count === 1 ? 'was' : 'were'} skipped.`
+		});
 	}
 
 	// ── Cycle Detection ────────────────────────────────────────────────────────

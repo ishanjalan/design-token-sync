@@ -152,6 +152,35 @@ const BEST_PRACTICE_TYPO_CONVENTIONS: DetectedTypographyConventions = {
 	}
 };
 
+// ─── Font Weight Normalization ────────────────────────────────────────────────
+
+const WEIGHT_NAME_MAP: Record<string, number> = {
+	thin: 100, hairline: 100,
+	extralight: 200, 'extra-light': 200, ultralight: 200,
+	light: 300,
+	regular: 400, normal: 400, book: 400,
+	medium: 500,
+	semibold: 600, 'semi-bold': 600, demibold: 600,
+	bold: 700,
+	extrabold: 800, 'extra-bold': 800, ultrabold: 800,
+	black: 900, heavy: 900
+};
+
+/**
+ * Normalize a font weight value that may be numeric or a string name.
+ * Returns [weight, usedFallback] — usedFallback=true if a name lookup was required.
+ */
+export function normalizeFontWeight(raw: unknown): [number, boolean] {
+	if (typeof raw === 'number' && raw > 0) return [raw, false];
+	if (typeof raw === 'string') {
+		const parsed = parseFloat(raw);
+		if (!isNaN(parsed) && parsed > 0) return [parsed, false];
+		const lookup = WEIGHT_NAME_MAP[raw.toLowerCase().trim()];
+		if (lookup) return [lookup, true];
+	}
+	return [400, true];
+}
+
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 export function detectTypographyConventions(
@@ -175,12 +204,31 @@ export function detectTypographyConventions(
 	return { scss, ts, swift, kotlin };
 }
 
+export interface TransformToTypographyResult {
+	files: TransformResult[];
+	weightFallbackNames: string[];
+}
+
 export function transformToTypography(
 	typographyJson: Record<string, unknown>,
 	platforms: Platform[],
 	conventions?: DetectedTypographyConventions,
 	kotlinTypoScope?: KotlinTypographyScope
-): TransformResult[] {
+): TransformResult[];
+export function transformToTypography(
+	typographyJson: Record<string, unknown>,
+	platforms: Platform[],
+	conventions: DetectedTypographyConventions | undefined,
+	kotlinTypoScope: KotlinTypographyScope | undefined,
+	collectWarnings: true
+): TransformToTypographyResult;
+export function transformToTypography(
+	typographyJson: Record<string, unknown>,
+	platforms: Platform[],
+	conventions?: DetectedTypographyConventions,
+	kotlinTypoScope?: KotlinTypographyScope,
+	collectWarnings?: boolean
+): TransformResult[] | TransformToTypographyResult {
 	const conv = conventions ?? BEST_PRACTICE_TYPO_CONVENTIONS;
 
 	let raw = typographyJson['typography'];
@@ -191,22 +239,26 @@ export function transformToTypography(
 		if (hasTypographyEntries) {
 			raw = typographyJson;
 		} else {
+			if (collectWarnings) return { files: [], weightFallbackNames: [] };
 			return [];
 		}
 	}
 
 	const SKIP_VARIANT_RE = /\((underline|strikethrough|headline)\)/i;
-	const entries = parseEntries(raw as Record<string, unknown>)
-		.filter((e) => !SKIP_VARIANT_RE.test(e.figmaName));
+	const { entries, weightFallbackNames } = parseEntries(raw as Record<string, unknown>, true);
+	const filteredEntries = entries.filter((e) => !SKIP_VARIANT_RE.test(e.figmaName));
 	/* v8 ignore next -- @preserve */
-	if (entries.length === 0) return [];
-
+	if (filteredEntries.length === 0) {
+		if (collectWarnings) return { files: [], weightFallbackNames };
+		return [];
+	}
+	const e = filteredEntries;
 	const results: TransformResult[] = [];
 
 	if (platforms.includes('web')) {
-		const webEntries = entries
-			.filter((e) => e.targetPlatform !== 'ios')
-			.map((e) => (e.targetPlatform === 'android' ? { ...e, fullKey: e.shortKey } : e));
+		const webEntries = e
+			.filter((entry) => entry.targetPlatform !== 'ios')
+			.map((entry) => (entry.targetPlatform === 'android' ? { ...entry, fullKey: entry.shortKey } : entry));
 		if (webEntries.length > 0) {
 			results.push(generateScss(webEntries, conv.scss));
 			results.push(generateTs(webEntries, conv.ts));
@@ -214,15 +266,16 @@ export function transformToTypography(
 	}
 
 	if (platforms.includes('ios')) {
-		const ios = entries.filter((e) => e.targetPlatform === 'ios');
+		const ios = e.filter((entry) => entry.targetPlatform === 'ios');
 		if (ios.length > 0) results.push(generateSwift(ios, conv.swift));
 	}
 
 	if (platforms.includes('android')) {
-		const android = entries.filter((e) => e.targetPlatform === 'android');
+		const android = e.filter((entry) => entry.targetPlatform === 'android');
 		if (android.length > 0) results.push(...generateKotlin(android, conv.kotlin, kotlinTypoScope));
 	}
 
+	if (collectWarnings) return { files: results, weightFallbackNames };
 	return results;
 }
 
@@ -239,8 +292,16 @@ export function countTypographyStyles(typographyJson: Record<string, unknown>): 
 
 // ─── Shared helpers (exported for platform modules) ──────────────────────────
 
-export function parseEntries(raw: Record<string, unknown>): ParsedEntry[] {
-	return Object.entries(raw)
+export interface ParseEntriesResult {
+	entries: ParsedEntry[];
+	weightFallbackNames: string[]; // token names that used string→number fallback
+}
+
+export function parseEntries(raw: Record<string, unknown>): ParsedEntry[];
+export function parseEntries(raw: Record<string, unknown>, collectWarnings: true): ParseEntriesResult;
+export function parseEntries(raw: Record<string, unknown>, collectWarnings?: boolean): ParsedEntry[] | ParseEntriesResult {
+	const weightFallbackNames: string[] = [];
+	const entries = Object.entries(raw)
 		.filter(([, v]) => {
 			if (!v || typeof v !== 'object') return false;
 			return (v as Record<string, unknown>).$type === 'typography';
@@ -257,6 +318,9 @@ export function parseEntries(raw: Record<string, unknown>): ParsedEntry[] {
 			const shortKey =
 				targetPlatform !== 'shared' ? fullKey.replace(new RegExp(`^${prefix}-`), '') : fullKey;
 
+			const [fontWeight, usedFallback] = normalizeFontWeight(val?.fontWeight);
+			if (usedFallback && collectWarnings) weightFallbackNames.push(name);
+
 			return {
 				fullKey,
 				shortKey,
@@ -265,13 +329,15 @@ export function parseEntries(raw: Record<string, unknown>): ParsedEntry[] {
 				value: {
 					fontFamily: val?.fontFamily ?? '',
 					fontSize: val?.fontSize ?? 0,
-					fontWeight: val?.fontWeight ?? 400,
+					fontWeight,
 					lineHeight: val?.lineHeight ?? 0,
 					letterSpacing: roundFloat(val?.letterSpacing ?? 0, 3)
 				},
 				figmaName: name
 			};
 		});
+	if (collectWarnings) return { entries, weightFallbackNames };
+	return entries;
 }
 
 function styleNameToKey(name: string): string {
