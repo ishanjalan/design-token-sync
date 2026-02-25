@@ -1218,7 +1218,7 @@ describe('transformToTypography — Kotlin @Immutable class generation', () => {
 
 // ─── Kotlin multi-file output (definition + accessor) ────────────────────────
 
-const REF_KOTLIN_ACCESSOR = `package com.red.rubi.ions.ui.theme.typography
+const _REF_KOTLIN_ACCESSOR = `package com.red.rubi.ions.ui.theme.typography
 
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable

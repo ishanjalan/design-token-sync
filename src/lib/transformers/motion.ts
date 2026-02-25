@@ -9,7 +9,7 @@
  */
 
 import type { TransformResult, Platform } from '$lib/types.js';
-import { pathToKebab, pathToCamel, pathToPascal, extractNumericKey, fileHeaderLines } from './shared.js';
+import { pathToKebab, pathToPascal, extractNumericKey, fileHeaderLines } from './shared.js';
 
 const MOTION_PATH_KEYWORDS = ['duration', 'delay', 'easing', 'transition', 'animation', 'motion'];
 

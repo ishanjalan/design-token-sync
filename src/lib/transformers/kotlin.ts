@@ -726,7 +726,7 @@ function generateMultiFileKotlin(
 
 function groupByFamily(
 	primitiveMap: Map<string, PrimitiveEntry>,
-	renames: Map<string, string>,
+	_renames: Map<string, string>,
 	_isNew: (name: string) => boolean
 ): [string, PrimitiveEntry[]][] {
 	const byFamily = new Map<string, PrimitiveEntry[]>();

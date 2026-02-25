@@ -1,7 +1,7 @@
 import type { ParsedEntry, DetectedTypographyConventions } from './typography.js';
 import type { TransformResult } from '$lib/types.js';
-import { resolveNameFromMap, groupEntries, kebabToCamel, fileHeaderLines } from './typography.js';
-import { capitalize, bugWarningBlock } from './shared.js';
+import { resolveNameFromMap, groupEntries, fileHeaderLines } from './typography.js';
+import { bugWarningBlock } from './shared.js';
 
 export interface KotlinTypographyScope {
 	generateDefinition: boolean;
@@ -415,7 +415,7 @@ function generateKotlinAccessor(
 	lines.push(`enum class ${enumName} {`);
 	const grouped = groupEntries(entries);
 	let firstGroup = true;
-	for (const [groupLabel, gEntries] of grouped) {
+	for (const [_groupLabel, gEntries] of grouped) {
 		if (!firstGroup) lines.push('');
 		firstGroup = false;
 		for (const entry of gEntries) {

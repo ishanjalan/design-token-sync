@@ -112,7 +112,7 @@
 					<span class="token-badge token-badge--empty">{requiredFilled}/3 files</span>
 				{/if}
 			</div>
-			{#each ['lightColors', 'darkColors', 'values'] as reqKey}
+			{#each ['lightColors', 'darkColors', 'values'] as reqKey (reqKey)}
 				{#if slots[reqKey as DropZoneKey].warning}
 					<div class="step-warning">
 						<AlertTriangle size={11} strokeWidth={2} />

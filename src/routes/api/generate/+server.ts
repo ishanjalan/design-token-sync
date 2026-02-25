@@ -188,7 +188,7 @@ function classifyKotlinTypographyRefFiles(entries: RefEntry[] | undefined): {
 		}
 
 		const isDefinition =
-			(/\bclass\s+\w+/.test(content) && (/\@Immutable\b/.test(content) || /internal\s+constructor/.test(content))) ||
+			(/\bclass\s+\w+/.test(content) && (/@Immutable\b/.test(content) || /internal\s+constructor/.test(content))) ||
 			(/\bobject\s+\w+/.test(content) && /\bTextStyle\s*\(/.test(content));
 		if (isDefinition) {
 			hasDefinition = true;

@@ -1,6 +1,6 @@
 import type { ParsedEntry, DetectedTypographyConventions } from './typography.js';
 import type { TransformResult } from '$lib/types.js';
-import { pxToRem, unitlessLineHeight, pxToEm, groupEntries, kebabToCamel, fileHeaderLines } from './typography.js';
+import { pxToRem, unitlessLineHeight, pxToEm, groupEntries, fileHeaderLines } from './typography.js';
 
 export function detectScssConventions(content: string): DetectedTypographyConventions['scss'] {
 	const lines = content.split('\n');

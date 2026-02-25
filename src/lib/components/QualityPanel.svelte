@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { SvelteSet } from 'svelte/reactivity';
 	import type { GenerateWarning, Platform } from '$lib/types.js';
 	import type { BestPracticeAdvice } from '$lib/best-practices-advisor.js';
 	import {
@@ -23,7 +24,7 @@
 
 	let { warnings, advice, platforms, onClose, onRerun }: Props = $props();
 
-	let expandedSections = $state<Set<QualitySection>>(new Set(['cycles', 'advice']));
+	const expandedSections = new SvelteSet<QualitySection>(['cycles', 'advice']);
 
 	const cycleWarnings = $derived(warnings.filter((w) => w.type === 'cycle'));
 
@@ -37,10 +38,8 @@
 	);
 
 	function toggle(section: QualitySection) {
-		const next = new Set(expandedSections);
-		if (next.has(section)) next.delete(section);
-		else next.add(section);
-		expandedSections = next;
+		if (expandedSections.has(section)) expandedSections.delete(section);
+		else expandedSections.add(section);
 	}
 
 	function severityIcon(severity: string) {
@@ -171,6 +170,7 @@
 								<p class="advice-title">{a.title}</p>
 								<p class="advice-desc">{a.description}</p>
 								{#if a.learnMoreUrl}
+									<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
 									<a class="advice-link" href={a.learnMoreUrl} target="_blank" rel="noopener">Learn more →</a>
 								{/if}
 							</div>
