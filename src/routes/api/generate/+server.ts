@@ -5,7 +5,7 @@ import { transformToTS } from '$lib/transformers/ts-web.js';
 import { transformToCSS } from '$lib/transformers/css.js';
 import { transformToSpacing } from '$lib/transformers/spacing.js';
 import { transformToSwift } from '$lib/transformers/swift.js';
-import { transformToKotlin, type KotlinOutputScope } from '$lib/transformers/kotlin.js';
+import { transformToKotlin, detectKotlinConventions, detectKotlinCategoryGaps, type KotlinOutputScope } from '$lib/transformers/kotlin.js';
 import { transformToTypography, countTypographyStyles, detectTypographyConventions, type KotlinTypographyScope } from '$lib/transformers/typography.js';
 import { countShadowTokens } from '$lib/transformers/shadow.js';
 import { countBorderTokens } from '$lib/transformers/border.js';
@@ -351,6 +351,7 @@ export const POST: RequestHandler = async ({ request }) => {
 	const wantTypography = outputs.includes('typography');
 
 	const results: TransformResult[] = [];
+	const warnings: GenerateWarning[] = [];
 
 	function tagMode(items: TransformResult[], mode: GenerationMode): TransformResult[] {
 		for (const item of items) item.mode = mode;
@@ -437,6 +438,24 @@ export const POST: RequestHandler = async ({ request }) => {
 				scope
 			), matchedMode)
 		);
+
+		// P6: Warn when token data has categories not covered by the uploaded reference files
+		if (!bestPractices && referenceColorsKotlin) {
+			const kotlinConventions = detectKotlinConventions(referenceColorsKotlin, false);
+			if (kotlinConventions.architecture === 'multi-file' && kotlinConventions.semanticCategories.length > 0) {
+				const gaps = detectKotlinCategoryGaps(
+					lightColors as FigmaColorExport,
+					darkColors as FigmaColorExport,
+					kotlinConventions.semanticCategories
+				);
+				for (const cat of gaps) {
+					warnings.push({
+						type: 'missing-category',
+						message: `Token category "${cat}" has no matching reference file. Upload a reference file for this category (e.g., R${cat.charAt(0).toUpperCase() + cat.slice(1)}Colors.kt) to generate it.`
+					});
+				}
+			}
+		}
 	}
 
 	if (wantTypography && typography) {
@@ -559,7 +578,6 @@ export const POST: RequestHandler = async ({ request }) => {
 	}
 
 	// ── Cycle Detection ────────────────────────────────────────────────────────
-	const warnings: GenerateWarning[] = [];
 	const graph = buildTokenGraph(
 		lightColors as Record<string, unknown>,
 		darkColors as Record<string, unknown>

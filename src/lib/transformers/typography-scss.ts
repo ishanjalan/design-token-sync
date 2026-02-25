@@ -12,9 +12,11 @@ export function detectScssConventions(content: string): DetectedTypographyConven
 
 	const hasCssCustomProperties = lines.some((l) => l.includes(':root') || l.includes('--'));
 	const hasMixins = lines.some((l) => /^@mixin\s/.test(l.trim()));
-	const mixinMatch = lines.find((l) => /^@mixin\s/.test(l.trim()))?.match(/@mixin\s+([\w-]+)/);
-	const mixinName = mixinMatch?.[1] ?? '';
-	const mixinPrefix = mixinName ? mixinName.replace(/-[\w]+$/, '-').replace(/-$/, '-') : 'font-';
+	const allMixinNames = lines
+		.filter((l) => /^@mixin\s/.test(l.trim()))
+		.map((l) => l.trim().match(/@mixin\s+([\w-]+)/)?.[1] ?? '')
+		.filter(Boolean);
+	const mixinPrefix = commonMixinPrefix(allMixinNames);
 
 	const includesFontFamily = lines.some(
 		(l) => l.includes('font-family') && !l.trim().startsWith('//')
@@ -43,6 +45,22 @@ export function detectScssConventions(content: string): DetectedTypographyConven
 		spacingUnit,
 		twoTier
 	};
+}
+
+/** Returns the longest segment-aligned prefix shared by all mixin names. */
+function commonMixinPrefix(names: string[]): string {
+	if (names.length === 0) return 'font-';
+	const segments = names[0].split('-');
+	let prefix = '';
+	for (const seg of segments) {
+		const candidate = `${prefix}${seg}-`;
+		if (names.every((n) => n.startsWith(candidate))) {
+			prefix = candidate;
+		} else {
+			break;
+		}
+	}
+	return prefix || 'font-';
 }
 
 function kebabToScssSize(key: string): string {

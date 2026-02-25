@@ -227,7 +227,7 @@ export interface GeneratedFile {
 // ─── Generate Response ────────────────────────────────────────────────────────
 
 export interface GenerateWarning {
-	type: 'cycle' | 'lint' | 'unused';
+	type: 'cycle' | 'lint' | 'unused' | 'missing-category';
 	message: string;
 	details?: unknown;
 }

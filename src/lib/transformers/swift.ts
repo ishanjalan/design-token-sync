@@ -557,7 +557,9 @@ function formatPrimitiveDecl(entry: PrimitiveEntry, conventions: DetectedSwiftCo
 	const keyword = conventions.useComputedVar ? 'var' : 'let';
 
 	if (conventions.primitiveFormat === 'stringHex') {
-		const hex = figmaToStringHex(entry.r, entry.g, entry.b, entry.alpha);
+		// Primitives store the base RGB value only; alpha is applied at the semantic
+		// level via suiColor(..., lightAlpha, darkAlpha) to match the reference pattern.
+		const hex = figmaToStringHex(entry.r, entry.g, entry.b, 1);
 		return `${ind}static ${keyword} ${entry.swiftName} = "${hex}"`;
 	}
 
@@ -573,18 +575,14 @@ function formatSemanticColorDecl(
 	const keyword = conventions.useComputedVar ? 'var' : 'let';
 
 	if (conventions.semanticFormat === 'flatLightDark') {
+		// Strip alpha: the ColorCodes tier stores base RGB only.
+		// Alpha is applied at the API tier via suiColor(..., lightAlpha, darkAlpha).
 		if (entry.isStatic || entry.lightName === entry.darkName) {
-			const hex = figmaToStringHex(
-				entry.lightR ?? 0, entry.lightG ?? 0, entry.lightB ?? 0, entry.lightAlpha ?? 1
-			);
+			const hex = figmaToStringHex(entry.lightR ?? 0, entry.lightG ?? 0, entry.lightB ?? 0, 1);
 			return [`${ind}static ${keyword} ${entry.swiftName} = "${hex}"`];
 		}
-		const lightHex = figmaToStringHex(
-			entry.lightR ?? 0, entry.lightG ?? 0, entry.lightB ?? 0, entry.lightAlpha ?? 1
-		);
-		const darkHex = figmaToStringHex(
-			entry.darkR ?? 0, entry.darkG ?? 0, entry.darkB ?? 0, entry.darkAlpha ?? 1
-		);
+		const lightHex = figmaToStringHex(entry.lightR ?? 0, entry.lightG ?? 0, entry.lightB ?? 0, 1);
+		const darkHex = figmaToStringHex(entry.darkR ?? 0, entry.darkG ?? 0, entry.darkB ?? 0, 1);
 		return [
 			`${ind}static ${keyword} ${entry.swiftName}Light = "${lightHex}"`,
 			`${ind}static ${keyword} ${entry.swiftName}Dark = "${darkHex}"`

@@ -595,14 +595,14 @@ function generateMultiFileKotlin(
 		if (conventions.usesEnum) {
 			lines.push(`enum class ${enumName} {`);
 			for (const entry of entries) {
-				lines.push(`    ${entry.kotlinName.toUpperCase()},`);
+				lines.push(`    ${camelToScreamingSnake(entry.kotlinName)},`);
 			}
 			lines.push('    ;');
 			lines.push('    val color: Color');
 			lines.push('        @Composable');
 			lines.push('        get() = when (this) {');
 			for (const entry of entries) {
-				lines.push(`            ${entry.kotlinName.toUpperCase()} -> MaterialTheme.Local${catPascal}Colors.${entry.kotlinName}`);
+				lines.push(`            ${camelToScreamingSnake(entry.kotlinName)} -> MaterialTheme.Local${catPascal}Colors.${entry.kotlinName}`);
 			}
 			lines.push('        }');
 			lines.push('}');
@@ -713,9 +713,8 @@ function generateMultiFileKotlin(
 		}
 
 		if (conventions.usesCompositionLocal) {
-			lines.push(`val Local${catPascal}Color = compositionLocalOf { ${catPascal}LightColorScheme }`);
-			lines.push('');
-			lines.push(`val MaterialTheme.Local${catPascal}Colors`);
+			lines.push(`var Local${catPascal}Color = compositionLocalOf { ${catPascal}LightColorScheme }`);
+			lines.push(`val MaterialTheme.Local${catPascal}Colors: ${className}`);
 			lines.push('    @Composable');
 			lines.push(`    get() = Local${catPascal}Color.current`);
 			lines.push('');
@@ -793,5 +792,41 @@ function extractFamily(figmaName: string): string {
 	}
 	/* v8 ignore next -- @preserve */
 	return familyParts.join('-') || topSegment;
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/** Convert camelCase or PascalCase to SCREAMING_SNAKE_CASE. */
+function camelToScreamingSnake(name: string): string {
+	return name.replace(/([A-Z])/g, '_$1').toUpperCase();
+}
+
+// ─── P6: Category Gap Detection ──────────────────────────────────────────────
+
+/**
+ * Compares the semantic token categories present in the Figma token data against
+ * the categories detected in uploaded reference files. Returns any categories that
+ * exist in the token data but have no corresponding reference file.
+ *
+ * Used by the generate endpoint to emit `missing-category` warnings when the
+ * reference is stale and a new token category won't have a matching output file.
+ */
+export function detectKotlinCategoryGaps(
+	lightColors: FigmaColorExport,
+	darkColors: FigmaColorExport,
+	detectedCategories: string[]
+): string[] {
+	const primitiveMap = buildPrimitiveMap(lightColors, darkColors, BEST_PRACTICE_KOTLIN_CONVENTIONS);
+	const semanticEntries = buildSemanticEntries(lightColors, darkColors, primitiveMap, BEST_PRACTICE_KOTLIN_CONVENTIONS);
+
+	const tokenCategories = new Set(semanticEntries.map((e) => e.category));
+	const detectedSet = new Set(detectedCategories);
+	const missing: string[] = [];
+	for (const cat of tokenCategories) {
+		if (!detectedSet.has(cat)) {
+			missing.push(cat);
+		}
+	}
+	return missing;
 }
 
