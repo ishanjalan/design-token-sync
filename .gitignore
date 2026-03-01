@@ -44,3 +44,7 @@ Reference files/
 
 # Transformer evaluation output
 eval-output/
+diagnostic-output/
+
+# Figma webhook state (runtime-generated, not source)
+.webhook-state.json

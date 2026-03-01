@@ -8,10 +8,10 @@
 
 	import { formatFileSize, langLabel, platformColor, formatTime, timeAgo } from '$lib/page/format-helpers.js';
 	import { extractSections, computeFoldRanges, extractDiffColor, computeHunkHeaders, nearestContext } from '$lib/page/code-helpers.js';
-	import { generate as doGenerate, buildChangelogCtx } from '$lib/page/generation.js';
+	import { generate as doGenerate, buildChangelogCtx, type GenerationStores } from '$lib/page/generation.js';
 	import { downloadZip as doDownloadZip, copyToClipboard as doCopyToClipboard } from '$lib/page/download.js';
 	import { sendPRs as doSendPRs, retryPr as doRetryPr } from '$lib/page/github-pr.js';
-	import { onFigmaFetch as doFigmaFetch, pollFigmaWebhook as doPollFigmaWebhook, notifyTokenUpdate as doNotifyTokenUpdate } from '$lib/page/figma-sync.js';
+	import { onFigmaFetch as doFigmaFetch, pollFigmaWebhook as doPollFigmaWebhook, notifyTokenUpdate as doNotifyTokenUpdate, type FigmaSettings } from '$lib/page/figma-sync.js';
 
 	import AppShell from '$lib/components/AppShell.svelte';
 	import ActivityRail from '$lib/components/ActivityRail.svelte';
@@ -339,7 +339,7 @@
 	async function doGenerateNow() {
 		showConfirmDialog = false;
 		await doGenerate(
-			{ fileStore: fileStore as any, genStore: genStore as any, tokenStore: tokenStore as any, uiStore: uiStore as any },
+			{ fileStore, genStore, tokenStore, uiStore } as GenerationStores,
 			REF_KEYS_FOR_GEN,
 			toast
 		);
@@ -377,12 +377,12 @@
 		await doSendPRs(
 			genStore.result,
 			settingsStore.githubPat,
-			settingsStore.githubRepos as any,
-			buildChangelogCtx(genStore as any, PLATFORMS) as any,
-			toast as any,
+			settingsStore.githubRepos,
+			buildChangelogCtx(genStore, PLATFORMS),
+			toast,
 			{
 				setSendingPrs: (v) => (settingsStore.sendingPrs = v),
-				setPrResults: (v) => (settingsStore.prResults = v as any),
+				setPrResults: (v) => (settingsStore.prResults = v),
 				openSettings: () => (uiStore.activePanel = 'settings')
 			}
 		);
@@ -393,18 +393,18 @@
 			platform,
 			genStore.result,
 			settingsStore.githubPat,
-			settingsStore.githubRepos as any,
-			buildChangelogCtx(genStore as any, PLATFORMS) as any,
-			settingsStore.prResults as any,
+			settingsStore.githubRepos,
+			buildChangelogCtx(genStore, PLATFORMS),
+			settingsStore.prResults,
 			toast,
-			(v) => (settingsStore.prResults = v as any)
+			(v) => (settingsStore.prResults = v)
 		);
 	}
 
 	// ─── Figma fetch (delegates to extracted module) ─────────────────────────────
 
 	async function onFigmaFetch() {
-		await doFigmaFetch(settingsStore as any, (entries) => fileStore.applyTokenData(entries), toast);
+		await doFigmaFetch(settingsStore as FigmaSettings, (entries) => fileStore.applyTokenData(entries), toast);
 	}
 
 	// ─── Plugin sync polling ─────────────────────────────────────────────────────
@@ -441,7 +441,7 @@
 
 	$effect(() => {
 		if (!browser || !settingsStore.figmaWebhookPasscode) return;
-		const poll = () => doPollFigmaWebhook(settingsStore as any);
+		const poll = () => doPollFigmaWebhook(settingsStore as FigmaSettings);
 		const interval = setInterval(poll, 30_000);
 		poll();
 		return () => clearInterval(interval);
@@ -694,7 +694,7 @@
 				onDownloadZip={downloadZip}
 				onCopyFile={() => { if (genStore.activeFile) copyToClipboard(genStore.activeFile.content); }}
 				onSendPRs={sendPRs}
-				onCopyChangelog={() => copyToClipboard(generateChangelog(buildChangelogCtx(genStore as any, PLATFORMS) as any))}
+				onCopyChangelog={() => copyToClipboard(generateChangelog(buildChangelogCtx(genStore, PLATFORMS)))}
 				onToggleSwatches={() => (uiStore.showSwatches = !uiStore.showSwatches)}
 				onSwatchTabChange={(t) => (uiStore.swatchTab = t)}
 				onDismissPrResults={() => (settingsStore.prResults = [])}

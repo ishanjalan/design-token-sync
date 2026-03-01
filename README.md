@@ -91,11 +91,11 @@ You can also drag-and-drop JSON files manually:
 
 To preserve your team's existing variable naming conventions, upload their current source files:
 
-| Platform | Reference files                                                |
-| -------- | -------------------------------------------------------------- |
-| Web      | `Primitives.scss`, `Colors.scss`, `Primitives.ts`, `Colors.ts` |
-| iOS      | `Colors.swift`                                                 |
-| Android  | `Colors.kt`                                                    |
+| Platform | Color references                                               | Typography references                    |
+| -------- | -------------------------------------------------------------- | ---------------------------------------- |
+| Web      | `Primitives.scss`, `Colors.scss`, `Primitives.ts`, `Colors.ts` | `Typography.scss`, `Typography.ts`       |
+| iOS      | `Colors.swift`                                                 | `Typography.swift`                       |
+| Android  | `Colors.kt`                                                    | `Typography.kt`                          |
 
 Tokensmith detects naming patterns (camelCase, SCREAMING_SNAKE_CASE, separators, import style, indentation, container types, enum names) dynamically at runtime — no hardcoded conventions.
 
@@ -185,7 +185,7 @@ If the Tokensmith Figma plugin is installed, click **Sync from plugin** in the I
 ### Integrations
 
 - **GitHub PR** — creates a branch and opens a PR per platform with one click
-- **Google Chat webhook** — posts a summary card to your team channel after each generation
+- **Google Chat webhook** — posts a summary card to your team channel when design tokens are updated (variables added, removed, or modified)
 - **Figma webhook** — receives `FILE_VERSION_UPDATE` events and triggers regeneration
 - **Figma plugin sync** — pull tokens directly from the Figma plugin
 - **ZIP download** — download all generated files in one archive
@@ -323,6 +323,7 @@ src/
 | `ORIGIN`             | —          | Required for CSRF protection in production       |
 | `TOKENS_GITHUB_PAT`  | —          | GitHub PAT for server-side token operations      |
 | `TOKENS_GITHUB_REPO` | —          | Default repository in `owner/repo` format        |
+| `GOOGLE_CHAT_WEBHOOK_URL` | —     | Google Chat webhook URL for token update notifications |
 
 ---
 

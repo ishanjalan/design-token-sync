@@ -231,13 +231,16 @@ function parseJsonFile(text: string, label: string): Record<string, unknown> {
 
 async function optionalFileJson(
 	formData: FormData,
-	key: string
+	key: string,
+	warnings: GenerateWarning[]
 ): Promise<Record<string, unknown> | undefined> {
 	const text = await optionalFileText(formData, key);
 	if (!text) return undefined;
 	try {
 		return JSON.parse(text) as Record<string, unknown>;
-	} catch {
+	} catch (e) {
+		const msg = e instanceof SyntaxError ? e.message : 'Invalid JSON';
+		warnings.push({ type: 'lint', message: `Could not parse optional file "${key}": ${msg}. It will be ignored.` });
 		return undefined;
 	}
 }
@@ -267,6 +270,7 @@ function countSpacingTokens(values: Record<string, unknown>): number {
 
 export const POST: RequestHandler = async ({ request }) => {
 	let body: unknown;
+	const warnings: GenerateWarning[] = [];
 	try {
 		const formData = await request.formData();
 
@@ -304,7 +308,7 @@ export const POST: RequestHandler = async ({ request }) => {
 			values,
 			platforms,
 			outputs,
-			typography: await optionalFileJson(formData, 'typography'),
+			typography: await optionalFileJson(formData, 'typography', warnings),
 			referenceColorsWeb: await multiFileEntries(formData, 'referenceColorsWeb'),
 			referenceTypographyWeb: await multiFileEntries(formData, 'referenceTypographyWeb'),
 			referenceColorsSwift: await multiFileEntries(formData, 'referenceColorsSwift'),
@@ -366,7 +370,6 @@ export const POST: RequestHandler = async ({ request }) => {
 	const wantTypography = outputs.includes('typography');
 
 	const results: TransformResult[] = [];
-	const warnings: GenerateWarning[] = [];
 
 	function tagMode(items: TransformResult[], mode: GenerationMode): TransformResult[] {
 		for (const item of items) item.mode = mode;

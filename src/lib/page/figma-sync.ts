@@ -1,6 +1,6 @@
 import type { DropZoneKey } from '$lib/types.js';
 
-interface FigmaSettings {
+export interface FigmaSettings {
 	figmaFileKey: string;
 	figmaPat: string;
 	figmaFetching: boolean;

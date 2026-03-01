@@ -1,24 +1,10 @@
-import type { Platform, GenerateResponse } from '$lib/types.js';
+import type { Platform, GenerateResponse, GithubConfigs, PrResult } from '$lib/types.js';
 import { generateChangelog, type ChangelogContext } from '$lib/diff-utils.js';
-
-interface PrConfig {
-	owner: string;
-	repo: string;
-	branch: string;
-	dir: string;
-}
-
-interface PrResult {
-	platform: string;
-	url: string;
-	status: 'success' | 'failed';
-	error?: string;
-}
 
 export async function sendPRs(
 	result: GenerateResponse | null,
 	githubPat: string | null,
-	githubRepos: Record<string, PrConfig>,
+	githubRepos: GithubConfigs,
 	changelogCtx: ChangelogContext,
 	toast: { success: (msg: string) => void; error: (msg: string) => void; warning: (msg: string, opts?: { duration: number }) => void },
 	callbacks: {
@@ -75,7 +61,7 @@ export async function retryPr(
 	platform: string,
 	result: GenerateResponse | null,
 	githubPat: string | null,
-	githubRepos: Record<string, PrConfig>,
+	githubRepos: GithubConfigs,
 	changelogCtx: ChangelogContext,
 	prResults: PrResult[],
 	toast: { success: (msg: string) => void; error: (msg: string) => void },

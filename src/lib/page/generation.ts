@@ -1,7 +1,7 @@
 import type { DropZoneKey, GenerateResponse, Platform } from '$lib/types.js';
 import type { ChangelogContext } from '$lib/diff-utils.js';
 
-interface GenerationStores {
+export interface GenerationStores {
 	fileStore: {
 		canGenerate: boolean;
 		loading: boolean;
