@@ -57,6 +57,17 @@
 	const activeRefKeys = $derived(visibleKeys.filter((k) => refKeys.includes(k)));
 	const tokensReady = $derived(requiredFilled === 3);
 
+	$effect(() => {
+		function handleKeydown(e: KeyboardEvent) {
+			if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && canGenerate && !loading) {
+				e.preventDefault();
+				onGenerate();
+			}
+		}
+		document.addEventListener('keydown', handleKeydown);
+		return () => document.removeEventListener('keydown', handleKeydown);
+	});
+
 	function extColor(ext: string): string {
 		if (ext === 'scss') return '#F06090';
 		if (ext === 'ts') return '#4D9EFF';
@@ -224,15 +235,18 @@
 					disabled={!canGenerate}
 					onclick={onGenerate}
 				>
-				{#if loading}
-					<span class="gen-spinner"></span>
-					{progressStatus ?? 'Generating…'}
-				{:else if !canGenerate && !hasRefFiles}
-					Upload reference files
-				{:else}
-					Generate
-					<ArrowRight size={14} strokeWidth={2} />
+			{#if loading}
+				<span class="gen-spinner"></span>
+				{progressStatus ?? 'Generating…'}
+			{:else if !canGenerate && !hasRefFiles}
+				Upload reference files
+			{:else}
+				Generate
+				<ArrowRight size={14} strokeWidth={2} />
+				{#if canGenerate}
+					<span class="gen-shortcut">⌘↵</span>
 				{/if}
+			{/if}
 				</button>
 			</div>
 			{#if errorMsg}
@@ -854,6 +868,15 @@
 		border-top-color: white;
 		border-radius: 50%;
 		animation: spin 0.6s linear infinite;
+	}
+
+	.gen-shortcut {
+		font-family: var(--font-code);
+		font-size: 10px;
+		font-weight: 500;
+		opacity: 0.55;
+		letter-spacing: 0.02em;
+		margin-left: -4px;
 	}
 
 	@keyframes spin { to { transform: rotate(360deg); } }

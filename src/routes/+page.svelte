@@ -147,7 +147,7 @@
 	});
 
 	const qualityIssueCount = $derived(
-		(genStore.result?.warnings?.filter((w) => w.type === 'cycle').length ?? 0) + qualityAdvice.length
+		(genStore.result?.warnings?.length ?? 0) + qualityAdvice.length
 	);
 
 	// ─── Syntax highlighting effects ─────────────────────────────────────────────

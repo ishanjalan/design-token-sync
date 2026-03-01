@@ -307,6 +307,13 @@ class FileStoreClass {
 		if (browser) savePlatforms([id]);
 	}
 
+	private inferPlatformFromKey(key: DropZoneKey): Platform | null {
+		if (key === 'referenceColorsKotlin' || key === 'referenceTypographyKotlin') return 'android';
+		if (key === 'referenceColorsWeb' || key === 'referenceTypographyWeb') return 'web';
+		if (key === 'referenceColorsSwift' || key === 'referenceTypographySwift') return 'ios';
+		return null;
+	}
+
 	async assignFile(key: DropZoneKey, file: File) {
 		const slot = this.slots[key];
 		if (REF_KEYS.includes(key)) {
@@ -339,6 +346,10 @@ class FileStoreClass {
 			this.conventionHints[key] = computeConventionHints(key, content);
 			this.validations[key] = computeValidation(key, content);
 			saveRefFile(key, file.name, content);
+			const inferred = this.inferPlatformFromKey(key);
+			if (inferred && !this.selectedPlatforms.includes(inferred)) {
+				this.selectPlatform(inferred);
+			}
 		}
 		if (key === 'lightColors') {
 			try {
@@ -413,6 +424,10 @@ class FileStoreClass {
 		if (REF_KEYS.includes(key)) {
 			const entries = validFiles.map((f, i) => ({ name: f.name, content: allContents[i] }));
 			saveRefFile(key, validFiles.map((f) => f.name).join(','), combinedContent, entries);
+			const inferred = this.inferPlatformFromKey(key);
+			if (inferred && !this.selectedPlatforms.includes(inferred)) {
+				this.selectPlatform(inferred);
+			}
 		}
 
 		const count = validFiles.length;

@@ -7,7 +7,7 @@ export async function downloadZip(
 	if (!files?.length) return;
 	const { zipSync, strToU8 } = await import('fflate');
 	const zipped = zipSync(
-		Object.fromEntries(files.map((f) => [f.filename, strToU8(f.content)]))
+		Object.fromEntries(files.map((f) => [`${f.platform}/${f.filename}`, strToU8(f.content)]))
 	);
 	const blob = new Blob([zipped.buffer as ArrayBuffer], { type: 'application/zip' });
 	const url = URL.createObjectURL(blob);

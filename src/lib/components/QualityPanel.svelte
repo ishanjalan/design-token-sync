@@ -12,7 +12,7 @@
 		RefreshCw
 	} from 'lucide-svelte';
 
-	type QualitySection = 'cycles' | 'advice';
+	type QualitySection = 'cycles' | 'gen-warnings' | 'advice';
 
 	interface Props {
 		warnings: GenerateWarning[];
@@ -24,11 +24,12 @@
 
 	let { warnings, advice, platforms, onClose, onRerun }: Props = $props();
 
-	const expandedSections = new SvelteSet<QualitySection>(['cycles', 'advice']);
+	const expandedSections = new SvelteSet<QualitySection>(['cycles', 'gen-warnings', 'advice']);
 
 	const cycleWarnings = $derived(warnings.filter((w) => w.type === 'cycle'));
+	const genWarnings = $derived(warnings.filter((w) => w.type === 'lint' || w.type === 'missing-category'));
 
-	const totalIssues = $derived(cycleWarnings.length);
+	const totalIssues = $derived(cycleWarnings.length + genWarnings.length);
 
 	const scorePercent = $derived(Math.max(0, 100 - totalIssues * 15));
 	const scoreColor = $derived(
@@ -130,6 +131,34 @@
 				</div>
 			{/if}
 		</div>
+
+		<!-- Generation Warnings (lint + missing-category) -->
+		{#if genWarnings.length > 0}
+			<div class="section">
+				<button class="section-header" onclick={() => toggle('gen-warnings')}>
+					<span class="section-icon">
+						{#if expandedSections.has('gen-warnings')}
+							<ChevronDown size={12} />
+						{:else}
+							<ChevronRight size={12} />
+						{/if}
+					</span>
+					<AlertTriangle size={12} strokeWidth={2} />
+					<span class="section-title">Generation Warnings</span>
+					<span class="badge badge--warn">{genWarnings.length}</span>
+				</button>
+				{#if expandedSections.has('gen-warnings')}
+					<div class="section-body">
+						{#each genWarnings as w (w.message)}
+							<div class="issue-row issue-row--warn">
+								<AlertTriangle size={11} />
+								<span class="issue-text">{w.message}</span>
+							</div>
+						{/each}
+					</div>
+				{/if}
+			</div>
+		{/if}
 
 		<!-- Best Practices Advice -->
 		<div class="section" class:section--empty={advice.length === 0}>
