@@ -2,6 +2,7 @@
 
 export interface ColorEntry {
 	name: string;
+	subFamily?: string; // intermediate path segments between family and name
 	fullPath: string;
 	lightHex: string;
 	darkHex?: string; // only set when different from lightHex
@@ -17,7 +18,7 @@ export interface ColorFamily {
 
 export interface TypographyEntry {
 	name: string;
-	group: string;
+	group: string; // raw group path: e.g. "ios/xlarge title"
 	fullPath: string;
 	fontSize: number;
 	fontFamily: string;
@@ -31,6 +32,25 @@ export interface ValueEntry {
 	fullPath: string;
 	category: string;
 	value: number;
+}
+
+// ─── Path normalization ───────────────────────────────────────────────────────
+
+/**
+ * Figma can export tokens as either nested JSON objects OR as flat keys with
+ * slash-separated names (e.g. "ios/xlarge title/xlarge title-R").
+ * This expands the latter into proper path segments so grouping works correctly.
+ */
+function expandPath(rawPath: string[]): string[] {
+	const result: string[] = [];
+	for (const segment of rawPath) {
+		if (segment.includes('/')) {
+			result.push(...segment.split('/').map((s) => s.trim()).filter(Boolean));
+		} else {
+			result.push(segment);
+		}
+	}
+	return result;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -98,8 +118,12 @@ function buildDarkHexMap(darkJson: Record<string, unknown>): Map<string, string>
 	walkColorTokens(darkJson, [], (path, value, extensions) => {
 		const hex = resolveHex(value);
 		if (!hex) return;
-		map.set(path.join('/'), hex);
-		// Also index by alias target so semantics can find their dark equivalent
+		// Index by both raw path and expanded path
+		const rawKey = path.join('/');
+		const expandedKey = expandPath(path).join('/');
+		map.set(rawKey, hex);
+		if (expandedKey !== rawKey) map.set(expandedKey, hex);
+		// Also index by alias target
 		const aliasData = (extensions as Record<string, unknown> | undefined)?.[
 			'com.figma.aliasData'
 		] as Record<string, unknown> | undefined;
@@ -109,12 +133,15 @@ function buildDarkHexMap(darkJson: Record<string, unknown>): Map<string, string>
 	return map;
 }
 
-// Sort tokens within a family: numeric names ("100", "200") sort numerically,
-// otherwise sort alphabetically.
+// Sort tokens: numeric leaf names ("100", "200") sort numerically; else alphabetically.
 function sortTokens(tokens: ColorEntry[]): ColorEntry[] {
 	return [...tokens].sort((a, b) => {
-		const aNum = parseInt(a.name.split('/').pop() ?? '', 10);
-		const bNum = parseInt(b.name.split('/').pop() ?? '', 10);
+		// Group by subFamily first, then sort within
+		if ((a.subFamily ?? '') !== (b.subFamily ?? '')) {
+			return (a.subFamily ?? '').localeCompare(b.subFamily ?? '');
+		}
+		const aNum = parseInt(a.name, 10);
+		const bNum = parseInt(b.name, 10);
 		if (!isNaN(aNum) && !isNaN(bNum)) return aNum - bNum;
 		return a.name.localeCompare(b.name);
 	});
@@ -134,21 +161,34 @@ export function buildColorFamilies(
 		const hex = resolveHex(value);
 		if (!hex) return;
 
+		const normalizedPath = expandPath(path);
+
 		const aliasData = (extensions as Record<string, unknown> | undefined)?.[
 			'com.figma.aliasData'
 		] as Record<string, unknown> | undefined;
 		const targetName = aliasData?.targetVariableName as string | undefined;
 
-		// Family = first path segment; name = rest
-		const family = path[0];
-		const name = path.slice(1).join('/') || path[0];
-		const fullPath = path.join('/');
+		// family = first segment
+		// subFamily = middle segments (if path length >= 3)
+		// name = last segment
+		const family = normalizedPath[0];
+		const name = normalizedPath[normalizedPath.length - 1] || normalizedPath[0];
+		const subFamily =
+			normalizedPath.length >= 3
+				? normalizedPath.slice(1, -1).join('/')
+				: undefined;
+		const fullPath = normalizedPath.join('/');
 
-		const rawDark = darkHexMap.get(fullPath) ?? (targetName ? darkHexMap.get(targetName) : undefined);
-		const darkHex = rawDark && rawDark.toLowerCase() !== hex.toLowerCase() ? rawDark : undefined;
+		const rawDark =
+			darkHexMap.get(fullPath) ??
+			darkHexMap.get(path.join('/')) ??
+			(targetName ? darkHexMap.get(targetName) : undefined);
+		const darkHex =
+			rawDark && rawDark.toLowerCase() !== hex.toLowerCase() ? rawDark : undefined;
 
 		const entry: ColorEntry = {
 			name,
+			subFamily,
 			fullPath,
 			lightHex: hex,
 			darkHex,
@@ -186,13 +226,19 @@ export function parseTypographyTokens(typoJson: Record<string, unknown>): Typogr
 						? parseFloat(rawSize)
 						: 0;
 			if (fontSize > 0) {
-				const group = path[0] ?? '';
-				const nameParts = path.slice(1);
-				const name = nameParts.length > 0 ? nameParts.join('/') : path[path.length - 1] ?? '';
+				// Expand slash-separated flat keys into proper path segments
+				const normalizedPath = expandPath(path);
+				// group = all segments except the last (e.g. "ios/xlarge title")
+				// name = last segment (e.g. "xlarge title-R")
+				const group = normalizedPath.slice(0, -1).join('/');
+				const name =
+					normalizedPath[normalizedPath.length - 1] || normalizedPath.join('/');
+				const fullPath = normalizedPath.join('/');
+
 				entries.push({
 					name,
 					group,
-					fullPath: path.join('/'),
+					fullPath,
 					fontSize,
 					fontFamily: typeof v.fontFamily === 'string' ? v.fontFamily : '',
 					fontWeight:
@@ -215,8 +261,11 @@ export function parseTypographyTokens(typoJson: Record<string, unknown>): Typogr
 	}
 
 	walk(typoJson, []);
-	// Sort by fontSize descending (largest first — like Material type scale)
-	return entries.sort((a, b) => b.fontSize - a.fontSize);
+	// Sort: by group (alphabetical), then by fontSize descending within each group
+	return entries.sort((a, b) => {
+		if (a.group !== b.group) return a.group.localeCompare(b.group);
+		return b.fontSize - a.fontSize;
+	});
 }
 
 // ─── parseValueTokens ─────────────────────────────────────────────────────────
@@ -232,12 +281,16 @@ export function parseValueTokens(valuesJson: Record<string, unknown>): ValueEntr
 			const raw = o.$value;
 			const value = typeof raw === 'number' ? raw : parseFloat(String(raw));
 			if (!isNaN(value)) {
-				const category = path[0] ?? 'values';
-				const nameParts = path.slice(1);
-				const name = nameParts.length > 0 ? nameParts.join('/') : path[path.length - 1] ?? '';
+				const normalizedPath = expandPath(path);
+				const category = normalizedPath[0] ?? 'values';
+				const nameParts = normalizedPath.slice(1);
+				const name =
+					nameParts.length > 0
+						? nameParts.join('/')
+						: normalizedPath[normalizedPath.length - 1] ?? '';
 				entries.push({
 					name,
-					fullPath: path.join('/'),
+					fullPath: normalizedPath.join('/'),
 					category,
 					value
 				});
@@ -267,8 +320,22 @@ export function contrastColor(hex: string): string {
 	const r = parseInt(h.slice(0, 2), 16) / 255;
 	const g = parseInt(h.slice(2, 4), 16) / 255;
 	const b = parseInt(h.slice(4, 6), 16) / 255;
-	// Relative luminance (WCAG)
 	const toLinear = (c: number) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
 	const L = 0.2126 * toLinear(r) + 0.7152 * toLinear(g) + 0.0722 * toLinear(b);
 	return L > 0.179 ? '#09090B' : '#FAFAFA';
+}
+
+/** Format a path string as a human-readable label: "ios/xlarge title" → "iOS · Xlarge Title" */
+export function pathToLabel(path: string): string {
+	return path
+		.split('/')
+		.map((p) => {
+			const t = p.trim();
+			// Common platform shorthands
+			if (t.toLowerCase() === 'ios') return 'iOS';
+			if (t.toLowerCase() === 'droid') return 'Android';
+			// Title-case each word
+			return t.replace(/\b\w/g, (c) => c.toUpperCase());
+		})
+		.join(' · ');
 }
