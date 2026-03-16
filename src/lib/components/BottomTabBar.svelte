@@ -1,16 +1,19 @@
 <script lang="ts">
-	import { Upload, Files, Settings, HelpCircle, ShieldCheck } from 'lucide-svelte';
+	import { Upload, Files, Settings, HelpCircle, ShieldCheck, Palette } from 'lucide-svelte';
 
 	type PanelId = 'import' | 'files' | 'settings' | 'help' | 'quality';
 
 	interface Props {
 		active: PanelId | null;
 		hasOutput: boolean;
+		hasTokens?: boolean;
+		tokenViewActive?: boolean;
 		qualityIssueCount?: number;
 		onSelect: (id: PanelId) => void;
+		onTokensToggle?: () => void;
 	}
 
-	let { active, hasOutput, qualityIssueCount = 0, onSelect }: Props = $props();
+	let { active, hasOutput, hasTokens = false, tokenViewActive = false, qualityIssueCount = 0, onSelect, onTokensToggle }: Props = $props();
 
 	const ITEMS: { id: PanelId; label: string; icon: string; needsOutput?: boolean }[] = [
 		{ id: 'import', label: 'Import', icon: 'upload' },
@@ -22,15 +25,29 @@
 </script>
 
 <nav class="bottom-tabs" aria-label="Navigation">
+	{#if hasTokens}
+		<button
+			class="tab-btn"
+			class:tab-btn--active={tokenViewActive}
+			onclick={onTokensToggle}
+			aria-label="Token Explorer"
+			aria-pressed={tokenViewActive}
+		>
+			<span class="tab-icon">
+				<Palette size={18} strokeWidth={1.75} />
+			</span>
+			<span class="tab-label">Tokens</span>
+		</button>
+	{/if}
 	{#each ITEMS as item (item.id)}
 		{@const visible = !item.needsOutput || hasOutput}
 		{#if visible}
 			<button
 				class="tab-btn"
-				class:tab-btn--active={active === item.id}
+				class:tab-btn--active={active === item.id && !tokenViewActive}
 				onclick={() => onSelect(item.id)}
 				aria-label={item.label}
-				aria-pressed={active === item.id}
+				aria-pressed={active === item.id && !tokenViewActive}
 			>
 				<span class="tab-icon">
 					{#if item.icon === 'upload'}

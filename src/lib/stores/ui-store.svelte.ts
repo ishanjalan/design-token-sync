@@ -50,6 +50,7 @@ class UiStoreClass {
 	showChangeSummary = $state<Record<string, boolean>>({});
 	activePanel = $state<SidePanelId>(null);
 	panelWidth = $state(280);
+	tokenView = $state(false);
 
 	readonly isMac = browser && /Mac|iPhone|iPad/.test(navigator.userAgent);
 	readonly searchShortcutHint = this.isMac ? '⌘F' : 'Ctrl+F';

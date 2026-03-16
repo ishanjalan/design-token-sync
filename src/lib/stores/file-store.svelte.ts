@@ -18,6 +18,14 @@ import { computeConventionHints } from '$lib/convention-hints.js';
 import { computeValidation, type ValidationSummary } from '$lib/pre-validation.js';
 import { parseSwatches } from '$lib/swatch-utils.js';
 import { buildDependencyMap } from '$lib/token-analysis.js';
+import {
+	buildColorFamilies,
+	parseTypographyTokens,
+	parseValueTokens,
+	type ColorFamily,
+	type TypographyEntry,
+	type ValueEntry
+} from '$lib/token-explorer.js';
 
 export const ALL_KEYS: DropZoneKey[] = [
 	'lightColors',
@@ -64,6 +72,13 @@ class FileStoreClass {
 	swatches = $state<Swatch[]>([]);
 	dependencyMap = $state<DependencyEntry[]>([]);
 	prevPlatforms = $state<string>(JSON.stringify(['web']));
+
+	colorFamilies = $state<ColorFamily[]>([]);
+	typographyTokens = $state<TypographyEntry[]>([]);
+	valueTokens = $state<ValueEntry[]>([]);
+
+	// Private cache of parsed JSON for cross-slot rebuilds (not reactive)
+	private _parsedTokens: Record<string, Record<string, unknown>> = {};
 
 	slots = $state<Record<DropZoneKey, FileSlot>>({
 		lightColors: {
@@ -307,6 +322,19 @@ class FileStoreClass {
 		if (browser) savePlatforms([id]);
 	}
 
+	private _rebuildColorFamilies(): void {
+		const light = this._parsedTokens['lightColors'];
+		const dark = this._parsedTokens['darkColors'];
+		if (light) {
+			try {
+				this.colorFamilies = buildColorFamilies(light, dark);
+			} catch (err) {
+				console.warn('[file-store] Failed to rebuild colorFamilies:', err);
+				this.colorFamilies = [];
+			}
+		}
+	}
+
 	private inferPlatformFromKey(key: DropZoneKey): Platform | null {
 		if (key === 'referenceColorsKotlin' || key === 'referenceTypographyKotlin') return 'android';
 		if (key === 'referenceColorsWeb' || key === 'referenceTypographyWeb') return 'web';
@@ -351,15 +379,35 @@ class FileStoreClass {
 				this.selectPlatform(inferred);
 			}
 		}
-		if (key === 'lightColors') {
+		if (key === 'lightColors' || key === 'darkColors' || key === 'typography' || key === 'values') {
 			try {
 				const parsed = JSON.parse(content);
-				this.swatches = parseSwatches(parsed);
-				this.dependencyMap = buildDependencyMap(parsed);
+				this._parsedTokens[key] = parsed;
+				if (key === 'lightColors') {
+					this.swatches = parseSwatches(parsed);
+					this.dependencyMap = buildDependencyMap(parsed);
+					this._rebuildColorFamilies();
+				} else if (key === 'darkColors') {
+					this._rebuildColorFamilies();
+				} else if (key === 'typography') {
+					this.typographyTokens = parseTypographyTokens(parsed);
+				} else if (key === 'values') {
+					this.valueTokens = parseValueTokens(parsed);
+				}
 			} catch (err) {
-				console.warn('[file-store] Failed to parse lightColors for swatches:', err);
-				this.swatches = [];
-				this.dependencyMap = [];
+				console.warn(`[file-store] Failed to parse ${key} for explorer:`, err);
+				if (key === 'lightColors') {
+					this.swatches = [];
+					this.dependencyMap = [];
+					this.colorFamilies = [];
+				} else if (key === 'darkColors') {
+					delete this._parsedTokens['darkColors'];
+					this._rebuildColorFamilies();
+				} else if (key === 'typography') {
+					this.typographyTokens = [];
+				} else if (key === 'values') {
+					this.valueTokens = [];
+				}
 			}
 		}
 	}
@@ -459,6 +507,10 @@ class FileStoreClass {
 		this.conventionHints = {};
 		this.validations = {};
 		this.dependencyMap = [];
+		this.colorFamilies = [];
+		this.typographyTokens = [];
+		this.valueTokens = [];
+		this._parsedTokens = {};
 	}
 
 	handleDragEnter(key: DropZoneKey, e: DragEvent) {
@@ -564,15 +616,46 @@ class FileStoreClass {
 			this.slots[entry.key].restored = false;
 			this.slots[entry.key].warning = validateFigmaJson(entry.key, entry.content);
 			this.fileInsights[entry.key] = computeInsight(entry.key, entry.content);
+			// Cache parsed JSON for explorer
+			const explorerKeys: DropZoneKey[] = ['lightColors', 'darkColors', 'typography', 'values'];
+			if (explorerKeys.includes(entry.key)) {
+				try {
+					this._parsedTokens[entry.key] = JSON.parse(entry.content);
+				} catch {
+					// non-JSON or malformed; ignore
+				}
+			}
 		}
+		// Rebuild swatches from lightColors
+		const lightEntry = slotEntries.find((e) => e.key === 'lightColors');
+		const lightParsed = lightEntry ? this._parsedTokens['lightColors'] : undefined;
 		try {
-			const parsed = JSON.parse(slotEntries[0].content);
-			this.swatches = parseSwatches(parsed);
-			this.dependencyMap = buildDependencyMap(parsed);
+			if (lightParsed) {
+				this.swatches = parseSwatches(lightParsed);
+				this.dependencyMap = buildDependencyMap(lightParsed);
+			}
 		} catch (err) {
 			console.warn('[file-store] Failed to parse token data for swatches:', err);
 			this.swatches = [];
 			this.dependencyMap = [];
+		}
+		// Rebuild token explorer state
+		this._rebuildColorFamilies();
+		const typoParsed = this._parsedTokens['typography'];
+		if (typoParsed) {
+			try {
+				this.typographyTokens = parseTypographyTokens(typoParsed);
+			} catch {
+				this.typographyTokens = [];
+			}
+		}
+		const valuesParsed = this._parsedTokens['values'];
+		if (valuesParsed) {
+			try {
+				this.valueTokens = parseValueTokens(valuesParsed);
+			} catch {
+				this.valueTokens = [];
+			}
 		}
 	}
 }

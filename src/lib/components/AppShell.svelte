@@ -7,6 +7,7 @@
 		activePanel: SidePanelId;
 		panelWidth: number;
 		welcomeMode?: boolean;
+		hasTokens?: boolean;
 		onClosePanel?: () => void;
 		header: import('svelte').Snippet;
 		rail: import('svelte').Snippet;
@@ -16,7 +17,9 @@
 		bottomTab?: import('svelte').Snippet;
 	}
 
-	let { activePanel, panelWidth = $bindable(), welcomeMode = false, onClosePanel, header, rail, sidePanel, editor, statusBar, bottomTab }: Props = $props();
+	let { activePanel, panelWidth = $bindable(), welcomeMode = false, hasTokens = false, onClosePanel, header, rail, sidePanel, editor, statusBar, bottomTab }: Props = $props();
+
+	const showRail = $derived(!welcomeMode || hasTokens);
 
 	let resizing = $state(false);
 	let startX = 0;
@@ -49,7 +52,7 @@
 	</div>
 
 	<div class="shell-main">
-		{#if !welcomeMode}
+		{#if showRail}
 			<div class="shell-rail">
 				{@render rail()}
 			</div>
@@ -61,7 +64,7 @@
 			<div class="shell-overlay" onclick={onClosePanel}></div>
 			<div
 				class="shell-side"
-				class:shell-side--no-rail={welcomeMode}
+				class:shell-side--no-rail={!showRail}
 				style="width: {panelWidth}px"
 			>
 				{@render sidePanel()}

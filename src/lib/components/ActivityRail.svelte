@@ -1,16 +1,19 @@
 <script lang="ts">
-	import { Upload, Files, Settings, HelpCircle, ShieldCheck } from 'lucide-svelte';
+	import { Upload, Files, Settings, HelpCircle, ShieldCheck, Palette } from 'lucide-svelte';
 
 	type PanelId = 'import' | 'files' | 'settings' | 'help' | 'quality';
 
 	interface Props {
 		active: PanelId | null;
 		hasOutput: boolean;
+		hasTokens?: boolean;
+		tokenViewActive?: boolean;
 		qualityIssueCount?: number;
 		onSelect: (id: PanelId) => void;
+		onTokensToggle?: () => void;
 	}
 
-	let { active, hasOutput, qualityIssueCount = 0, onSelect }: Props = $props();
+	let { active, hasOutput, hasTokens = false, tokenViewActive = false, qualityIssueCount = 0, onSelect, onTokensToggle }: Props = $props();
 
 	const ITEMS: { id: PanelId; label: string; icon: string; needsOutput?: boolean }[] = [
 		{ id: 'import', label: 'Import', icon: 'upload' },
@@ -22,18 +25,31 @@
 </script>
 
 <nav class="rail" aria-label="Activity bar">
+	{#if hasTokens}
+		<button
+			class="rail-btn"
+			class:rail-btn--active={tokenViewActive}
+			onclick={onTokensToggle}
+			title="Token Explorer"
+			aria-label="Token Explorer"
+			aria-pressed={tokenViewActive}
+		>
+			<span class="rail-accent" class:rail-accent--visible={tokenViewActive}></span>
+			<Palette size={18} strokeWidth={1.75} />
+		</button>
+	{/if}
 	{#each ITEMS as item (item.id)}
 		{@const visible = !item.needsOutput || hasOutput}
 		{#if visible}
 			<button
 				class="rail-btn"
-				class:rail-btn--active={active === item.id}
+				class:rail-btn--active={active === item.id && !tokenViewActive}
 				onclick={() => onSelect(item.id)}
 				title={item.label}
 				aria-label={item.label}
-				aria-pressed={active === item.id}
+				aria-pressed={active === item.id && !tokenViewActive}
 			>
-				<span class="rail-accent" class:rail-accent--visible={active === item.id}></span>
+				<span class="rail-accent" class:rail-accent--visible={active === item.id && !tokenViewActive}></span>
 			{#if item.icon === 'upload'}
 				<Upload size={18} strokeWidth={1.75} />
 			{:else if item.icon === 'files'}

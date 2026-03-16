@@ -21,6 +21,7 @@
 	import ExplorerPanel from '$lib/components/ExplorerPanel.svelte';
 	import EditorPane from '$lib/components/EditorPane.svelte';
 	import WelcomeView from '$lib/components/WelcomeView.svelte';
+	import TokenExplorerView from '$lib/components/TokenExplorerView.svelte';
 	import StatusBar from '$lib/components/StatusBar.svelte';
 	import SettingsPanel from '$lib/components/SettingsPanel.svelte';
 	import HelpPanel from '$lib/components/HelpPanel.svelte';
@@ -107,6 +108,15 @@
 			}
 		}
 	});
+
+	// ─── Token Explorer ──────────────────────────────────────────────────────────
+
+	const hasTokens = $derived(fileStore.requiredFilled >= 1);
+
+	function toggleTokenView() {
+		uiStore.tokenView = !uiStore.tokenView;
+		if (uiStore.tokenView) uiStore.activePanel = null;
+	}
 
 	// ─── Quality Analysis ────────────────────────────────────────────────────────
 
@@ -491,7 +501,7 @@
 	</div>
 {/if}
 
-<AppShell activePanel={uiStore.activePanel} bind:panelWidth={uiStore.panelWidth} welcomeMode={!genStore.result} onClosePanel={() => (uiStore.activePanel = null)}>
+<AppShell activePanel={uiStore.activePanel} bind:panelWidth={uiStore.panelWidth} welcomeMode={!genStore.result && !uiStore.tokenView} {hasTokens} onClosePanel={() => (uiStore.activePanel = null)}>
 	{#snippet header()}
 		<HeaderBar
 			appColorMode={uiStore.appColorMode}
@@ -511,8 +521,11 @@
 		<ActivityRail
 			active={uiStore.activePanel}
 			hasOutput={!!genStore.result}
+			{hasTokens}
+			tokenViewActive={uiStore.tokenView}
 			{qualityIssueCount}
-			onSelect={(id) => uiStore.handleRailSelect(id)}
+			onSelect={(id) => { uiStore.tokenView = false; uiStore.handleRailSelect(id); }}
+			onTokensToggle={toggleTokenView}
 		/>
 	{/snippet}
 
@@ -597,7 +610,13 @@
 	{/snippet}
 
 	{#snippet editor()}
-		{#if !genStore.result}
+		{#if uiStore.tokenView}
+			<TokenExplorerView
+				colorFamilies={fileStore.colorFamilies}
+				typographyTokens={fileStore.typographyTokens}
+				valueTokens={fileStore.valueTokens}
+			/>
+		{:else if !genStore.result}
 			<div class="welcome-wrapper">
 				<WelcomeView
 					platforms={PLATFORMS}
@@ -729,8 +748,11 @@
 		<BottomTabBar
 			active={uiStore.activePanel}
 			hasOutput={!!genStore.result}
+			{hasTokens}
+			tokenViewActive={uiStore.tokenView}
 			{qualityIssueCount}
-			onSelect={(id) => uiStore.handleRailSelect(id)}
+			onSelect={(id) => { uiStore.tokenView = false; uiStore.handleRailSelect(id); }}
+			onTokensToggle={toggleTokenView}
 		/>
 	{/snippet}
 </AppShell>
