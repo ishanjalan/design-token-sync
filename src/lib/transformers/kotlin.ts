@@ -66,9 +66,10 @@ export function transformToKotlin(
 	darkColors: FigmaColorExport,
 	referenceKotlin?: string,
 	bestPractices: boolean = true,
-	scope?: KotlinOutputScope
+	scope?: KotlinOutputScope,
+	kotlinPackageOverride?: string
 ): TransformResult[] {
-	const conventions = detectKotlinConventions(referenceKotlin, bestPractices);
+	const conventions = detectKotlinConventions(referenceKotlin, bestPractices, kotlinPackageOverride);
 	const renames = bestPractices ? new Map<string, string>() : detectRenamesInReference(referenceKotlin);
 	const isNew = bestPractices ? (() => false) : createNewDetector(referenceKotlin);
 	const bugWarnings = referenceKotlin && !bestPractices ? detectKotlinColorBugs(referenceKotlin) : [];
@@ -103,9 +104,11 @@ export function transformToKotlin(
 
 // ─── Convention Detection ─────────────────────────────────────────────────────
 
-export function detectKotlinConventions(reference?: string, bestPractices: boolean = true): DetectedKotlinConventions {
+export function detectKotlinConventions(reference?: string, bestPractices: boolean = true, kotlinPackageOverride?: string): DetectedKotlinConventions {
 	if (bestPractices || !reference) {
-		return { ...BEST_PRACTICE_KOTLIN_CONVENTIONS };
+		const conventions = { ...BEST_PRACTICE_KOTLIN_CONVENTIONS };
+		if (kotlinPackageOverride) conventions.kotlinPackage = kotlinPackageOverride;
+		return conventions;
 	}
 
 	const pascalMatches = (reference.match(/\b(?:val|var)\s+[A-Z][a-zA-Z0-9]+\s*(?:=|by\s)/g) ?? []).length;
@@ -116,7 +119,7 @@ export function detectKotlinConventions(reference?: string, bestPractices: boole
 	const objectName = objectMatch ? objectMatch[1] : 'AppColors';
 
 	const packageMatch = reference.match(/^package\s+([\w.]+)/m);
-	const kotlinPackage = packageMatch ? packageMatch[1] : 'com.example.design';
+	const kotlinPackage = kotlinPackageOverride ?? (packageMatch ? packageMatch[1] : 'com.example.design');
 
 	const hasPaletteObjects = /\bobject\s+\w+Palette\s*\{/.test(reference);
 	const primitiveStyle = hasPaletteObjects ? 'palette-objects' as const : 'object' as const;

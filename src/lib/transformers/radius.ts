@@ -25,7 +25,8 @@ function pathMatchesRadius(path: string[]): boolean {
 
 export function transformToRadius(
 	tokenExport: Record<string, unknown>,
-	platforms: Platform[]
+	platforms: Platform[],
+	kotlinPackage: string = 'com.example.design'
 ): TransformResult[] {
 	const entries = collectRadiusTokens(tokenExport);
 	if (entries.length === 0) return [];
@@ -39,7 +40,7 @@ export function transformToRadius(
 		results.push(generateRadiusSwift(entries));
 	}
 	if (platforms.includes('android')) {
-		results.push(generateRadiusKotlin(entries));
+		results.push(generateRadiusKotlin(entries, kotlinPackage));
 	}
 
 	return results;
@@ -135,13 +136,14 @@ function generateRadiusSwift(entries: RadiusEntry[]): TransformResult {
 
 // ─── Kotlin Output ────────────────────────────────────────────────────────────
 
-function generateRadiusKotlin(entries: RadiusEntry[]): TransformResult {
+function generateRadiusKotlin(entries: RadiusEntry[], kotlinPackage: string): TransformResult {
 	const sorted = [...entries].sort((a, b) => a.sortKey - b.sortKey || a.value - b.value);
+	const isDefault = kotlinPackage === 'com.example.design';
 	const lines: string[] = [
 		'// CornerRadius.kt',
 		...fileHeaderLines('//', true),
 		'',
-		'package com.example.design // TODO: update to your package name',
+		`package ${kotlinPackage}${isDefault ? ' // TODO: update to your package name' : ''}`,
 		'',
 		'import androidx.compose.ui.unit.dp',
 		'',

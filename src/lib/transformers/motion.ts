@@ -47,7 +47,8 @@ function parseCubicBezier(s: string): [number, number, number, number] | null {
 
 export function transformToMotion(
 	tokenExport: Record<string, unknown>,
-	platforms: Platform[]
+	platforms: Platform[],
+	kotlinPackage: string = 'com.example.design'
 ): TransformResult[] {
 	const { durations, easings } = collectMotionTokens(tokenExport);
 	if (durations.length === 0 && easings.length === 0) return [];
@@ -61,7 +62,7 @@ export function transformToMotion(
 		results.push(generateMotionSwift(durations, easings));
 	}
 	if (platforms.includes('android')) {
-		results.push(generateMotionKotlin(durations, easings));
+		results.push(generateMotionKotlin(durations, easings, kotlinPackage));
 	}
 
 	return results;
@@ -209,15 +210,16 @@ function generateMotionSwift(durations: DurationEntry[], easings: EasingEntry[])
 
 // ─── Kotlin Output ────────────────────────────────────────────────────────────
 
-function generateMotionKotlin(durations: DurationEntry[], easings: EasingEntry[]): TransformResult {
+function generateMotionKotlin(durations: DurationEntry[], easings: EasingEntry[], kotlinPackage: string): TransformResult {
 	const sortedDurations = [...durations].sort((a, b) => a.sortKey - b.sortKey || a.valueMs - b.valueMs);
 	const sortedEasings = [...easings].sort((a, b) => a.sortKey - b.sortKey || a.name.localeCompare(b.name));
 
+	const isDefault = kotlinPackage === 'com.example.design';
 	const lines: string[] = [
 		'// MotionTokens.kt',
 		...fileHeaderLines('//', true),
 		'',
-		'package com.example.design // TODO: update to your package name',
+		`package ${kotlinPackage}${isDefault ? ' // TODO: update to your package name' : ''}`,
 		'',
 		'import androidx.compose.animation.core.CubicBezierEasing',
 		'',

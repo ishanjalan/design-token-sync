@@ -24,6 +24,8 @@
 		onFigmaPatChange: (e: Event) => void;
 		onFigmaFetch: () => void;
 		onFigmaPasscodeChange: (e: Event) => void;
+		kotlinPackage: string;
+		onKotlinPackageChange: (e: Event) => void;
 	}
 
 	let {
@@ -45,7 +47,9 @@
 		onFigmaFileKeyChange,
 		onFigmaPatChange,
 		onFigmaFetch,
-		onFigmaPasscodeChange
+		onFigmaPasscodeChange,
+		kotlinPackage,
+		onKotlinPackageChange
 	}: Props = $props();
 
 	let activeSettingsTab = $state<SettingsTab>('design');
@@ -241,18 +245,37 @@
 								oninput={(e) => onGithubRepoChange(platform, 'dir', e)}
 							/>
 						</div>
-						<p class="settings-hint">
-							{#if platform === 'web'}
-								PR branch delivers SCSS + TypeScript token files.
-							{:else if platform === 'ios'}
-								PR branch delivers Swift token files.
-							{:else}
-								PR branch delivers Kotlin token files.
-							{/if}
+					<p class="settings-hint">
+						{#if platform === 'web'}
+							PR branch delivers SCSS + TypeScript token files.
+						{:else if platform === 'ios'}
+							PR branch delivers Swift token files.
+						{:else}
+							PR branch delivers Kotlin token files.
+						{/if}
+					</p>
+				</fieldset>
+
+				{#if platform === 'android'}
+					<div class="settings-group">
+						<label class="settings-group-label" for="kotlin-package-input">Kotlin Package</label>
+						<input
+							id="kotlin-package-input"
+							class="settings-input"
+							type="text"
+							placeholder="com.example.design"
+							value={kotlinPackage}
+							oninput={onKotlinPackageChange}
+							spellcheck="false"
+							aria-describedby="kotlin-package-hint"
+						/>
+						<p class="settings-hint" id="kotlin-package-hint">
+							Package name used in generated Kotlin files. Leave empty to auto-detect from reference files.
 						</p>
-					</fieldset>
-				</div>
-			{/if}
+					</div>
+				{/if}
+			</div>
+		{/if}
 
 			<!-- General tab -->
 			{#if activeSettingsTab === 'general'}

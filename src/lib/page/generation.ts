@@ -60,10 +60,15 @@ export function buildChangelogCtx(
 	} as ChangelogContext;
 }
 
+export interface GenerationOptions {
+	kotlinPackage?: string;
+}
+
 export async function generate(
 	stores: GenerationStores,
 	refKeys: DropZoneKey[],
-	toast: { success: (msg: string) => void; error: (msg: string) => void }
+	toast: { success: (msg: string) => void; error: (msg: string) => void },
+	options?: GenerationOptions
 ): Promise<void> {
 	const { fileStore, genStore, tokenStore, uiStore } = stores;
 	if (!fileStore.canGenerate) return;
@@ -80,6 +85,7 @@ export async function generate(
 		fd.append('values', fileStore.slots.values.file!);
 		fd.append('platforms', JSON.stringify(fileStore.selectedPlatforms));
 		fd.append('outputs', JSON.stringify(fileStore.selectedOutputs));
+		if (options?.kotlinPackage) fd.append('kotlinPackage', options.kotlinPackage);
 		if (fileStore.slots.typography.file) fd.append('typography', fileStore.slots.typography.file);
 		const REF_KEY_PLATFORM: Record<string, string> = {
 			referenceColorsWeb: 'web',

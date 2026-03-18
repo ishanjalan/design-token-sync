@@ -18,7 +18,8 @@ interface OpacityEntry {
 
 export function transformToOpacity(
 	valuesExport: Record<string, unknown>,
-	platforms: Platform[]
+	platforms: Platform[],
+	kotlinPackage: string = 'com.example.design'
 ): TransformResult[] {
 	const entries = collectOpacityTokens(valuesExport);
 	if (entries.length === 0) return [];
@@ -32,7 +33,7 @@ export function transformToOpacity(
 		results.push(generateOpacitySwift(entries));
 	}
 	if (platforms.includes('android')) {
-		results.push(generateOpacityKotlin(entries));
+		results.push(generateOpacityKotlin(entries, kotlinPackage));
 	}
 
 	return results;
@@ -124,13 +125,14 @@ function generateOpacitySwift(entries: OpacityEntry[]): TransformResult {
 
 // ─── Kotlin Output ────────────────────────────────────────────────────────────
 
-function generateOpacityKotlin(entries: OpacityEntry[]): TransformResult {
+function generateOpacityKotlin(entries: OpacityEntry[], kotlinPackage: string): TransformResult {
 	const sorted = [...entries].sort((a, b) => a.sortKey - b.sortKey);
+	const isDefault = kotlinPackage === 'com.example.design';
 	const lines: string[] = [
 		'// Opacity.kt',
 		...fileHeaderLines('//', true),
 		'',
-		'package com.example.design // TODO: update to your package name',
+		`package ${kotlinPackage}${isDefault ? ' // TODO: update to your package name' : ''}`,
 		'',
 		'object Opacity {'
 	];

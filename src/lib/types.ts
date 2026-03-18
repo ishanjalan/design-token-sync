@@ -200,6 +200,15 @@ export const BEST_PRACTICE_KOTLIN_CONVENTIONS: DetectedKotlinConventions = {
 	usesParameterizedFactories: false
 };
 
+// ─── Token Coverage ───────────────────────────────────────────────────────────
+
+export interface TokenCoverageRow {
+	type: string;
+	inTokens: number;
+	inReference: boolean;
+	willGenerate: boolean;
+}
+
 // ─── Generation Stats ─────────────────────────────────────────────────────────
 
 export interface GenerationStats {
@@ -240,6 +249,7 @@ export interface GenerateResponse {
 	stats: GenerationStats;
 	files: GeneratedFile[];
 	warnings?: GenerateWarning[];
+	coverage?: TokenCoverageRow[];
 }
 
 

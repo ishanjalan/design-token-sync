@@ -12,7 +12,9 @@ import {
 	saveFigmaFileKey,
 	loadFigmaFileKey,
 	saveFigmaPat,
-	loadFigmaPat
+	loadFigmaPat,
+	saveKotlinPackage,
+	loadKotlinPackage
 } from '$lib/storage.js';
 
 class SettingsStoreClass {
@@ -32,6 +34,7 @@ class SettingsStoreClass {
 	} | null>(null);
 	figmaWebhookSeen = $state(true);
 	autoGenerate = $state(false);
+	kotlinPackage = $state('');
 
 	get figmaConnected() {
 		return !!this.figmaFileKey && !!this.figmaPat;
@@ -45,6 +48,7 @@ class SettingsStoreClass {
 		this.figmaFileKey = loadFigmaFileKey();
 		this.figmaPat = loadFigmaPat();
 		this.autoGenerate = localStorage.getItem('auto-generate') === 'true';
+		this.kotlinPackage = loadKotlinPackage();
 	}
 
 	onChatWebhookChange(e: Event) {
@@ -86,6 +90,11 @@ class SettingsStoreClass {
 	onFigmaPasscodeChange(e: Event) {
 		this.figmaWebhookPasscode = (e.target as HTMLInputElement).value;
 		if (browser) saveFigmaWebhookPasscode(this.figmaWebhookPasscode);
+	}
+
+	onKotlinPackageChange(e: Event) {
+		this.kotlinPackage = (e.target as HTMLInputElement).value;
+		if (browser) saveKotlinPackage(this.kotlinPackage);
 	}
 }
 

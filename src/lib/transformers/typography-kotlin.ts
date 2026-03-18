@@ -28,13 +28,13 @@ function kotlinWeight(w: number): string {
 	return KOTLIN_WEIGHTS[w] ?? 'FontWeight.Normal';
 }
 
-export function detectKotlinConventions(content: string): DetectedTypographyConventions['kotlin'] {
+export function detectKotlinConventions(content: string, kotlinPackageOverride?: string): DetectedTypographyConventions['kotlin'] {
 	const lines = content.split('\n');
 
 	const packageMatch = lines
 		.find((l) => /^\s*package\s+/.test(l))
 		?.match(/package\s+([\w.]+)/);
-	const packageName = packageMatch?.[1] ?? 'com.example.design';
+	const packageName = kotlinPackageOverride ?? (packageMatch?.[1] ?? 'com.example.design');
 
 	const isImmutable = lines.some((l) => /^\s*@Immutable\b/.test(l));
 

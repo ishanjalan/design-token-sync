@@ -1,6 +1,7 @@
 <script lang="ts">
-	import type { GeneratedFile, GenerationMode, Platform } from '$lib/types.js';
+	import type { GeneratedFile, GenerationMode, Platform, TokenCoverageRow } from '$lib/types.js';
 	import SuccessBanner from './SuccessBanner.svelte';
+	import CoverageTable from './CoverageTable.svelte';
 	import TokensUpdatedBanner from './TokensUpdatedBanner.svelte';
 	import FileTabsBar from './FileTabsBar.svelte';
 	import {
@@ -63,6 +64,7 @@
 		swatchTab: 'all' | 'changes';
 		prResults: PrResult[];
 		platformMismatches: PlatformMismatch[];
+		coverageRows: TokenCoverageRow[];
 		themes: readonly ThemeOption[];
 		selectedTheme: string;
 		showThemePicker: boolean;
@@ -117,7 +119,7 @@
 		codeScrollTop, codeScrollHeight, codeClientHeight, codeScrollEl,
 		lastGeneratedAt, sendingPrs, diffTotals, diffNavIndex, swatches,
 		showSwatches, swatchComparisons, swatchTab, prResults,
-		platformMismatches, themes, selectedTheme, showThemePicker, selectedPlatforms,
+		platformMismatches, coverageRows, themes, selectedTheme, showThemePicker, selectedPlatforms,
 		tokensUpdatedBanner = null, onRegenerate, onBackToHome,
 		hasDualMode, activeMode, onModeChange,
 		formatTime, timeAgo, platformColor,
@@ -176,6 +178,9 @@
 			onDownload={onDownloadZip}
 			{onSendPRs}
 		/>
+		{#if coverageRows.length > 0}
+			<CoverageTable coverage={coverageRows} />
+		{/if}
 
 		<!-- Per-file views -->
 		{#each visibleFiles as file (file.filename)}

@@ -188,9 +188,17 @@ export function detectTypographyConventions(
 	refTs?: string,
 	bestPractices?: boolean,
 	refSwift?: string,
-	refKotlin?: string
+	refKotlin?: string,
+	kotlinPackageOverride?: string
 ): DetectedTypographyConventions {
-	if (bestPractices) return BEST_PRACTICE_TYPO_CONVENTIONS;
+	if (bestPractices) {
+		if (kotlinPackageOverride) {
+			const conv = { ...BEST_PRACTICE_TYPO_CONVENTIONS };
+			conv.kotlin = { ...conv.kotlin, packageName: kotlinPackageOverride };
+			return conv;
+		}
+		return BEST_PRACTICE_TYPO_CONVENTIONS;
+	}
 
 	const hasAnyRef = refScss || refTs || refSwift || refKotlin;
 	if (!hasAnyRef) return BEST_PRACTICE_TYPO_CONVENTIONS;
@@ -199,7 +207,7 @@ export function detectTypographyConventions(
 	const ts = refTs ? detectTsConventions(refTs) : BEST_PRACTICE_TYPO_CONVENTIONS.ts;
 	const swift = refSwift ? detectSwiftConventions(refSwift) : BEST_PRACTICE_TYPO_CONVENTIONS.swift;
 	const kotlin = refKotlin
-		? detectKotlinConventions(refKotlin)
+		? detectKotlinConventions(refKotlin, kotlinPackageOverride)
 		: BEST_PRACTICE_TYPO_CONVENTIONS.kotlin;
 	return { scss, ts, swift, kotlin };
 }

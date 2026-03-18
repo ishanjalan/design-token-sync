@@ -243,6 +243,24 @@ export function loadFigmaWebhookPasscode(): string {
 	}
 }
 
+// ─── Kotlin package name ──────────────────────────────────────────────────────
+
+export function saveKotlinPackage(pkg: string): void {
+	try {
+		localStorage.setItem(`${PREFIX}:kotlinPackage`, pkg);
+	} catch {
+		// ignore
+	}
+}
+
+export function loadKotlinPackage(): string {
+	try {
+		return localStorage.getItem(`${PREFIX}:kotlinPackage`) ?? '';
+	} catch {
+		return '';
+	}
+}
+
 // ─── Clear all ────────────────────────────────────────────────────────────────
 
 export function clearAllStorage(): void {

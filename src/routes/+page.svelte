@@ -351,7 +351,8 @@
 		await doGenerate(
 			{ fileStore, genStore, tokenStore, uiStore } as GenerationStores,
 			REF_KEYS_FOR_GEN,
-			toast
+			toast,
+			{ kotlinPackage: settingsStore.kotlinPackage || undefined }
 		);
 	}
 
@@ -595,6 +596,8 @@
 				onFigmaPatChange={(e) => settingsStore.onFigmaPatChange(e)}
 				{onFigmaFetch}
 				onFigmaPasscodeChange={(e) => settingsStore.onFigmaPasscodeChange(e)}
+				kotlinPackage={settingsStore.kotlinPackage}
+				onKotlinPackageChange={(e) => settingsStore.onKotlinPackageChange(e)}
 			/>
 		{:else if uiStore.activePanel === 'quality'}
 			<QualityPanel
@@ -682,6 +685,7 @@
 				swatchTab={uiStore.swatchTab}
 				prResults={settingsStore.prResults}
 				platformMismatches={genStore.platformMismatches}
+				coverageRows={genStore.result?.coverage ?? []}
 				themes={THEMES}
 				selectedTheme={uiStore.selectedTheme}
 				showThemePicker={uiStore.showThemePicker}

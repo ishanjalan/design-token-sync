@@ -20,7 +20,7 @@ import { detectRenamesInReference, createNewDetector } from '$lib/transformers/s
 import { classifyWebColorFiles, classifyKotlinRefFiles, classifyKotlinTypographyRefFiles, classifyWebTypographyFiles, type RefEntry } from '$lib/transformers/classify.js';
 import { appendRemovedTokenComments } from '$lib/diff-utils.js';
 import type { RequestHandler } from './$types';
-import type { FigmaColorExport, Platform, GenerateWarning, GenerationMode, TransformResult } from '$lib/types.js';
+import type { FigmaColorExport, Platform, GenerateWarning, GenerationMode, TransformResult, TokenCoverageRow } from '$lib/types.js';
 
 const RefFileEntry = z.object({ filename: z.string(), content: z.string() });
 
@@ -146,6 +146,7 @@ function countSpacingTokens(values: Record<string, unknown>): number {
 
 export const POST: RequestHandler = async ({ request }) => {
 	let body: unknown;
+	let kotlinPackageOverride: string | undefined;
 	const warnings: GenerateWarning[] = [];
 	try {
 		const formData = await request.formData();
@@ -173,6 +174,11 @@ export const POST: RequestHandler = async ({ request }) => {
 		const outputs: string[] = outputsRaw
 			? (JSON.parse(outputsRaw as string) as string[])
 			: ['colors', 'typography'];
+
+		const kotlinPackageRaw = formData.get('kotlinPackage');
+		kotlinPackageOverride = typeof kotlinPackageRaw === 'string' && kotlinPackageRaw.trim()
+			? kotlinPackageRaw.trim()
+			: undefined;
 
 		const lightColors = parseJsonFile(await lightColorsFile.text(), 'lightColors');
 		const darkColors = parseJsonFile(await darkColorsFile.text(), 'darkColors');
@@ -339,14 +345,15 @@ export const POST: RequestHandler = async ({ request }) => {
 				darkColors as FigmaColorExport,
 				referenceColorsKotlin,
 				bestPractices,
-				scope
+				scope,
+				kotlinPackageOverride
 			), matchedMode)
 		);
 
 		// P6: Warn when token data has categories not covered by the uploaded reference files,
 		// and fall back to best-practices generation for those gap categories.
 		if (!bestPractices && referenceColorsKotlin) {
-			const kotlinConventions = detectKotlinConventions(referenceColorsKotlin, false);
+			const kotlinConventions = detectKotlinConventions(referenceColorsKotlin, false, kotlinPackageOverride);
 			if (kotlinConventions.architecture === 'multi-file' && kotlinConventions.semanticCategories.length > 0) {
 				const gaps = detectKotlinCategoryGaps(
 					lightColors as FigmaColorExport,
@@ -368,7 +375,8 @@ export const POST: RequestHandler = async ({ request }) => {
 							darkColors as FigmaColorExport,
 							undefined,
 							true,
-							gapScope
+							gapScope,
+							kotlinPackageOverride
 						), 'best-practices')
 					);
 				}
@@ -381,29 +389,38 @@ export const POST: RequestHandler = async ({ request }) => {
 	// In match-existing mode, only generate a token type if the uploaded reference
 	// files already contain definitions of that type. In best-practices mode (no refs),
 	// generate all token types that have data in the token export.
+	const allRefContent = [
+		webColors.primitivesScss, webColors.colorsScss,
+		webColors.primitivesTs, webColors.colorsTs,
+		webTypo.typoScss, webTypo.typoTs,
+		referenceColorsSwift, referenceTypographySwift,
+		referenceColorsKotlin, referenceTypographyKotlin
+	].filter(Boolean).join('\n');
+
+	const refHas = (pattern: RegExp): boolean => bestPractices || pattern.test(allRefContent);
+
+	const refHasShadow = refHas(/\$shadow-|--shadow-|\bShadowToken\b|\bShadowSpec\b/);
+	const refHasBorder = refHas(/\$border-|--border-|\bBorderToken\b|\bobject\s+Borders\b/);
+	const refHasRadius = refHas(/\$radius-|--radius-|\bCornerRadius\b/);
+	const refHasOpacity = refHas(/\$opacity-|--opacity-|\benum\s+Opacity\b|\bobject\s+Opacity\b/);
+	const refHasGradient = refHas(/\$gradient-|\bGradientTokens\b/);
+	const refHasMotion = refHas(/\$duration-|\$easing-|\bMotionTokens\b/);
+
+	const kotlinPkg = kotlinPackageOverride ?? 'com.example.design';
+
 	if (wantColors) {
-		const allRefContent = [
-			webColors.primitivesScss, webColors.colorsScss,
-			webColors.primitivesTs, webColors.colorsTs,
-			webTypo.typoScss, webTypo.typoTs,
-			referenceColorsSwift, referenceTypographySwift,
-			referenceColorsKotlin, referenceTypographyKotlin
-		].filter(Boolean).join('\n');
-
-		const refHas = (pattern: RegExp): boolean => bestPractices || pattern.test(allRefContent);
-
-		if (refHas(/\$shadow-|--shadow-|\bShadowToken\b|\bShadowSpec\b/))
-			results.push(...tagMode(transformToShadows(values, platforms), matchedMode));
-		if (refHas(/\$border-|--border-|\bBorderToken\b|\bobject\s+Borders\b/))
-			results.push(...tagMode(transformToBorders(values, platforms), matchedMode));
-		if (refHas(/\$radius-|--radius-|\bCornerRadius\b/))
-			results.push(...tagMode(transformToRadius(values, platforms), matchedMode));
-		if (refHas(/\$opacity-|--opacity-|\benum\s+Opacity\b|\bobject\s+Opacity\b/))
-			results.push(...tagMode(transformToOpacity(values, platforms), matchedMode));
-		if (refHas(/\$gradient-|\bGradientTokens\b/))
+		if (refHasShadow)
+			results.push(...tagMode(transformToShadows(values, platforms, kotlinPkg), matchedMode));
+		if (refHasBorder)
+			results.push(...tagMode(transformToBorders(values, platforms, kotlinPkg), matchedMode));
+		if (refHasRadius)
+			results.push(...tagMode(transformToRadius(values, platforms, kotlinPkg), matchedMode));
+		if (refHasOpacity)
+			results.push(...tagMode(transformToOpacity(values, platforms, kotlinPkg), matchedMode));
+		if (refHasGradient)
 			results.push(...tagMode(transformToGradients(values, platforms), matchedMode));
-		if (refHas(/\$duration-|\$easing-|\bMotionTokens\b/))
-			results.push(...tagMode(transformToMotion(values, platforms), matchedMode));
+		if (refHasMotion)
+			results.push(...tagMode(transformToMotion(values, platforms, kotlinPkg), matchedMode));
 	}
 
 	if (wantTypography && typography) {
@@ -415,7 +432,8 @@ export const POST: RequestHandler = async ({ request }) => {
 			webTypo.typoTs,
 			bestPractices,
 			referenceTypographySwift,
-			kotlinTypoRefContent
+			kotlinTypoRefContent,
+			kotlinPackageOverride
 		);
 
 		const kotlinTypoScope: KotlinTypographyScope | undefined = bestPractices
@@ -451,12 +469,12 @@ export const POST: RequestHandler = async ({ request }) => {
 				...(wantTs ? transformToTS(theme.tokens as FigmaColorExport, theme.tokens as FigmaColorExport, conventions) : []),
 				...(wantCss ? transformToCSS(theme.tokens as FigmaColorExport, theme.tokens as FigmaColorExport, conventions) : []),
 				// Token-type transforms — same gating as main pass, using theme's values (falls back to base values)
-				...transformToShadows(values, platforms),
-				...transformToBorders(values, platforms),
-				...transformToRadius(values, platforms),
-				...transformToOpacity(values, platforms),
+				...transformToShadows(values, platforms, kotlinPkg),
+				...transformToBorders(values, platforms, kotlinPkg),
+				...transformToRadius(values, platforms, kotlinPkg),
+				...transformToOpacity(values, platforms, kotlinPkg),
 				...transformToGradients(values, platforms),
-				...transformToMotion(values, platforms)
+				...transformToMotion(values, platforms, kotlinPkg)
 			];
 			for (const r of themeResults) {
 				const ext = r.filename.split('.').pop() ?? '';
@@ -486,11 +504,11 @@ export const POST: RequestHandler = async ({ request }) => {
 		}
 
 		if (wantColors && platforms.includes('android')) {
-			results.push(...tagMode(transformToKotlin(lightColors as FigmaColorExport, darkColors as FigmaColorExport, undefined, true, undefined), 'best-practices'));
+			results.push(...tagMode(transformToKotlin(lightColors as FigmaColorExport, darkColors as FigmaColorExport, undefined, true, undefined, kotlinPackageOverride), 'best-practices'));
 		}
 
 		if (wantTypography && typography) {
-			const bpTypoConventions = detectTypographyConventions(undefined, undefined, true, undefined, undefined);
+			const bpTypoConventions = detectTypographyConventions(undefined, undefined, true, undefined, undefined, kotlinPackageOverride);
 			const bpTypoResult: TransformToTypographyResult = transformToTypography(typography, platforms, bpTypoConventions, undefined, true);
 			results.push(...tagMode(bpTypoResult.files, 'best-practices'));
 		}
@@ -575,6 +593,19 @@ export const POST: RequestHandler = async ({ request }) => {
 	const radiusTokens = countRadiusTokens(values);
 	const motionTokens = countMotionTokens(values);
 
+	// ── Coverage Table ──────────────────────────────────────────────────────
+	const hasFile = (type: string) => results.some((r) => r.filename.toLowerCase().includes(type));
+	const coverage: TokenCoverageRow[] = [
+		{ type: 'Colors', inTokens: primitiveColors + semanticColors, inReference: wantColors, willGenerate: wantColors && hasFile('color') },
+		{ type: 'Typography', inTokens: typographyStyles, inReference: wantTypography, willGenerate: wantTypography && hasFile('typography') },
+		{ type: 'Shadows', inTokens: shadowTokens, inReference: refHasShadow, willGenerate: refHasShadow && shadowTokens > 0 },
+		{ type: 'Borders', inTokens: borderTokens, inReference: refHasBorder, willGenerate: refHasBorder && borderTokens > 0 },
+		{ type: 'Radius', inTokens: radiusTokens ?? 0, inReference: refHasRadius, willGenerate: refHasRadius && (radiusTokens ?? 0) > 0 },
+		{ type: 'Opacity', inTokens: opacityTokens, inReference: refHasOpacity, willGenerate: refHasOpacity && opacityTokens > 0 },
+		{ type: 'Gradients', inTokens: gradientTokens ?? 0, inReference: refHasGradient, willGenerate: refHasGradient && (gradientTokens ?? 0) > 0 },
+		{ type: 'Motion', inTokens: motionTokens ?? 0, inReference: refHasMotion, willGenerate: refHasMotion && (motionTokens ?? 0) > 0 },
+	];
+
 	return json({
 		success: true,
 		platforms,
@@ -590,6 +621,7 @@ export const POST: RequestHandler = async ({ request }) => {
 			radiusTokens,
 			motionTokens
 		},
+		coverage,
 		files: results.map(({ filename, content, format, platform, mode }) => ({
 			filename,
 			content,
